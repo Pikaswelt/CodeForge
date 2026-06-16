@@ -1,69 +1,41 @@
-CodeForge
-
+# CodeForge
 
 Electron desktop app for local coding agents:
 
-
+```text
 React UI
   -> secure Electron IPC bridge
   -> Node child_process
   -> Antigravity CLI, Codex CLI, or Claude Code
   -> selected project folder
+```
 
+## Requirements
 
+- Node.js 20 or newer
+- At least one installed and authenticated CLI:
+  - `agy` for Google Antigravity
+  - `codex` for OpenAI Codex
+  - `claude` for Anthropic Claude Code
+- Optional: Git for branch selection
 
-Requirements
+## Development
 
-
-
-
-Node.js 20 or newer
-
-
-At least one installed and authenticated CLI:
-
-
-
-agy for Google Antigravity
-
-
-codex for OpenAI Codex
-
-
-claude for Anthropic Claude Code
-
-
-
-
-
-
-Optional: Git for branch selection
-
-
-
-
-Development
-
-
+```powershell
 npm install
 npm run dev
+```
 
+## Check and Build
 
-
-Check and Build
-
-
+```powershell
 npm run lint
 npm run build
 npm run dist
+```
 
+`npm run dist` creates the Windows installer in `release/`.
 
-
-npm run dist creates the Windows installer in release/.
-
-
-Security
-
+## Security
 
 The renderer has no direct Node access. File operations, Git, npm, window controls, and agent processes run exclusively through the restricted preload API. The access mode can be set per request to read-only, project access, or full access.
-
