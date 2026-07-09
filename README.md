@@ -1,4 +1,4 @@
-# ⚔️ CodeForge v2.4.1 ☆ コードフォージ
+# ⚔️ CodeForge v2.4.2 ☆ コードフォージ
 
 <p align="center">
   <i>✨ 君'のコードを完全にする！— Make your code perfect, Senpai! ✨</i>
@@ -16,7 +16,7 @@ Desktop & Mobile App für lokale KI-Coding-Agenten. Verbinde dich mit deinem PC,
   → selected project folder ✨
 ```
 
-## 🆕 Neu in v2.4.1 ～☆
+## 🆕 Neu in v2.4.2 ～☆
 
 - **⚡ Connection Key System** – Einfach den generierten Base64-Key kopieren, in der App einfügen → **SOFORT VERBUNDEN!**
 - **🤖 Auto-Pairing & Fallback** – Server startet automatisch im Kopplungsmodus, falls eine LAN-Verbindung gesucht wird
