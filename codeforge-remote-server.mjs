@@ -7,7 +7,9 @@ import { networkInterfaces, hostname } from 'node:os';
 import { extname, join } from 'node:path';
 import dgram from 'node:dgram';
 
-const PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
+let PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
+const START_PORT = PORT;
+const MAX_PORT_TRIES = 10;
 const HOST = process.env.HOST || process.env.CODEFORGE_HOST || '0.0.0.0';
 const TOKEN = process.env.CODEFORGE_TOKEN || '';
 const AUTO_PAIR = process.env.CODEFORGE_AUTO_PAIR === 'true' || process.env.CODEFORGE_AUTO_PAIR === '1';
@@ -564,7 +566,14 @@ const server = createServer((req, res) => {
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Try: CODEFORGE_PORT=8788 bash codeforge-connect.sh`);
+    if (PORT - START_PORT < MAX_PORT_TRIES) {
+      PORT++;
+      console.log(`⚠️  Port ${PORT - 1} belegt → versuche Port ${PORT}...`);
+      server.close();
+      server.listen(PORT, HOST);
+      return;
+    }
+    console.error(`❌ Kein freier Port gefunden (${START_PORT}–${START_PORT + MAX_PORT_TRIES - 1}).`);
     process.exit(1);
   }
   console.error('Server error:', err.message);
