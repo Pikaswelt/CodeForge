@@ -13,7 +13,7 @@
 import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const HELP = `
 CodeForge CLI v${VERSION} – Terminal-Interface für CodeForge
 

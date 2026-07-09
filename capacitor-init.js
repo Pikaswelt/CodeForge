@@ -17,15 +17,16 @@
   }
 
   // Nur ausführen, wenn wir in einer Capacitor-Umgebung sind
-  const isCapacitor = typeof (window as any).Capacitor !== 'undefined' || 
+  const win = window;
+  var isCapacitor = typeof win.Capacitor !== 'undefined' || 
                        window.location.protocol === 'file:' ||
                        navigator.userAgent.includes('CodeForge');
 
   if (!isCapacitor) return;
 
   // App läuft im Browser-Modus (WebView = Web-App)
-  (window as any).agentWorkspace = (window as any).agentWorkspace || {};
-  (window as any).agentWorkspace.isWeb = true;
+  win.agentWorkspace = win.agentWorkspace || {};
+  win.agentWorkspace.isWeb = true;
 
   // Standardwerte nur setzen wenn noch nichts konfiguriert wurde
   if (read('setup', false) === false) {

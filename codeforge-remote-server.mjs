@@ -22,6 +22,10 @@ let udpSocket = null;
 const providers = {
   antigravity: { command: 'agy', candidates: ['agy', '/root/.local/bin/agy', '/usr/local/bin/agy', '/usr/bin/agy'], versionArgs: ['--version'] },
   openai: { command: 'codex', candidates: ['codex', '/root/.local/bin/codex', '/usr/local/bin/codex', '/usr/bin/codex'], versionArgs: ['--version'] },
+  anthropic: { command: 'claude', candidates: ['claude', '/root/.local/bin/claude', '/usr/local/bin/claude', '/usr/bin/claude'], versionArgs: ['--version'] },
+  cursor: { command: 'cursor-agent', candidates: ['cursor-agent', 'agent', '/root/.local/bin/cursor-agent', '/usr/local/bin/cursor-agent'], versionArgs: ['--version'] },
+  opencode: { command: 'opencode', candidates: ['opencode', '/root/.local/bin/opencode', '/usr/local/bin/opencode', '/usr/bin/opencode'], versionArgs: ['--version'] },
+  freebuff: { command: 'freebuff', candidates: ['freebuff', '/root/.local/bin/freebuff', '/usr/local/bin/freebuff', '/usr/bin/freebuff'], versionArgs: ['--version'] },
 };
 
 function getLocalIp() {
@@ -37,9 +41,10 @@ function getHostname() {
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
+  const allowedOrigin = process.env.CODEFORGE_CORS_ORIGIN || '*';
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': '*',
+    'access-control-allow-origin': allowedOrigin,
     'access-control-allow-headers': 'authorization, content-type',
     'access-control-allow-methods': 'GET, POST, OPTIONS',
   });
@@ -105,7 +110,7 @@ function startPairingBroadcast() {
       port: PORT,
       pairingCode,
       tokenRequired: Boolean(TOKEN),
-      version: '2.1.0',
+      version: '2.2.0',
       providers: Object.keys(providers),
       timestamp: Date.now(),
     });
@@ -252,6 +257,12 @@ function buildPrompt(systemPrompt, prompt, access, projectPath) {
   return [accessInstruction, system ? `System-Prompt:\n${system}` : '', prompt].filter(Boolean).join('\n\n');
 }
 
+function accessToClaudeMode(access) {
+  if (access === 'read-only') return 'plan';
+  if (access === 'full') return 'bypassPermissions';
+  return 'auto';
+}
+
 function buildAgentCommand(providerId, model, prompt, access, projectPath, reasoningEffort) {
   const args = [];
   let stdin = '';
@@ -276,6 +287,21 @@ function buildAgentCommand(providerId, model, prompt, access, projectPath, reaso
     );
     if (access === 'full') args.push('--dangerously-bypass-approvals-and-sandbox');
     stdin = prompt;
+  } else if (providerId === 'anthropic') {
+    args.push('-p', '--model', model, '--output-format', 'text', '--permission-mode', accessToClaudeMode(access));
+    if (access === 'full') args.push('--dangerously-skip-permissions');
+    stdin = prompt;
+  } else if (providerId === 'cursor') {
+    args.push('-p', prompt, '--output-format', 'text');
+    if (model && model !== 'default') args.push('--model', model);
+  } else if (providerId === 'opencode') {
+    args.push('run', '--dir', projectPath);
+    if (model && model !== 'default') args.push('--model', model);
+    if (access === 'full') args.push('--dangerously-skip-permissions');
+    args.push(prompt);
+  } else if (providerId === 'freebuff') {
+    args.push('-p', prompt);
+    if (model && model !== 'default') args.push('--model', model);
   }
 
   return { args, stdin };
@@ -369,11 +395,12 @@ async function handleRun(req, res) {
   const runId = randomUUID();
 
   if (wantsStream) {
+    const allowedOrigin = process.env.CODEFORGE_CORS_ORIGIN || '*';
     res.writeHead(200, {
       'content-type': 'application/x-ndjson; charset=utf-8',
       'cache-control': 'no-cache',
       'x-accel-buffering': 'no',
-      'access-control-allow-origin': '*',
+      'access-control-allow-origin': allowedOrigin,
     });
     const writeEvent = (payload) => res.write(`${JSON.stringify(payload)}\n`);
     writeEvent({ type: 'start', ok: true, runId, provider: providerId, startedAt });
@@ -480,9 +507,10 @@ async function handleMedia(req, res) {
   const ext = extname(resolved).toLowerCase();
   const contentType = MEDIA_TYPES[ext] || 'application/octet-stream';
   
+  const allowedOrigin = process.env.CODEFORGE_CORS_ORIGIN || '*';
   res.writeHead(200, {
     'content-type': contentType,
-    'access-control-allow-origin': '*',
+    'access-control-allow-origin': allowedOrigin,
     'cache-control': 'public, max-age=3600',
     'content-length': statSync(resolved).size,
   });
@@ -504,7 +532,7 @@ async function handleDiscover(req, res) {
     ok: true,
     service: 'codeforge-remote',
     name: 'CodeForge Remote Server',
-    version: '2.1.0',
+    version: '2.2.0',
     localIp,
     port: PORT,
     tokenRequired: Boolean(TOKEN),
@@ -544,7 +572,7 @@ server.listen(PORT, HOST, () => {
     console.error('CODEFORGE_TOKEN is not set. The API will reject all requests.');
   }
   const localIp = getLocalIp();
-  console.log(`CodeForge Remote Server v2.1.0 – http://${HOST}:${PORT}`);
+  console.log(`CodeForge Remote Server v2.2.0 – http://${HOST}:${PORT}`);
   console.log(`Entdeckbar unter: http://${localIp}:${PORT}`);
   console.log(`Kopplungsmodus starten: POST /pair/start`);
 });
