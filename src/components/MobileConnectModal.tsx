@@ -70,19 +70,52 @@ function generateQuickIpList(): string[] {
 }
 
 async function verifyPairingCode(serverUrl: string, code: string): Promise<{ ok: boolean; token?: string; serverUrl?: string; error?: string }> {
-  try {
-    const url = `${serverUrl}/pair/verify`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-      signal: AbortSignal.timeout(8000),
-    });
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Verbindung fehlgeschlagen.' };
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const url = `${serverUrl}/pair/verify`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        return {
+          ok: false,
+          error: `Server antwortete mit Status ${res.status} (kein JSON). Die URL '${serverUrl}' ist evtl. falsch oder der Server verwendet HTTPS.`,
+        };
+      }
+      if (!res.ok && !data.ok) {
+        return {
+          ok: false,
+          error: data.error || `Server-Fehler (${res.status}). Prüfe ob der Server läuft: http://${serverUrl.replace(/^https?:\/\//, '')}/discover`,
+        };
+      }
+      return data;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Verbindung fehlgeschlagen.';
+      // On last attempt, return a helpful error
+      if (attempt >= maxRetries) {
+        const helpfulMessage =
+          message.includes('fetch') || message.includes('NetworkError') || message.includes('network')
+            ? `🚫 Keine Verbindung zum Server. Mögliche Ursachen:
+  • Server läuft nicht (Status prüfen: systemctl status codeforge-remote)
+  • Port 8787 in der Firewall nicht freigegeben (ufw allow 8787)
+  • Handy und Server müssen sich erreichen können (gleiches Netzwerk oder öffentliche IP)
+  • Bei HTTPS-App: Server braucht HTTPS oder die Android-Einstellungen müssen angepasst werden`
+            : message;
+        return { ok: false, error: helpfulMessage };
+      }
+      // Wait before retry (500ms, 1s)
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
   }
+  return { ok: false, error: 'Verbindung fehlgeschlagen nach mehreren Versuchen.' };
 }
 
 export default function MobileConnectModal({ onClose }: { onClose: () => void }) {
