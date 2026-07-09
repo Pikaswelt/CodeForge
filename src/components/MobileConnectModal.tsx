@@ -76,7 +76,7 @@ function generateQuickIpList(): string[] {
   return [...new Set(ips)];
 }
 
-async function verifyPairingCode(serverUrl: string, code: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+async function verifyPairingCode(serverUrl: string, code: string): Promise<{ ok: boolean; token?: string; serverUrl?: string; error?: string }> {
   try {
     const url = `${serverUrl}/pair/verify`;
     const res = await fetch(url, {
@@ -117,6 +117,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
   
   // Kopplungsmodus / Pairing state
   const [pairingCode, setPairingCode] = useState('');
+  const [pairingUrl, setPairingUrl] = useState('');
   const [pairingPhase, setPairingPhase] = useState<'enter-code' | 'scanning' | 'verifying' | 'found' | 'error'>('enter-code');
   const [pairingError, setPairingError] = useState('');
   const [foundServer, setFoundServer] = useState<DiscoveredServer | null>(null);
@@ -153,10 +154,36 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
       setPairingError('Bitte gib einen 4-stelligen Code ein.');
       return;
     }
+
+    // If user typed a URL in pairing mode (for remote VPS), use that directly
+    if (pairingUrl && pairingUrl.trim()) {
+      setPairingPhase('verifying');
+      setPairingError('');
+      const cleanUrl = pairingUrl.trim().replace(/\/+$/, '');
+      const result = await verifyPairingCode(cleanUrl, pairingCode);
+      if (result.ok) {
+        setPairingPhase('found');
+        const config: MobileConnectionConfig = {
+          type: 'vps',
+          vpsUrl: result.serverUrl || cleanUrl,
+          vpsToken: result.token || '',
+          vpsProjectPath: '/root/codeforge-project',
+          connected: true,
+          connectedAt: Date.now(),
+        };
+        setMobileConnectionConfig(config);
+        setTimeout(() => onClose(), 1500);
+      } else {
+        setPairingPhase('error');
+        setPairingError(result.error || 'Falscher Code oder Server nicht erreichbar.');
+      }
+      return;
+    }
+
+    // Local LAN scan + verify
     setPairingPhase('scanning');
     setPairingError('');
     
-    // Step 1: Quick LAN scan
     const server = await quickScan();
     
     if (!server) {
@@ -168,7 +195,6 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
     setFoundServer(server);
     setPairingPhase('verifying');
     
-    // Step 2: Verify pairing code
     const url = `http://${server.ip}:${server.port}`;
     const result = await verifyPairingCode(url, pairingCode);
     
@@ -176,14 +202,13 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
       setPairingPhase('found');
       const config: MobileConnectionConfig = {
         type: 'vps',
-        vpsUrl: url,
+        vpsUrl: result.serverUrl || url,
         vpsToken: result.token || '',
         vpsProjectPath: '/root/codeforge-project',
         connected: true,
         connectedAt: Date.now(),
       };
       setMobileConnectionConfig(config);
-      // Auto-close after short delay
       setTimeout(() => onClose(), 1500);
     } else {
       setPairingPhase('error');
@@ -370,26 +395,67 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                   <Radio className="w-5 h-5 text-violet-300" />
                 </div>
                 <div>
-                  <div className="text-sm text-violet-200 font-semibold">Kopplungsmodus</div>
-                  <p className="text-[11px] text-violet-400/60">Einfach per 4-stelligem Code verbinden</p>
+                  <div className="text-sm text-violet-200 font-semibold">⚡ Kopplungsmodus</div>
+                  <p className="text-[11px] text-violet-400/60">Code vom PC ablesen → hier eingeben → FERTIG!</p>
                 </div>
               </div>
               <p className="text-[11px] text-zinc-500 leading-5 mb-3">
-                Starte auf dem PC/Server den Kopplungsmodus und gib hier den angezeigten Code ein.
+                Führe auf deinem PC/Server <code className="text-zinc-300 bg-zinc-800/50 px-1 rounded">bash codeforge-connect.sh</code> aus und gib den 4-stelligen Code ein.
               </p>
-              <button
-                onClick={() => {
-                  setStep('pairing');
-                  setPairingPhase('enter-code');
-                  setPairingCode('');
-                  setPairingError('');
-                  setFoundServer(null);
-                }}
-                className="w-full primary-button bg-violet-500 hover:bg-violet-400"
-              >
-                <Radio className="w-4 h-4" />
-                Kopplungsmodus starten
-              </button>
+              {pairingPhase === 'enter-code' || pairingPhase === 'error' ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={pairingCode}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setPairingCode(val);
+                      if (val.length === 4) {
+                        setTimeout(() => startPairing(), 100);
+                      }
+                    }}
+                    className="input flex-1 text-center text-2xl tracking-[0.5em] font-mono py-3"
+                    placeholder="1234"
+                    autoFocus
+                  />
+                  <button
+                    onClick={startPairing}
+                    disabled={pairingCode.length !== 4}
+                    className="primary-button bg-violet-500 hover:bg-violet-400 disabled:opacity-30"
+                  >
+                    <Search className="w-4 h-4" />
+                    Verbinden
+                  </button>
+                </div>
+              ) : pairingPhase === 'scanning' ? (
+                <div className="flex items-center justify-center gap-2 py-4 text-violet-200">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span className="text-sm">Suche Server im Netzwerk...</span>
+                </div>
+              ) : pairingPhase === 'verifying' ? (
+                <div className="flex items-center justify-center gap-2 py-4 text-violet-200">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span className="text-sm">Prüfe Code...</span>
+                </div>
+              ) : pairingPhase === 'found' ? (
+                <div className="flex items-center justify-center gap-2 py-4 text-emerald-300">
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span className="text-sm font-bold">✨ Verbunden!</span>
+                </div>
+              ) : null}
+              {pairingPhase === 'error' && pairingError && (
+                <div className="rounded-lg border border-red-400/20 bg-red-400/5 p-2 mt-2">
+                  <p className="text-[10px] text-red-300 flex items-center gap-1"><X className="w-3 h-3" />{pairingError}</p>
+                  <button
+                    onClick={() => { setPairingPhase('enter-code'); setPairingError(''); setPairingCode(''); }}
+                    className="text-[10px] text-red-400 hover:text-red-300 underline mt-1"
+                  >
+                    Erneut versuchen
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="relative">
@@ -410,8 +476,8 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                   <Server className="w-5 h-5 text-sky-300" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-white font-medium">Server-URL manuell eingeben</div>
-                  <p className="text-[11px] text-zinc-500 mt-1">VPS oder Linux-PC mit IP + Token verbinden</p>
+                  <div className="text-sm text-white font-medium">Server-URL + Token (VPS/Remote)</div>
+                  <p className="text-[11px] text-zinc-500 mt-1">Für entfernte Server mit fester IP</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0 mt-1 group-hover:text-sky-300 transition-colors" />
               </div>
@@ -426,8 +492,8 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                   <Monitor className="w-5 h-5 text-emerald-300" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-white font-medium">SSH (fuer Windows/Experten)</div>
-                  <p className="text-[11px] text-zinc-500 mt-1">SSH-Verbindung zu einem Remote-Rechner</p>
+                  <div className="text-sm text-white font-medium">SSH (Experte)</div>
+                  <p className="text-[11px] text-zinc-500 mt-1">Direkte SSH-Verbindung zum Server</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0 mt-1 group-hover:text-emerald-300 transition-colors" />
               </div>
@@ -443,7 +509,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                 &larr; Zurueck
               </button>
               <span className="text-zinc-700">|</span>
-              <span className="text-sm text-white font-medium">Kopplungsmodus</span>
+              <span className="text-sm text-white font-medium">⚡ Kopplungsmodus</span>
             </div>
 
             {/* Phase: Enter code */}
@@ -453,20 +519,19 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                   <div className="flex items-center gap-3 mb-3">
                     <KeyRound className="w-5 h-5 text-violet-300" />
                     <div>
-                      <div className="text-sm text-violet-200 font-medium">Code eingeben</div>
-                      <p className="text-[10px] text-zinc-500">Starte den Kopplungsmodus auf deinem PC</p>
+                      <div className="text-sm text-violet-200 font-medium">4-stelligen Code eingeben</div>
+                      <p className="text-[10px] text-zinc-500">Der Code erscheint nach Ausführung auf dem PC</p>
                     </div>
                   </div>
-                  <p className="text-[11px] text-zinc-400 leading-5 mb-3">
-                    Auf dem PC/Server ausführen:
-                  </p>
-                  <pre className="text-[11px] font-mono text-zinc-300 bg-black/30 p-3 rounded-lg border border-white/5 overflow-x-auto mb-3">
-                    bash codeforge-connect.sh
-                  </pre>
-                  <p className="text-[10px] text-zinc-600 mb-3">
-                    Dann den 4-stelligen Code vom PC-Bildschirm hier eingeben:
-                  </p>
-                  <div className="flex gap-3">
+                  
+                  <div className="rounded-lg bg-black/30 border border-white/5 p-3 mb-3">
+                    <p className="text-[10px] text-zinc-500 mb-1">Auf dem PC/Server ausführen:</p>
+                    <code className="text-[12px] font-mono text-emerald-300 block">bash codeforge-connect.sh</code>
+                    <p className="text-[10px] text-zinc-500 mt-1">oder für Debian-VPS:</p>
+                    <code className="text-[12px] font-mono text-amber-300 block">sudo bash codeforge-connect-debian.sh</code>
+                  </div>
+                  
+                  <div className="flex gap-2">
                     <input
                       type="text"
                       inputMode="numeric"
@@ -475,6 +540,9 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                       onChange={(e) => {
                         const val = e.target.value.replace(/\D/g, '').slice(0, 4);
                         setPairingCode(val);
+                        if (val.length === 4) {
+                          setTimeout(() => startPairing(), 100);
+                        }
                       }}
                       className="input flex-1 text-center text-2xl tracking-[0.5em] font-mono py-3"
                       placeholder="1234"
@@ -486,39 +554,25 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                       className="primary-button bg-violet-500 hover:bg-violet-400 disabled:opacity-30"
                     >
                       <Search className="w-4 h-4" />
-                      Suchen
+                      Verbinden
                     </button>
                   </div>
-                  <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
-                        <QrCode className="w-4 h-4 text-amber-300" />
-                        <span className="text-xs text-amber-200 font-medium">Fuer VPS / Remote-Server:</span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (!showQr) {
-                            setShowQr(true);
-                            setQrData(`http://codeforge-remote:8787/pair?code=XXXX`);
-                          } else {
-                            setShowQr(false);
-                          }
-                        }}
-                        className="text-[10px] text-amber-300 hover:text-amber-200 underline"
-                      >
-                        {showQr ? 'QR ausblenden' : 'QR anzeigen'}
-                      </button>
+
+                  {/* Remote VPS fallback */}
+                  <details className="mt-3">
+                    <summary className="text-[10px] text-zinc-500 cursor-pointer hover:text-zinc-300">
+                      🔧 Server nicht im LAN? (Remote VPS)
+                    </summary>
+                    <div className="mt-2">
+                      <input
+                        value={pairingUrl}
+                        onChange={(e) => setPairingUrl(e.target.value)}
+                        className="input w-full text-xs"
+                        placeholder="http://DEINE-VPS-IP:8787"
+                      />
+                      <p className="text-[9px] text-zinc-600 mt-1">Gib die Server-URL deines VPS ein. Der Code wird dann direkt gegen diesen Server geprüft.</p>
                     </div>
-                    {showQr && (
-                      <div className="bg-white p-3 rounded-lg mb-2 flex items-center justify-center">
-                        <QrCode className="w-32 h-32 text-black" />
-                      </div>
-                    )}
-                    <p className="text-[10px] text-zinc-500 leading-4">
-                      Bei einem entfernten Server: Starte den Server, der QR-Code mit der Verbindungs-URL erscheint im Terminal.
-                      Scanne ihn oder nutze "Server-URL manuell eingeben".
-                    </p>
-                  </div>
+                  </details>
                 </div>
               </>
             )}
@@ -527,8 +581,8 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
             {pairingPhase === 'scanning' && (
               <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-6 text-center">
                 <Loader2 className="w-8 h-8 text-violet-300 animate-spin mx-auto mb-3" />
-                <div className="text-sm text-violet-200 font-medium">Suche Server...</div>
-                <div className="text-[11px] text-zinc-500 mt-1">Durchsuche lokales Netzwerk</div>
+                <div className="text-sm text-violet-200 font-medium">Suche Server im Netzwerk...</div>
+                <div className="text-[11px] text-zinc-500 mt-1">Durchsuche lokales LAN</div>
               </div>
             )}
 
@@ -537,10 +591,10 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-6 text-center">
                 <Loader2 className="w-8 h-8 text-violet-300 animate-spin mx-auto mb-3" />
                 <div className="text-sm text-violet-200 font-medium">
-                  Prüfe Code mit {foundServer?.name}...
+                  Prüfe Code {foundServer ? `mit ${foundServer.name}...` : '...'}
                 </div>
                 <div className="text-[11px] text-zinc-500 mt-1">
-                  http://{foundServer?.ip}:{foundServer?.port}
+                  {pairingUrl || (foundServer ? `http://${foundServer.ip}:${foundServer.port}` : 'Verbinde...')}
                 </div>
               </div>
             )}
@@ -549,9 +603,9 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
             {pairingPhase === 'found' && (
               <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-6 text-center">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-                <div className="text-sm text-emerald-200 font-bold text-lg">Verbunden!</div>
+                <div className="text-emerald-200 font-bold text-lg">✨ Verbunden!</div>
                 <div className="text-[11px] text-zinc-500 mt-1">
-                  {foundServer?.name} – Code akzeptiert
+                  {foundServer?.name || 'Server'} – Code akzeptiert
                 </div>
               </div>
             )}
@@ -563,7 +617,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                   <div className="flex items-center gap-3">
                     <X className="w-5 h-5 text-red-300 shrink-0" />
                     <div>
-                      <div className="text-sm text-red-200 font-medium">Nicht gefunden</div>
+                      <div className="text-sm text-red-200 font-medium">Fehler</div>
                       <div className="text-[11px] text-red-400/60 mt-0.5">{pairingError}</div>
                     </div>
                   </div>
@@ -572,16 +626,19 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                   onClick={() => {
                     setPairingPhase('enter-code');
                     setPairingError('');
+                    setPairingCode('');
                   }}
                   className="w-full secondary-button"
                 >
                   Erneut versuchen
                 </button>
                 <p className="text-[10px] text-zinc-600 text-center">
-                  Du kannst auch die Server-URL manuell eingeben.
+                  Alternativ: »Server-URL + Token« für manuelle Verbindung.
                 </p>
               </div>
             )}
+
+
           </div>
         )}
 

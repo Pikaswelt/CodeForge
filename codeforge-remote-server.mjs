@@ -10,10 +10,12 @@ import dgram from 'node:dgram';
 const PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
 const HOST = process.env.HOST || process.env.CODEFORGE_HOST || '0.0.0.0';
 const TOKEN = process.env.CODEFORGE_TOKEN || '';
+const AUTO_PAIR = process.env.CODEFORGE_AUTO_PAIR === 'true' || process.env.CODEFORGE_AUTO_PAIR === '1';
 const MAX_PROMPT_CHARS = Number(process.env.CODEFORGE_MAX_PROMPT_CHARS || 100_000);
 
 // Pairing mode
 const PAIRING_PORT = Number(process.env.CODEFORGE_PAIRING_PORT || 8786);
+const PAIRING_AUTO_STOP_MINUTES = Number(process.env.CODEFORGE_PAIRING_TIMEOUT || process.env.PAIRING_AUTO_STOP_MINUTES || 5);
 let pairingMode = false;
 let pairingCode = '';
 let pairingBroadcastInterval = null;
@@ -125,8 +127,9 @@ function startPairingBroadcast() {
   pairingBroadcastInterval = setInterval(broadcastMessage, 2000);
   pairingBroadcastInterval.unref();
 
-  // Auto-stop after 5 minutes
-  setTimeout(() => { if (pairingMode) stopPairingBroadcast(); }, 5 * 60 * 1000).unref();
+  // Auto-stop after configured minutes (default 5)
+  const timeoutMs = (PAIRING_AUTO_STOP_MINUTES || 5) * 60 * 1000;
+  setTimeout(() => { if (pairingMode) stopPairingBroadcast(); }, timeoutMs).unref();
 }
 
 function stopPairingBroadcast() {
@@ -575,4 +578,9 @@ server.listen(PORT, HOST, () => {
   console.log(`CodeForge Remote Server v2.2.1 – http://${HOST}:${PORT}`);
   console.log(`Entdeckbar unter: http://${localIp}:${PORT}`);
   console.log(`Kopplungsmodus starten: POST /pair/start`);
+  
+  // Auto-pairing mode
+  if (AUTO_PAIR) {
+    startPairingBroadcast();
+  }
 });
