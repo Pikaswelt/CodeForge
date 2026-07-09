@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, createReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
+import { extname, join } from 'node:path';
 
 const PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
 const HOST = process.env.HOST || process.env.CODEFORGE_HOST || '0.0.0.0';
@@ -268,6 +269,65 @@ async function handleUsage(req, res) {
   }
 }
 
+const MEDIA_TYPES = {
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.m4v': 'video/mp4',
+  '.ogg': 'video/ogg',
+  '.ogv': 'video/ogg',
+  '.avi': 'video/x-msvideo',
+  '.mkv': 'video/x-matroska',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+};
+
+async function handleMedia(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const filePath = url.searchParams.get('path');
+  
+  if (!filePath) {
+    return json(res, 400, { ok: false, error: 'Missing path parameter.' });
+  }
+  
+  // Security: resolve and normalize to prevent path traversal
+  const normalized = join('/', filePath.replace(/\\/g, '/').replace(/^~/, 'root'));
+  const resolved = join('/', normalized);
+  
+  if (!existsSync(resolved)) {
+    return json(res, 404, { ok: false, error: 'File not found.' });
+  }
+  
+  if (!statSync(resolved).isFile()) {
+    return json(res, 400, { ok: false, error: 'Not a file.' });
+  }
+  
+  const ext = extname(resolved).toLowerCase();
+  const contentType = MEDIA_TYPES[ext] || 'application/octet-stream';
+  
+  res.writeHead(200, {
+    'content-type': contentType,
+    'access-control-allow-origin': '*',
+    'cache-control': 'public, max-age=3600',
+    'content-length': statSync(resolved).size,
+  });
+  
+  const stream = createReadStream(resolved);
+  stream.on('error', () => {
+    if (!res.headersSent) {
+      json(res, 500, { ok: false, error: 'Error reading file.' });
+    } else {
+      res.destroy();
+    }
+  });
+  stream.pipe(res);
+}
+
 async function handleDiscover(req, res) {
   // Public endpoint – no auth required for discovery
   const localIp = Object.values(networkInterfaces())
@@ -291,6 +351,7 @@ const server = createServer((req, res) => {
   if (req.method === 'OPTIONS') return json(res, 204, {});
   if (req.method === 'GET' && req.url === '/discover') return void handleDiscover(req, res);
   if (req.method === 'GET' && req.url === '/health') return void handleHealth(req, res);
+  if (req.method === 'GET' && (req.url === '/media' || req.url.startsWith('/media?'))) return void handleMedia(req, res);
   if (req.method === 'GET' && req.url === '/usage') return void handleUsage(req, res);
   if (req.method === 'POST' && req.url === '/run') return void handleRun(req, res);
   json(res, 404, { ok: false, error: 'Not found.' });
