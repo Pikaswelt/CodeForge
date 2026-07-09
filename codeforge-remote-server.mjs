@@ -543,7 +543,7 @@ async function handleDiscover(req, res) {
     ok: true,
     service: 'codeforge-remote',
     name: 'CodeForge Remote Server',
-    version: '2.2.0',
+    version: '2.3.0',
     localIp,
     port: PORT,
     tokenRequired: Boolean(TOKEN),
