@@ -572,7 +572,7 @@ server.listen(PORT, HOST, () => {
     console.error('CODEFORGE_TOKEN is not set. The API will reject all requests.');
   }
   const localIp = getLocalIp();
-  console.log(`CodeForge Remote Server v2.2.0 – http://${HOST}:${PORT}`);
+  console.log(`CodeForge Remote Server v2.2.1 – http://${HOST}:${PORT}`);
   console.log(`Entdeckbar unter: http://${localIp}:${PORT}`);
   console.log(`Kopplungsmodus starten: POST /pair/start`);
 });

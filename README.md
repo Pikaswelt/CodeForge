@@ -1,4 +1,4 @@
-# ⚔️ CodeForge v2.2.0 ☆ コードフォージ
+# ⚔️ CodeForge v2.2.1 ☆ コードフォージ
 
 <p align="center">
   <i>✨ 君のコードを完全にする！— Make your code perfect, Senpai! ✨</i>
@@ -16,7 +16,7 @@ Desktop & Mobile App für lokale KI-Coding-Agenten. Verbinde dich mit deinem PC,
   → selected project folder ✨
 ```
 
-## 🆕 Neu in v2.2.0 ～☆
+## 🆕 Neu in v2.2.1 ～☆
 
 - **🌸 Anime CLI** – Die CLI erstrahlt im Kawaii-Style mit bunten ASCII-Artworks und Sparkles!
 - **🤖 FreeBuff** – Neuer kostenloser KI-Provider (`npm install -g freebuff`) — FreeBuff-chan ist da!
