@@ -280,8 +280,17 @@ function isVideoPath(filePath: string) {
 }
 
 function toFileUrl(filePath: string) {
+  // Handle data: URLs (images read as data URL on mobile)
+  if (filePath.startsWith('data:')) {
+    return filePath;
+  }
+  // Handle blob: URLs (videos created via URL.createObjectURL)
+  if (filePath.startsWith('blob:')) {
+    return filePath;
+  }
   if ((window as any).agentWorkspace?.isWeb) {
-    // In Capacitor-WebView / mobile app, serve via media endpoint or read as data URL
+    // In Capacitor-WebView / mobile app, serve via media endpoint
+    // If connected to VPS, route through the remote server
     return `/media?path=${encodeURIComponent(filePath)}`;
   }
   // In Capacitor Android, file:// URLs with content:// or file:/// work

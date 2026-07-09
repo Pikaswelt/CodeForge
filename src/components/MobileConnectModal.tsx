@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckCircle2,
   Cloud,
@@ -13,9 +13,11 @@ import {
   Terminal,
   Wifi,
   Search,
+  BookOpen,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import type { MobileConnectionConfig, MobileConnectionType } from '../types';
+import TutorialModal from './TutorialModal';
 
 type DiscoveredServer = {
   ip: string;
@@ -118,6 +120,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
   const [discovering, setDiscovering] = useState(false);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
   const [discoveryProgress, setDiscoveryProgress] = useState('');
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const testVpsConnection = async () => {
     if (!vpsUrl.trim()) {
@@ -322,9 +325,18 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowTutorial(true)}
+              className="p-2 text-zinc-500 hover:text-amber-300 transition-colors"
+              title="Anleitung öffnen"
+            >
+              <BookOpen className="w-5 h-5" />
+            </button>
+            <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {isConnected && mobileConnectionConfig && (
@@ -683,6 +695,10 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
             </div>
           </div>
         )}
+        {/* Tutorial Modal */}
+        <AnimatePresence>
+          {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
+        </AnimatePresence>
       </motion.div>
     </motion.div>
   );
