@@ -15,6 +15,7 @@ const handlers = new Map();
 let syncServer = null;
 let wss = null;
 let syncState = {};
+let syncToken = '';
 
 function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
@@ -48,7 +49,210 @@ function startSyncServer() {
   const port = 8788;
   const ip = getLocalIpAddress();
 
+  // Initialize sync token
+  syncToken = process.env.CODEFORGE_SYNC_TOKEN || '';
+  if (!syncToken) {
+    syncToken = 'codeforge-' + crypto.randomUUID().slice(0, 8);
+    console.log('CodeForge Sync Token (set CODEFORGE_SYNC_TOKEN env to customize): ' + syncToken);
+  }
+
   syncServer = http.createServer((req, res) => {
+    // CORS headers for all responses
+    const setCors = () => {
+      res.setHeader('access-control-allow-origin', '*');
+      res.setHeader('access-control-allow-headers', 'authorization, content-type, accept');
+      res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+    };
+    setCors();
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    const urlPath = req.url.split('?')[0];
+    const authHeader = req.headers.authorization || '';
+    const isAuthorized = authHeader === 'Bearer ' + syncToken;
+    const jsonResponse = (status, payload) => {
+      const body = JSON.stringify(payload);
+      res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(body);
+    };
+
+    // ---- REST API ROUTES ----
+
+    // GET /health - Server status and provider info
+    if (req.method === 'GET' && urlPath === '/health') {
+      if (!isAuthorized) { jsonResponse(401, { ok: false, error: 'Unauthorized.' }); return; }
+      getCliStatus().then(function(status) {
+        jsonResponse(200, {
+          ok: true,
+          name: 'CodeForge Desktop Sync Server',
+          version: app.getVersion(),
+          providers: status,
+          tokenConfigured: true,
+          syncUrl: 'http://' + ip + ':' + port,
+        });
+      }).catch(function(err) {
+        jsonResponse(500, { ok: false, error: err.message });
+      });
+      return;
+    }
+
+    // GET /usage - Provider usage information
+    if (req.method === 'GET' && urlPath === '/usage') {
+      if (!isAuthorized) { jsonResponse(401, { ok: false, error: 'Unauthorized.' }); return; }
+      var providerIds = Object.keys(PROVIDERS);
+      var results = {};
+      var pending = providerIds.length;
+      var responded = false;
+      var respond = function() {
+        if (responded) return;
+        responded = true;
+        jsonResponse(200, { ok: true, providers: results });
+      };
+      if (pending === 0) { respond(); return; }
+      var usageTimer = setTimeout(respond, 15000);
+      providerIds.forEach(function(id) {
+        getProviderUsage(id).then(function(usage) {
+          results[id] = usage;
+          pending -= 1;
+          if (pending === 0) { clearTimeout(usageTimer); respond(); }
+        }).catch(function(err) {
+          results[id] = { error: err.message };
+          pending -= 1;
+          if (pending === 0) { clearTimeout(usageTimer); respond(); }
+        });
+      });
+      return;
+    }
+
+    // POST /run - Run an agent task
+    if (req.method === 'POST' && urlPath === '/run') {
+      if (!isAuthorized) { jsonResponse(401, { ok: false, error: 'Unauthorized.' }); return; }
+      var bodyChunks = [];
+      req.on('error', function() { if (!res.headersSent) jsonResponse(400, { ok: false, error: 'Request aborted.' }); });
+      req.on('data', function(chunk) { bodyChunks.push(chunk); });
+      req.on('end', function() {
+        var body = Buffer.concat(bodyChunks).toString('utf8');
+        var input;
+        try { input = JSON.parse(body); } catch (e) {
+          jsonResponse(400, { ok: false, error: 'Invalid JSON: ' + e.message });
+          return;
+        }
+
+        var wantsStream = input.stream === true || /application\/x-ndjson/i.test(req.headers.accept || '');
+        var runId = input.runId || crypto.randomUUID();
+        var startedAt = Date.now();
+        var outputLimit = Math.max(1000, Math.min(50000, Number(input.outputLimit || 12000)));
+
+        // Validate required fields
+        if (!input.prompt || !input.prompt.trim() || String(input.prompt).length > 100000) {
+          jsonResponse(400, { ok: false, error: 'Prompt is empty or too large.' });
+          return;
+        }
+        if (!input.projectPath) {
+          jsonResponse(400, { ok: false, error: 'Project path is required.' });
+          return;
+        }
+
+        // Build a display-friendly version for the desktop UI
+        var mockEvent = {
+          sender: {
+            send: function(ch, data) {
+              // Forward to main window if available
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send(ch, data);
+              }
+              // Broadcast via WebSocket to connected clients
+              broadcast({ type: 'ipc-event', channel: ch, data: data });
+              // If streaming, also write to HTTP response
+              if (wantsStream && ch === 'agent:output') {
+                try {
+                  res.write(JSON.stringify({ type: 'output', runId: runId, stream: data.stream, chunk: data.chunk }) + '\n');
+                } catch (_) { /* ignore write errors after client disconnect */ }
+              }
+            }
+          }
+        };
+
+        var requestPayload = {
+          provider: input.provider || 'openai',
+          model: input.model || (input.provider === 'openai' ? 'gpt-5.5' : 'default'),
+          prompt: String(input.prompt).trim(),
+          projectPath: String(input.projectPath).trim(),
+          systemPrompt: String(input.systemPrompt || '').trim(),
+          access: ['read-only', 'workspace-write', 'full'].indexOf(input.access) >= 0 ? input.access : 'workspace-write',
+          reasoningEffort: ['low', 'medium', 'high'].indexOf(input.reasoningEffort) >= 0 ? input.reasoningEffort : 'medium',
+          runId: runId,
+          attachments: Array.isArray(input.attachments) ? input.attachments : [],
+          apiKeys: input.apiKeys || {},
+          externalServer: input.externalServer || null,
+          originalPluginEnabled: input.originalPluginEnabled === true,
+        };
+
+        if (wantsStream) {
+          res.writeHead(200, {
+            'content-type': 'application/x-ndjson; charset=utf-8',
+            'cache-control': 'no-cache',
+            'x-accel-buffering': 'no',
+          });
+          res.write(JSON.stringify({ type: 'start', ok: true, runId: runId, provider: requestPayload.provider, startedAt: startedAt }) + '\n');
+
+          runAgent(mockEvent, requestPayload).then(function(result) {
+            var output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+            res.write(JSON.stringify({
+              type: 'done',
+              ok: result.ok,
+              runId: runId,
+              exitCode: result.exitCode,
+              durationMs: Date.now() - startedAt,
+              output: output.slice(0, outputLimit),
+              truncated: output.length > outputLimit,
+              error: result.error,
+            }) + '\n');
+            res.end();
+          }).catch(function(err) {
+            res.write(JSON.stringify({
+              type: 'done',
+              ok: false,
+              runId: runId,
+              exitCode: -1,
+              durationMs: Date.now() - startedAt,
+              output: '',
+              error: err.message,
+            }) + '\n');
+            res.end();
+          });
+        } else {
+          runAgent(mockEvent, requestPayload).then(function(result) {
+            var output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+            jsonResponse(result.ok ? 200 : 500, {
+              ok: result.ok,
+              runId: runId,
+              exitCode: result.exitCode,
+              durationMs: Date.now() - startedAt,
+              output: output.slice(0, outputLimit),
+              truncated: output.length > outputLimit,
+              error: result.error,
+            });
+          }).catch(function(err) {
+            jsonResponse(500, {
+              ok: false,
+              runId: runId,
+              exitCode: -1,
+              durationMs: Date.now() - startedAt,
+              output: '',
+              error: err.message,
+            });
+          });
+        }
+      });
+      return;
+    }
+
+    // ---- EXISTING: Media File Serving ----
     if (req.url.startsWith('/media')) {
       try {
         const urlObj = new URL(req.url, `http://${req.headers.host}`);
