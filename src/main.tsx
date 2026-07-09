@@ -12,10 +12,27 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       // Include sync token from URL search params or localStorage
       const params = new URLSearchParams(window.location.search);
-      const token = params.get('token') || params.get('syncToken') || localStorage.getItem('agentWorkspace.syncToken') || '';
+      let token = params.get('token') || params.get('syncToken') || localStorage.getItem('agentWorkspace.syncToken') || '';
+      
+      let targetHost = window.location.host;
+      let targetProto = proto;
+      
+      try {
+        const storedConfig = localStorage.getItem('agentWorkspace.mobileConnectionConfig');
+        if (storedConfig) {
+          const config = JSON.parse(storedConfig);
+          if (config.connected && config.type === 'vps' && config.vpsUrl) {
+            const urlObj = new URL(config.vpsUrl);
+            targetHost = urlObj.host;
+            targetProto = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+            if (config.vpsToken) token = config.vpsToken;
+          }
+        }
+      } catch (e) {}
+
       const wsUrl = token
-        ? `${proto}//${window.location.host}?token=${encodeURIComponent(token)}`
-        : `${proto}//${window.location.host}`;
+        ? `${targetProto}//${targetHost}?token=${encodeURIComponent(token)}`
+        : `${targetProto}//${targetHost}`;
       console.log('Connecting to sync WebSocket at', wsUrl);
       ws = new WebSocket(wsUrl);
 
