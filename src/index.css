@@ -13,6 +13,10 @@
   body {
     @apply antialiased overflow-hidden m-0;
     background: #111111;
+    /* Mobile: Verhindert Viewport-Verschiebung bei Tastatur-Öffnung */
+    position: fixed;
+    width: 100%;
+    height: 100%;
   }
 
   button {
