@@ -86,6 +86,158 @@ systemctl status codeforge-remote
 curl -X POST http://localhost:8787/pair/start
 ```
 
+---
+
+## 🐧 Tutorial: Debian-VPS aufsetzen & mit Mobile verbinden
+
+> Komplett-Anleitung in **5 Minuten** – vom nackten Debian-Server bis zur CodeForge-App auf dem Handy. にゃー！ ✨
+
+### 📋 Voraussetzungen
+
+- Ein **vServer mit Debian 11 oder 12** (Hetzner, Netcup, Contabo, IONOS, DigitalOcean, etc.)
+- **SSH-Zugang** als `root`
+- Die **CodeForge-App** auf deinem Handy (Android APK aus den [Releases](https://github.com/Pikaswelt/CodeForge/releases))
+
+---
+
+### 🚀 Schritt 1 – Mit dem Server verbinden
+
+Verbinde dich per SSH mit deinem frischen Debian-Server:
+
+```bash
+ssh root@DEINE-SERVER-IP
+```
+
+> 💡 **Tipp:** Unter Windows nimm [PuTTY](https://www.putty.org/) oder das neue Windows-Terminal.
+
+---
+
+### 🛠️ Schritt 2 – CodeForge auf dem VPS installieren
+
+Klone das Repository und starte das Setup-Skript. **Ein Befehl, alles drin:**
+
+```bash
+apt update && apt install -y git
+git clone https://github.com/Pikaswelt/CodeForge.git
+cd CodeForge
+sudo bash codeforge-connect-debian.sh
+```
+
+Das Skript erledigt **automatisch**:
+
+- ✅ Installation von **Node.js 22**
+- ✅ Einrichtung der KI-CLIs (`agy`, `codex`)
+- ✅ Anlegen eines **systemd-Dienstes** (läuft dauerhaft, startet bei Reboot neu)
+- ✅ Öffnet den Port `8787` in der Firewall (`ufw`)
+- ✅ Generiert einen **sicheren Token**
+
+> ⏳ Die Installation dauert ca. 1–3 Minuten. Bei der Installation der KI-CLIs kann es zu Warnungen kommen – das ist okay.
+
+---
+
+### 🔑 Schritt 3 – Verbindungsdaten notieren
+
+Am Ende zeigt das Skript eine Box wie diese:
+
+```
+   Server:    http://203.0.113.10:8787
+   Token:     a1b2c3d4e5f6789...
+   Projekt:   /root/codeforge-project
+```
+
+> 📌 **Notiere dir Server-URL und Token** – du brauchst sie gleich in der App!
+>
+> 🔍 Den Token findest du jederzeit wieder in `/etc/systemd/system/codeforge-remote.service`.
+
+---
+
+### 📱 Schritt 4 – CodeForge-App auf dem Handy verbinden
+
+1. Öffne die **CodeForge-App** auf deinem Handy
+2. Tippe auf **Verbinden** / **Mobile Verbindung**
+3. Wähle **„Server-URL manuell eingeben"**
+4. Trage ein:
+
+   | Feld      | Wert                          |
+   | --------- | ----------------------------- |
+   | Server    | `http://DEINE-IP:8787`        |
+   | Token     | dein notiertes Token          |
+
+5. Tippe **Verbinden** ✨
+
+**Alternativ per Kopplungsmodus (QR-Code):**
+
+```bash
+# Auf dem Server starten:
+curl -X POST http://localhost:8787/pair/start
+```
+
+→ 4-stelligen Code in der App eingeben oder den QR-Code scannen. **完了！**
+
+---
+
+### 📂 Schritt 5 – Projektordner vorbereiten
+
+Lege das Projekt an, an dem die KI arbeiten soll:
+
+```bash
+# Beispiel: Neues Projekt klonen
+mkdir -p /root/mein-projekt
+cd /root/mein-projekt
+git clone https://github.com/dich/dein-repo.git .
+
+# ODER: Bestehende Dateien hochladen via SCP
+scp -r ./lokaler-ordner/* root@DEINE-SERVER-IP:/root/mein-projekt/
+```
+
+In der App unter **Projekt** den Pfad `/root/mein-projekt` eintragen.
+
+---
+
+### 🔧 Nützliche Befehle für den Alltag
+
+| Befehl                                                    | Zweck                          |
+| --------------------------------------------------------- | ------------------------------ |
+| `systemctl status codeforge-remote`                       | Status prüfen                  |
+| `sudo journalctl -u codeforge-remote -f`                  | Live-Logs ansehen              |
+| `sudo systemctl restart codeforge-remote`                 | Server neustarten              |
+| `sudo systemctl stop codeforge-remote`                    | Server stoppen                 |
+| `curl http://localhost:8787/discover`                      | Verbindung lokal testen        |
+| `curl -X POST http://localhost:8787/pair/start`           | Kopplungsmodus starten         |
+| `nano /etc/systemd/system/codeforge-remote.service`       | Token oder Port ändern         |
+
+Nach Änderungen an der Service-Datei:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart codeforge-remote
+```
+
+---
+
+### 🔒 Sicherheits-Hinweise
+
+- 🔥 **Port 8787** nicht ungeschützt ins Internet hängen. Für Produktivbetrieb **Caddy** oder **Nginx** als Reverse-Proxy mit HTTPS davorsetzen (Let's Encrypt ist kostenlos).
+- 🔑 Den **Token** wie ein Passwort behandeln – niemals committen oder weitergeben.
+- 🛡️ In der App den **Zugriffsmodus** pro Request einschränken: `read-only` / `workspace-write` / `full`.
+- 🚫 Falls der Server **nur intern** erreichbar sein soll, genügt es, den Port **nicht** in der Firewall zu öffnen und per VPN/Tailscale darauf zuzugreifen.
+
+---
+
+### 🆘 Troubleshooting
+
+| Problem                              | Lösung                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| App kann nicht verbinden             | Firewall prüfen: `ufw status`, Port `8787/tcp` erlauben                   |
+| `EADDRINUSE` Fehler im Log           | Anderer Prozess nutzt Port 8787 → `CODEFORGE_PORT=8788` setzen            |
+| Token verloren                       | In `/etc/systemd/system/codeforge-remote.service` nachschauen             |
+| `node: command not found`            | Setup-Skript erneut ausführen – installiert Node.js 22                    |
+| KI-CLI nicht gefunden                Manuell installieren: `npm install -g agy` bzw. `codex`                       |
+
+---
+
+**Fertig!** 🎉 Du kannst jetzt von **überall auf der Welt** mit deinem Handy KI-Agenten auf deinem VPS arbeiten lassen. にゃー！ ٩(◕‿◕｡)۶
+
 ## Provider ～☆
 
 | Provider | CLI | Beschreibung |
