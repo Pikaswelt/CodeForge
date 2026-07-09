@@ -22,6 +22,7 @@ let pairingMode = false;
 let pairingCode = '';
 let pairingBroadcastInterval = null;
 let udpSocket = null;
+let udpEaccesLogged = false;
 
 const providers = {
   antigravity: { command: 'agy', candidates: ['agy', '/root/.local/bin/agy', '/usr/local/bin/agy', '/usr/bin/agy'], versionArgs: ['--version'] },
@@ -121,9 +122,8 @@ function startPairingBroadcast() {
     const buffer = Buffer.from(payload, 'utf-8');
     udpSocket.send(buffer, 0, buffer.length, PAIRING_PORT, '255.255.255.255', (err) => {
       if (err) {
-        // EACCES = no permission (not root) → log once, suppress repeat
-        if (err.code === 'EACCES' && !udpSocket._eaccesLogged) {
-          udpSocket._eaccesLogged = true;
+        if (err.code === 'EACCES' && !udpEaccesLogged) {
+          udpEaccesLogged = true;
           console.log('   ⚠️  UDP-Broadcast nicht möglich (keine root-Rechte). Kopplung funktioniert trotzdem via HTTP.');
         }
       }
@@ -575,7 +575,6 @@ server.on('error', (err) => {
     if (PORT - START_PORT < MAX_PORT_TRIES) {
       PORT++;
       console.log(`⚠️  Port ${PORT - 1} belegt → versuche Port ${PORT}...`);
-      server.close();
       server.listen(PORT, HOST);
       return;
     }

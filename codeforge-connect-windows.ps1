@@ -152,5 +152,6 @@ Write-Host ""
 $env:CODEFORGE_TOKEN = $Token
 $env:CODEFORGE_PORT = $Port
 $env:CODEFORGE_HOST = $HostAddr
+$env:CODEFORGE_AUTO_PAIR = "true"
 
 node $ServerScript
