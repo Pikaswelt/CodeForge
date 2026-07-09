@@ -128,7 +128,7 @@ declare global {
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;
       cancelTerminalCommand(id: string): Promise<boolean>;
       onTerminalOutput(id: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
-      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd' }): Promise<void>;
+      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any }): Promise<void>;
       writeToShellSession(request: { chatId: string; text: string }): Promise<boolean>;
       killShellSession(chatId: string): Promise<boolean>;
       resizeShellSession(request: { chatId: string; cols: number; rows: number }): Promise<boolean>;

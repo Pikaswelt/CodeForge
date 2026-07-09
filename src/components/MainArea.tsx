@@ -1010,6 +1010,7 @@ function TerminalInstance({
     provider,
     theme,
     customThemes,
+    externalServer,
   } = useAppContext();
 
   const settingsRef = useRef({
@@ -1068,7 +1069,12 @@ function TerminalInstance({
     }
 
     // Start PTY session in backend
-    window.agentWorkspace.createShellSession({ chatId: tabId, cwd: startPath, shellType });
+    window.agentWorkspace.createShellSession({
+      chatId: tabId,
+      cwd: startPath,
+      shellType,
+      externalServer: externalServer.enabled ? externalServer : undefined
+    });
 
     if (chat.mode === 'standard') {
       const agentCmd = getAgentCommand(provider);

@@ -1,4 +1,7 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol, net } = require('electron');
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'codeforge-media', privileges: { bypassCSP: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+]);
 const { spawn, execFile } = require('node:child_process');
 const pty = require('node-pty');
 const fs = require('node:fs');
@@ -2985,7 +2988,7 @@ function cancelTerminalCommand(id) {
 
 const activeShells = new Map();
 
-async function createShellSession(event, { chatId, cwd, shellType }) {
+async function createShellSession(event, { chatId, cwd, shellType, externalServer }) {
   console.log(`[Shell] Creating PTY session for chat: ${chatId}, requested cwd: ${cwd}, shellType: ${shellType}`);
   if (activeShells.has(chatId)) {
     console.log(`[Shell] PTY Session already active for chat: ${chatId}`);
@@ -2994,25 +2997,42 @@ async function createShellSession(event, { chatId, cwd, shellType }) {
   
   const isWin = process.platform === 'win32';
   let shell = isWin ? 'cmd.exe' : 'bash';
-  const args = [];
-
-  if (shellType === 'powershell') {
-    shell = isWin ? 'powershell.exe' : 'pwsh';
-    args.push('-NoLogo');
-  }
-  
+  let args = [];
   const env = { ...process.env };
-  if (isWin) {
-    const agyPath = path.join(app.getPath('home'), 'AppData', 'Local', 'agy', 'bin');
-    const paths = (env.PATH || '').split(path.delimiter);
-    if (!paths.some(p => p.toLowerCase() === agyPath.toLowerCase())) {
-      paths.push(agyPath);
-      env.PATH = paths.join(path.delimiter);
+
+  const server = externalServer?.enabled ? normalizeExternalServerConfig(externalServer) : null;
+  if (server) {
+    const sshExe = await findExecutable('ssh') || 'ssh';
+    shell = sshExe;
+    args = [
+      '-p', String(server.port),
+      '-o', 'ConnectTimeout=15',
+      '-o', 'ServerAliveInterval=15',
+    ];
+    if (server.acceptNewHostKey) args.push('-o', 'StrictHostKeyChecking=accept-new');
+    if (server.identityFile) args.push('-i', server.identityFile);
+    args.push(`${server.user ? `${server.user}@` : ''}${server.host}`);
+    
+    const remoteCmd = `cd -- ${quoteRemotePath(server.remoteProjectPath)} && exec bash`;
+    args.push('-t', remoteCmd);
+  } else {
+    if (shellType === 'powershell') {
+      shell = isWin ? 'powershell.exe' : 'pwsh';
+      args.push('-NoLogo');
+    }
+    
+    if (isWin) {
+      const agyPath = path.join(app.getPath('home'), 'AppData', 'Local', 'agy', 'bin');
+      const paths = (env.PATH || '').split(path.delimiter);
+      if (!paths.some(p => p.toLowerCase() === agyPath.toLowerCase())) {
+        paths.push(agyPath);
+        env.PATH = paths.join(path.delimiter);
+      }
     }
   }
 
   let spawnCwd = app.getPath('home');
-  if (cwd && fs.existsSync(cwd)) {
+  if (!server && cwd && fs.existsSync(cwd)) {
     try {
       if (fs.statSync(cwd).isDirectory()) {
         spawnCwd = cwd;
@@ -3088,6 +3108,18 @@ function killShellSession(_event, chatId) {
 }
 
 app.whenReady().then(() => {
+  protocol.handle('codeforge-media', (request) => {
+    let filePath = request.url;
+    if (filePath.startsWith('codeforge-media:///')) {
+      filePath = filePath.slice('codeforge-media:///'.length);
+    } else if (filePath.startsWith('codeforge-media://')) {
+      filePath = filePath.slice('codeforge-media://'.length);
+    }
+    filePath = decodeURIComponent(filePath);
+    const { pathToFileURL } = require('node:url');
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   ipcMain.handle('dialog:select-project', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Projektordner auswaehlen',

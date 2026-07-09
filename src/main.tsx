@@ -102,6 +102,7 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
     notifyAgentComplete: (input: any) => invoke('agent:notify-complete', input),
     updateDiscordPresence: (input: any) => invoke('discord:presence', input),
     cancelAgent: (runId: string) => invoke('agent:cancel', runId),
+    writeAgentInput: (runId: string, text: string) => invoke('agent:write-input', { runId, text }),
     onAgentOutput: (callback: any) => {
       const channel = 'agent:output';
       if (!eventListeners.has(channel)) eventListeners.set(channel, []);
