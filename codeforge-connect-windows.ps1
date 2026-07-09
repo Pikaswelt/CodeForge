@@ -82,10 +82,36 @@ if (-not (Test-Path $ProjectPath)) {
 }
 
 # =============================================================================
-# 3. Server starten
+# 3. Firewall-Regel hinzufügen (für LAN-Discovery)
 # =============================================================================
 Write-Host ""
-Write-Host "  [3/3] Starte Server..." -ForegroundColor Yellow
+Write-Host "  [3/4] Firewall wird konfiguriert..." -ForegroundColor Yellow
+try {
+    $ruleName = "CodeForge Remote Server (Port $Port)"
+    $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        New-NetFirewallRule -DisplayName $ruleName `
+            -Direction Inbound `
+            -Protocol TCP `
+            -LocalPort $Port `
+            -Action Allow `
+            -Profile Any `
+            -Description "Erlaubt eingehende Verbindungen für CodeForge Mobile Connect" | Out-Null
+        Write-Host "  ✓ Firewall-Regel erstellt: Port $Port (TCP)" -ForegroundColor Green
+    } else {
+        Write-Host "  ✓ Firewall-Regel existiert bereits" -ForegroundColor Green
+    }
+}
+catch {
+    Write-Host "  ⚠ Konnte Firewall-Regel nicht erstellen (kein Admin?)" -ForegroundColor Yellow
+    Write-Host "    Manuell: Windows-Firewall → Port $Port TCP freigeben" -ForegroundColor Yellow
+}
+
+# =============================================================================
+# 4. Server starten
+# =============================================================================
+Write-Host ""
+Write-Host "  [4/4] Starte Server..." -ForegroundColor Yellow
 
 # Lokale IP ermitteln
 $IpAddress = ""
