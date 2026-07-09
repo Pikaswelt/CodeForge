@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X as XIcon } from 'lucide-react';
+import { Menu, X as XIcon, Wifi } from 'lucide-react';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
@@ -14,6 +14,7 @@ import WelcomePopup from './components/WelcomePopup';
 import SpotifyWidget from './components/SpotifyWidget';
 import ActionsModal from './components/ActionsModal';
 import SetupModal from './components/SetupModal';
+import MobileConnectModal from './components/MobileConnectModal';
 import { AppProvider, useAppContext } from './AppContext';
 
 const WELCOME_POPUP_STORAGE_KEY = 'agentWorkspace.welcomePopupDismissed';
@@ -31,6 +32,8 @@ function AppLayout() {
     appBorderRadius,
     glassThemeGlow,
     mobileMode,
+    mobileConnectionConfig,
+    setMobileConnectionConfig,
   } = useAppContext();
   const [showSettings, setShowSettings] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -180,6 +183,25 @@ function AppLayout() {
         <AnimatePresence>
           {!hasSetupCompleted && <SetupModal />}
         </AnimatePresence>
+
+        {/* Mobile Mode: Show connect modal when mobile mode on and not connected */}
+        <AnimatePresence>
+          {mobileMode && !mobileConnectionConfig?.connected && (
+            <MobileConnectModal onClose={() => {}} />
+          )}
+        </AnimatePresence>
+
+        {/* Mobile Mode: Connection status indicator */}
+        {mobileMode && mobileConnectionConfig?.connected && (
+          <button
+            onClick={() => setMobileConnectionConfig({ ...mobileConnectionConfig, connected: false })}
+            className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 backdrop-blur-md text-emerald-300 text-xs shadow-2xl hover:bg-emerald-400/20 transition-all"
+            title={mobileConnectionConfig.type === 'vps' ? mobileConnectionConfig.vpsUrl : `${mobileConnectionConfig.sshUser}@${mobileConnectionConfig.sshHost}`}
+          >
+            <Wifi className="w-3.5 h-3.5" />
+            Verbunden
+          </button>
+        )}
       </div>
     </div>
   );
