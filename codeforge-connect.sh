@@ -71,40 +71,19 @@ cat << "BANNER"
 
 BANNER
 
-echo "  🌐 Server startet auf:  http://${IP}:${PORT}"
+echo "  🌐 Server: http://${IP}:${PORT}"
 echo ""
 
 # QR-Code anzeigen wenn qrencode verfügbar
 if command -v qrencode &>/dev/null; then
-  QR_DATA="http://${IP}:${PORT}"
-  echo "  📱 QR-Code (mit der CodeForge-App scannen):"
-  echo ""
-  qrencode -t ANSIUTF8 -m 2 -s 8 "$QR_DATA" 2>/dev/null || true
+  qrencode -t ANSIUTF8 -m 2 -s 8 "http://${IP}:${PORT}" 2>/dev/null || true
   echo ""
 fi
 
-echo "  ╔══════════════════════════════════════════════════╗"
-echo "  ║                                                  ║"
-echo "  ║     📱 SO GEHT'S – 3 Schritte:                   ║"
-echo "  ║                                                  ║"
-echo "  ║  1. Öffne die CodeForge-App auf deinem Handy    ║"
-echo "  ║  2. Tippe auf »Verbinden«                        ║"
-echo "  ║  3. Gib den 4-stelligen Code ein (erscheint      ║"
-echo "  ║     gleich unten)                                ║"
-echo "  ║                                                  ║"
-echo "  ║  ✨ FERTIG – du bist verbunden! ✨                ║"
-echo "  ║                                                  ║"
-echo "  ╚══════════════════════════════════════════════════╝"
-echo ""
-echo "  ═══════════════════════════════════════════════════"
-echo ""
 echo "  Für Debian VPS (Dauereinrichtung):"
 echo "    sudo bash codeforge-connect-debian.sh"
-echo ""
 echo "  Für Windows:"
 echo "    powershell -File codeforge-connect-windows.ps1"
-echo ""
-echo "  ═══════════════════════════════════════════════════"
 echo ""
 
 # Server starten mit Auto-Pairing
