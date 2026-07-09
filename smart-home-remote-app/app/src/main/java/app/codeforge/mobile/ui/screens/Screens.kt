@@ -124,9 +124,18 @@ import app.codeforge.mobile.UiNotice
 import app.codeforge.mobile.ui.theme.CodeForgeMobileTheme
 import app.codeforge.mobile.ui.theme.CodeForgeMobileThemes
 import app.codeforge.mobile.ui.theme.mobileThemeById
+import app.codeforge.mobile.ui.components.FormattedChatMessage
+import app.codeforge.mobile.ui.components.SetupWizardScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontStyle
 
 private val providers = listOf("openai", "antigravity", "anthropic", "cursor", "opencode")
 private val providerModels = mapOf(
@@ -249,6 +258,24 @@ fun DashboardScreen(viewModel: CodeForgeMobileViewModel) {
     val backgroundZoom by viewModel.backgroundZoom.collectAsStateWithLifecycle()
     val backgroundVideoSound by viewModel.backgroundVideoSound.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val responseDisplayMode by viewModel.responseDisplayMode.collectAsStateWithLifecycle()
+    val tokenLimit by viewModel.tokenLimit.collectAsStateWithLifecycle()
+    val totalTokensUsed by viewModel.totalTokensUsed.collectAsStateWithLifecycle()
+
+    // Rotating phrases for empty state
+    val phrases = listOf(
+        "Was wollen wir entwickeln?",
+        "Was steht heute an?",
+        "Lass uns dein Projekt verbessern.",
+        "Welcher Agent soll übernehmen?"
+    )
+    val phraseIndex = remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(4000)
+            phraseIndex.value = (phraseIndex.value + 1) % phrases.size
+        }
+    }
     
     var prompt by remember { mutableStateOf("") }
     var panel by remember { mutableStateOf(MobilePanel.Chat) }
@@ -619,12 +646,38 @@ fun DashboardScreen(viewModel: CodeForgeMobileViewModel) {
                     when (panel) {
                         MobilePanel.Chat -> {
                             if (entries.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Terminal,
-                                        contentDescription = null,
-                                        tint = theme.mutedText.copy(alpha = 0.2f),
-                                        modifier = Modifier.size(96.dp)
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .clip(CircleShape)
+                                            .background(theme.surfaceStrong.copy(alpha = 0.80f))
+                                            .border(1.dp, theme.accent.copy(alpha = 0.30f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Terminal,
+                                            contentDescription = null,
+                                            tint = theme.accent,
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = phrases[phraseIndex.value],
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = theme.text
+                                    )
+                                    Text(
+                                        text = "Frag CodeForge oder steuere deinen Remote-VServer.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = theme.mutedText,
+                                        modifier = Modifier.padding(top = 4.dp)
                                     )
                                 }
                             } else {
@@ -1158,10 +1211,9 @@ private fun ChatEntryBubbleStream(entry: ChatEntry, theme: CodeForgeMobileTheme)
                         if (entry.response == "...") {
                             TypingIndicator(theme)
                         } else {
-                            Text(
+                            FormattedChatMessage(
                                 text = entry.response,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = theme.text
+                                theme = theme
                             )
                         }
                     }

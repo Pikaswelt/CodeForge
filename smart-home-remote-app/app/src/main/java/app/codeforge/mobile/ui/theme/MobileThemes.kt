@@ -241,6 +241,34 @@ val CodeForgeMobileThemes = listOf(
         accent = Color(0xFF22D3EE),
         border = Color(0xFFEC4899).copy(alpha = 0.18f),
         isDark = true
+    ),
+    CodeForgeMobileTheme(
+        id = "glass-apple-dark",
+        label = "Apple Glass (Dunkel)",
+        mood = "Mac-Stil Milchglas Dunkel",
+        background = listOf(Color(0xFF0F0717), Color(0xFF070B19), Color(0xFF020205)),
+        sidebar = listOf(Color(0xFF191923), Color(0xFF020205)),
+        surface = Color(0xFF191428),
+        surfaceStrong = Color(0xFF272039),
+        text = Color(0xFFE4E4E7),
+        mutedText = Color(0xFFA1A1AA),
+        accent = Color(0xFFA855F7),
+        border = Color.White.copy(alpha = 0.12f),
+        isDark = true
+    ),
+    CodeForgeMobileTheme(
+        id = "glass-apple-light",
+        label = "Apple Glass (Hell)",
+        mood = "Mac-Stil Milchglas Hell",
+        background = listOf(Color(0xFFF3F4F6), Color(0xFFFDF4FF), Color(0xFFECFEFF)),
+        sidebar = listOf(Color(0xFFFFFFFF), Color(0xFFECFEFF)),
+        surface = Color(0xF2FFFFFF),
+        surfaceStrong = Color(0xFFF0F0FF),
+        text = Color(0xFF18181B),
+        mutedText = Color(0xFF52525B),
+        accent = Color(0xFF0EA5E9),
+        border = Color.Black.copy(alpha = 0.09f),
+        isDark = false
     )
 )
 
