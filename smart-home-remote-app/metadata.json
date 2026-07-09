@@ -1,6 +1,0 @@
-{
-  "name": "CodeForge Mobile",
-  "description": "Mobile remote client for CodeForge agents running on a Debian VServer.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
