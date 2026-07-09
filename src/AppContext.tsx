@@ -1408,7 +1408,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const selectThemeBackground = async () => {
-    return (await window.agentWorkspace?.selectThemeBackground()) || null;
+    // Desktop: use native file picker
+    if (window.agentWorkspace?.selectThemeBackground) {
+      return (await window.agentWorkspace.selectThemeBackground()) || null;
+    }
+    // Mobile / Fallback: create a hidden file input
+    return new Promise<string | null>((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,video/*';
+      input.style.display = 'none';
+      input.addEventListener('change', () => {
+        const file = input.files?.[0];
+        if (!file) {
+          resolve(null);
+          return;
+        }
+        const isVideo = file.type.startsWith('video/');
+        if (isVideo) {
+          // For videos: create object URL (session-only)
+          const url = URL.createObjectURL(file);
+          resolve(url);
+        } else {
+          // For images: read as data URL (persistent)
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string | null;
+            resolve(result);
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        }
+      });
+      input.addEventListener('cancel', () => resolve(null));
+      document.body.appendChild(input);
+      input.click();
+      // Clean up after a short delay
+      setTimeout(() => {
+        if (document.body.contains(input)) {
+          document.body.removeChild(input);
+        }
+      }, 1000);
+    });
   };
 
   const setThemeBackgroundBehindComposer = (value: boolean) => {
