@@ -188,6 +188,7 @@ interface AppContextType {
   wallpaperMode: WallpaperMode;
   workDisplayMode: WorkDisplayMode;
   responseDisplayMode: ResponseDisplayMode;
+  mobileMode: boolean;
   devicePopupEnabled: boolean;
   spotifyStartUri: string;
   spotifyWidgetEnabled: boolean;
@@ -259,6 +260,7 @@ interface AppContextType {
   setWallpaperMode(value: WallpaperMode): void;
   setWorkDisplayMode(value: WorkDisplayMode): void;
   setResponseDisplayMode(value: ResponseDisplayMode): void;
+  setMobileMode(value: boolean): void;
   setDevicePopupEnabled(value: boolean): void;
   setSpotifyStartUri(value: string): void;
   setSpotifyWidgetEnabled(value: boolean): void;
@@ -629,6 +631,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [responseDisplayMode, setResponseDisplayModeState] = useState<ResponseDisplayMode>(() =>
     readStorage<ResponseDisplayMode>('responseDisplayMode', 'bullets'),
   );
+  const [mobileMode, setMobileModeState] = useState(() =>
+    readStorage('mobileMode', false),
+  );
   const [devicePopupEnabled, setDevicePopupEnabledState] = useState(() =>
     readStorage('devicePopupEnabled', true),
   );
@@ -734,6 +739,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('wallpaperMode', wallpaperMode), [wallpaperMode]);
   useEffect(() => writeStorage('workDisplayMode', workDisplayMode), [workDisplayMode]);
   useEffect(() => writeStorage('responseDisplayMode', responseDisplayMode), [responseDisplayMode]);
+  useEffect(() => writeStorage('mobileMode', mobileMode), [mobileMode]);
   useEffect(() => writeStorage('devicePopupEnabled', devicePopupEnabled), [devicePopupEnabled]);
   useEffect(() => writeStorage('spotifyStartUri', spotifyStartUri), [spotifyStartUri]);
   useEffect(() => writeStorage('spotifyWidgetEnabled', spotifyWidgetEnabled), [spotifyWidgetEnabled]);
@@ -1435,6 +1441,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setResponseDisplayMode = (value: ResponseDisplayMode) => {
     setResponseDisplayModeState(value);
     writeStorage('responseDisplayMode', value);
+  };
+
+  const setMobileMode = (value: boolean) => {
+    setMobileModeState(value);
+    writeStorage('mobileMode', value);
   };
 
   const setDevicePopupEnabled = (value: boolean) => {
@@ -2566,6 +2577,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       wallpaperMode,
       workDisplayMode,
       responseDisplayMode,
+      mobileMode,
       devicePopupEnabled,
       spotifyStartUri,
       spotifyWidgetEnabled,
@@ -2640,6 +2652,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setWallpaperMode,
       setWorkDisplayMode,
       setResponseDisplayMode,
+      setMobileMode,
       setDevicePopupEnabled,
       setSpotifyStartUri,
       setSpotifyWidgetEnabled,

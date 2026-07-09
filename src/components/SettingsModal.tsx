@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, Edit2, FolderOpen, Gauge, Image, KeyRound, Loader2, MessageSquare, Music2, Network, Palette, RefreshCw, Settings, Sparkles, Terminal, Trash2, Video, X, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Edit2, FolderOpen, Gauge, Image, KeyRound, Loader2, MessageSquare, Music2, Network, Palette, RefreshCw, Settings, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RECOMMENDED_SYSTEM_PROMPT, useAppContext, type Theme } from '../AppContext';
@@ -87,6 +87,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     customThemes,
     themeBackgroundBehindComposer,
     libraryBannerBackgroundEnabled,
+    mobileMode,
+    setMobileMode,
     workDisplayMode,
     responseDisplayMode,
     spotifyWidgetEnabled,
@@ -592,6 +594,27 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     </button>
                   )}
                 </div>
+              </section>
+
+              <section>
+                <div className="section-label flex items-center gap-2">
+                  <Smartphone className="w-3.5 h-3.5" />
+                  Mobile Modus
+                </div>
+                <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
+                  <div>
+                    <div className="text-sm text-zinc-200">Mobile Modus aktivieren</div>
+                    <div className="mt-0.5 text-[10px] text-zinc-600">
+                      Ermoeglicht das Einklappen der Seitenleiste auf kleinen Bildschirmen. Ein Menue-Button erscheint links oben.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={mobileMode}
+                    onChange={(event) => setMobileMode(event.target.checked)}
+                    className="h-4 w-4 accent-amber-300"
+                  />
+                </label>
               </section>
 
               <section>
