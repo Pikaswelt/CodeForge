@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================================
-# CodeForge Connect – Debian VPS Einrichtung
+# CodeForge Connect – Debian VPS Einrichtung (Dauerbetrieb)
 # =============================================================================
 # Ein Befehl auf dem Debian-VPS:
-#   bash codeforge-connect-debian.sh
+#   sudo bash codeforge-connect-debian.sh
 #
 # Das Skript:
 #   1. Installiert Node.js (falls nicht vorhanden)
 #   2. Installiert agy + codex CLI (optional)
-#   3. Startet den Remote-Server als systemd-Dienst
-#   4. Zeigt Verbindungsdaten für die CodeForge-App
+#   3. Startet den Remote-Server als systemd-Dienst mit Auto-Pairing
+#   4. Zeigt den 4-stelligen Kopplungscode GROSS an
 # =============================================================================
+#
+# Sicherheitshinweis: Der CODEFORGE_TOKEN wird automatisch generiert.
+# Du kannst einen eigenen Token setzen:
+#   CODEFORGE_TOKEN=dein-token sudo bash codeforge-connect-debian.sh
 
 set -euo pipefail
 
@@ -30,12 +34,17 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 clear
-cat << "EOF"
-  ╔══════════════════════════════════════════════════════╗
-  ║        CodeForge Connect – Debian VPS Setup          ║
-  ║       Ein Befehl – VPS bereit für dein Handy         ║
-  ╚══════════════════════════════════════════════════════╝
-EOF
+cat << "BANNER"
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║                                                        ║
+  ║           ⚔️  CODEFORGE DEBIAN VPS SETUP  ⚔️            ║
+  ║                                                        ║
+  ║       Ein Befehl → Ein Code → Verbunden! にゃー ✨      ║
+  ║                                                        ║
+  ╚══════════════════════════════════════════════════════════╝
+
+BANNER
 echo ""
 
 # =============================================================================
@@ -118,7 +127,7 @@ else
 fi
 chmod 755 "$SERVER_FILE"
 
-# systemd Service erstellen
+# systemd Service erstellen (mit Auto-Pairing)
 cat > "$SERVICE_FILE" <<EOF_SERVICE
 [Unit]
 Description=CodeForge Remote Server (Mobile Connect)
@@ -130,6 +139,8 @@ Type=simple
 Environment=CODEFORGE_TOKEN=$TOKEN
 Environment=CODEFORGE_HOST=0.0.0.0
 Environment=CODEFORGE_PORT=$PORT
+Environment=CODEFORGE_AUTO_PAIR=true
+Environment=CODEFORGE_PAIRING_TIMEOUT=10
 Environment=PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=$PROJECT_PATH
 ExecStart=/usr/bin/node $SERVER_FILE
@@ -173,12 +184,15 @@ detect_ip() {
 IP=$(detect_ip)
 
 clear
-cat << "EOF"
-  ╔══════════════════════════════════════════════════════╗
-  ║        CodeForge Connect – Debian VPS bereit!        ║
-  ╚══════════════════════════════════════════════════════╝
-EOF
-echo ""
+cat << "FINISH"
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║                                                        ║
+  ║           ✨  DEBIAN VPS IST BEREIT!  ✨                 ║
+  ║                                                        ║
+  ╚══════════════════════════════════════════════════════════╝
+
+FINISH
 
 # Lokalen Test durchführen
 LOCAL_TEST=$(curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/discover 2>/dev/null || echo '{"ok":false}')
@@ -190,25 +204,42 @@ else
 fi
 echo ""
 
+# Kopplungsmodus starten und Code abrufen
+PAIRING_RESPONSE=$(curl -fsS -X POST http://127.0.0.1:$PORT/pair/start 2>/dev/null || echo '{}')
+PAIRING_CODE=$(echo "$PAIRING_RESPONSE" | grep -o '"pairingCode":"[0-9]*"' | grep -o '[0-9]*' || echo "")
+
+if [ -n "$PAIRING_CODE" ]; then
+  echo "  ╔══════════════════════════════════════════════════╗"
+  echo "  ║                                                  ║"
+  echo "  ║     📱 DEIN KOPPLUNGSCODE:                       ║"
+  echo "  ║                                                  ║"
+  printf "  ║            ✨  %s  ✨                       ║\n" "$PAIRING_CODE"
+  echo "  ║                                                  ║"
+  echo "  ║  → In der CodeForge-App eingeben                 ║"
+  echo "  ║  → Verbinden → Code eintippen → FERTIG!          ║"
+  echo "  ║                                                  ║"
+  echo "  ╚══════════════════════════════════════════════════╝"
+  echo ""
+  echo "  ⏱️  Code gültig für 10 Minuten"
+else
+  echo "  ⚠ Kopplungsmodus konnte nicht automatisch gestartet werden."
+  echo "    Manuell starten: curl -X POST http://127.0.0.1:$PORT/pair/start"
+fi
+echo ""
+
 echo "  ═══════════════════════════════════════════════════"
-echo "   Verbindungsdaten für die CodeForge-App:"
+echo "   Server-Daten (für manuelle Verbindung):"
 echo ""
 echo "   Server:    http://${IP}:${PORT}"
-echo "   Token:     ${TOKEN}"
+echo "   Token:     ${TOKEN:0:16}..."
 echo "   Projekt:   ${PROJECT_PATH}"
 echo ""
-echo "   Einfach in der App unter 'Mobile Verbindung'"
-echo "   → 'Server-URL manuell eingeben' eintragen."
+echo "  ═══════════════════════════════════════════════════"
 echo ""
-echo "   Oder im selben Netzwerk:"
-echo "   → 'Netzwerk durchsuchen' findet den Server"
+echo "  🔧 Nützliche Befehle:"
+echo "    systemctl status codeforge-remote     – Status prüfen"
+echo "    sudo journalctl -u codeforge-remote -f – Live-Logs"
+echo "    curl -X POST http://127.0.0.1:$PORT/pair/start – Neuen Kopplungscode"
 echo ""
-echo "   ═══════════════════════════════════════════════════"
-echo ""
-echo "  Server läuft als systemd-Dienst:"
-echo "    systemctl status codeforge-remote"
-echo "    sudo journalctl -u codeforge-remote -f"
-echo ""
-echo "  Token merken: ${TOKEN}"
-echo "  (im Service-File gespeichert: $SERVICE_FILE)"
+echo "  🔑 Token (im Service gespeichert): $SERVICE_FILE"
 echo ""

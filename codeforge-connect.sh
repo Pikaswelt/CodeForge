@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 # =============================================================================
-# CodeForge Connect – Ein Befehl, und dein Handy findet den PC
+# CodeForge Connect – Ein Befehl, ein Code, verbunden!
 # =============================================================================
-# Einfach auf dem Linux-PC ausführen:
+# Auf dem Linux-PC ausführen:
 #   bash codeforge-connect.sh
 #
 # Das Skript:
 #   1. Findet die lokale IP
 #   2. Generiert einen zufälligen Token
-#   3. Startet den CodeForge Remote Server
-#   4. Zeigt QR-Code und Verbindungsdaten
+#   3. Startet den Server mit automatischem Kopplungsmodus
+#   4. Zeigt den 4-stelligen Code GROSS an
+#   5. Du gibst den Code in der App ein → FERTIG!
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TOKEN="${CODEFORGE_TOKEN:-$(openssl rand -hex 16 2>/dev/null || echo "codeforge-$(date +%s)")}"
+TOKEN="${CODEFORGE_TOKEN:-$(openssl rand -hex 16 2>/dev/null || echo \"codeforge-$(date +%s)\")}"
 PORT="${CODEFORGE_PORT:-8787}"
 HOST="0.0.0.0"
 
@@ -49,7 +50,6 @@ fi
 # Prüfen ob der Remote-Server existiert
 SERVER_SCRIPT="$SCRIPT_DIR/codeforge-remote-server.mjs"
 if [ ! -f "$SERVER_SCRIPT" ]; then
-  # Fallback: Im aktuellen Verzeichnis suchen
   SERVER_SCRIPT="./codeforge-remote-server.mjs"
 fi
 if [ ! -f "$SERVER_SCRIPT" ]; then
@@ -59,49 +59,55 @@ if [ ! -f "$SERVER_SCRIPT" ]; then
 fi
 
 clear
-cat << "EOF"
-  ╔══════════════════════════════════════════════════════╗
-  ║              CodeForge Mobile Connect                ║
-  ║         Ein Befehl – PC bereit für dein Handy        ║
-  ╚══════════════════════════════════════════════════════╝
-EOF
+cat << "BANNER"
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║                                                        ║
+  ║           ⚔️  CODEFORGE MOBILE CONNECT  ⚔️               ║
+  ║                                                        ║
+  ║       Ein Befehl → Ein Code → Verbunden! にゃー ✨      ║
+  ║                                                        ║
+  ╚══════════════════════════════════════════════════════════╝
+
+BANNER
+
+echo "  🌐 Server startet auf:  http://${IP}:${PORT}"
+echo "  🔑 Token (automatisch): ${TOKEN:0:16}..."
 echo ""
-
-# Prüfen ob qrencode verfügbar ist und QR anzeigen
-if command -v qrencode &>/dev/null; then
-  QR_DATA="http://${IP}:${PORT}"
-  echo "  Scanne diesen QR-Code mit der CodeForge-App:"
-  echo ""
-  qrencode -t ANSIUTF8 "$QR_DATA" 2>/dev/null || true
-  echo ""
-else
-  echo "  Tipp: Installiere 'qrencode' für QR-Code:"
-  echo "    apt install qrencode"
-  echo ""
-fi
-
+echo "  ╔══════════════════════════════════════════════════╗"
+echo "  ║                                                  ║"
+echo "  ║     📱 SO GEHT'S – 3 Schritte:                   ║"
+echo "  ║                                                  ║"
+echo "  ║  1. Öffne die CodeForge-App auf deinem Handy    ║"
+echo "  ║  2. Tippe auf »Verbinden«                        ║"
+echo "  ║  3. Gib den 4-stelligen Code ein (erscheint      ║"
+echo "  ║     gleich unten)                                ║"
+echo "  ║                                                  ║"
+echo "  ║  ✨ FERTIG – du bist verbunden! ✨                ║"
+echo "  ║                                                  ║"
+echo "  ╚══════════════════════════════════════════════════╝"
+echo ""
 echo "  ═══════════════════════════════════════════════════"
-echo "   Verbindungsdaten für die CodeForge-App:"
 echo ""
-echo "   Server:    http://${IP}:${PORT}"
-echo "   Token:     ${TOKEN}"
+echo "  Für Debian VPS (Dauereinrichtung):"
+echo "    sudo bash codeforge-connect-debian.sh"
 echo ""
-echo "   → LAN-Suche in der App findet den Server automatisch"
+echo "  Für Windows:"
+echo "    powershell -File codeforge-connect-windows.ps1"
 echo ""
-echo "   Alternative Setup-Skripte im selben Ordner:"
-echo "   • Debian VPS:  bash codeforge-connect-debian.sh"
-echo "   • Windows:     powershell -File codeforge-connect-windows.ps1"
-echo ""
-echo "   ═══════════════════════════════════════════════════"
+echo "  ═══════════════════════════════════════════════════"
 echo ""
 
-# Server starten
-echo "  Starte Server auf http://${IP}:${PORT} ..."
+# Server starten mit Auto-Pairing
+echo "  🚀 Starte Server mit Kopplungsmodus..."
+echo "  📡 Der 4-stellige Code erscheint in Kürze unten..."
+echo ""
 echo "  Drücke Strg+C zum Beenden."
 echo ""
 
 export CODEFORGE_TOKEN="$TOKEN"
 export CODEFORGE_PORT="$PORT"
 export CODEFORGE_HOST="$HOST"
+export CODEFORGE_AUTO_PAIR="true"
 
 exec node "$SERVER_SCRIPT"
