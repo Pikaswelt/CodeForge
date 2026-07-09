@@ -72,8 +72,17 @@ cat << "BANNER"
 BANNER
 
 echo "  🌐 Server startet auf:  http://${IP}:${PORT}"
-echo "  🔑 Token (automatisch): ${TOKEN:0:16}..."
 echo ""
+
+# QR-Code anzeigen wenn qrencode verfügbar
+if command -v qrencode &>/dev/null; then
+  QR_DATA="http://${IP}:${PORT}"
+  echo "  📱 QR-Code (mit der CodeForge-App scannen):"
+  echo ""
+  qrencode -t ANSIUTF8 -m 2 -s 8 "$QR_DATA" 2>/dev/null || true
+  echo ""
+fi
+
 echo "  ╔══════════════════════════════════════════════════╗"
 echo "  ║                                                  ║"
 echo "  ║     📱 SO GEHT'S – 3 Schritte:                   ║"
