@@ -177,7 +177,7 @@ function getPairingQRData() {
     qrContent: url,
     pairingCode,
     serverName: getHostname(),
-    serverIp: localIp,
+    serverIp: publicIp,
     serverPort: PORT,
     tokenRequired: Boolean(TOKEN),
   };
