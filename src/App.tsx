@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Menu, X as XIcon } from 'lucide-react';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
@@ -29,9 +30,11 @@ function AppLayout() {
     glassSaturation,
     appBorderRadius,
     glassThemeGlow,
+    mobileMode,
   } = useAppContext();
   const [showSettings, setShowSettings] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showWelcomePopup, setShowWelcomePopup] = useState(() => {
     try {
       return localStorage.getItem(WELCOME_POPUP_STORAGE_KEY) !== 'true';
@@ -115,6 +118,8 @@ function AppLayout() {
       : {}),
   } as React.CSSProperties;
 
+  const isMobileMode = mobileMode;
+
   return (
     <div
       data-theme={cssTheme}
@@ -126,7 +131,36 @@ function AppLayout() {
       <div className="relative z-10 flex h-full w-full flex-col">
         <TopBar onSettingsClick={() => setShowSettings(true)} onActionsClick={() => setShowActions(true)} />
         <div className="flex flex-1 overflow-hidden relative">
-          <Sidebar onSettingsClick={() => setShowSettings(true)} onActionsClick={() => setShowActions(true)} />
+          {/* Mobile Mode: Overlay sidebar toggle button */}
+          {mobileMode && (
+            <button
+              onClick={() => setMobileSidebarOpen((v) => !v)}
+              className="fixed left-3 top-14 z-50 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-[#1c181a]/90 backdrop-blur-md text-white shadow-2xl hover:bg-white/10 transition-all duration-200"
+              title={mobileSidebarOpen ? 'Seitenleiste schliessen' : 'Seitenleiste oeffnen'}
+            >
+              {mobileSidebarOpen ? <XIcon className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
+          {/* Sidebar: hidden when mobile mode is on and sidebar is collapsed */}
+          <div
+            className={`${
+              isMobileMode
+                ? mobileSidebarOpen
+                  ? 'fixed inset-0 z-40 w-full lg:static lg:w-[270px]'
+                  : 'hidden lg:block lg:w-[270px]'
+                : 'lg:w-[270px]'
+            } shrink-0`}
+          >
+            {isMobileMode && mobileSidebarOpen && (
+              <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"
+                onClick={() => setMobileSidebarOpen(false)}
+              />
+            )}
+            <div className={`relative z-40 h-full ${isMobileMode ? 'max-w-[300px] shadow-2xl' : ''}`}>
+              <Sidebar onSettingsClick={() => setShowSettings(true)} onActionsClick={() => setShowActions(true)} />
+            </div>
+          </div>
           <MainArea />
         </div>
         <AnimatePresence>
@@ -186,9 +220,14 @@ function isVideoPath(filePath: string) {
 
 function toFileUrl(filePath: string) {
   if ((window as any).agentWorkspace?.isWeb) {
+    // In Capacitor-WebView / mobile app, serve via media endpoint or read as data URL
     return `/media?path=${encodeURIComponent(filePath)}`;
   }
-  const normalized = filePath.replace(/\\/g, '/');
+  // In Capacitor Android, file:// URLs with content:// or file:/// work
+  if (typeof (window as any).Capacitor !== 'undefined' || filePath.startsWith('content://')) {
+    return filePath;
+  }
+  const normalized = filePath.replace(/\\\\/g, '/');
   const prefixed = normalized.startsWith('/') ? normalized : `/${normalized}`;
   return encodeURI(`file://${prefixed}`);
 }
