@@ -311,9 +311,17 @@ function toFileUrl(filePath: string) {
     return filePath;
   }
   if ((window as any).agentWorkspace?.isWeb) {
-    // In Capacitor-WebView / mobile app, serve via media endpoint
-    // If connected to VPS, route through the remote server
-    return `/media?path=${encodeURIComponent(filePath)}`;
+    let baseUrl = '';
+    try {
+      const storedConfig = localStorage.getItem('mobileConnectionConfig');
+      if (storedConfig) {
+        const config = JSON.parse(storedConfig);
+        if (config.connected && config.type === 'vps' && config.vpsUrl) {
+          baseUrl = config.vpsUrl;
+        }
+      }
+    } catch (e) {}
+    return `${baseUrl}/media?path=${encodeURIComponent(filePath)}`;
   }
   // In Capacitor Android, file:// URLs with content:// or file:/// work
   if (typeof (window as any).Capacitor !== 'undefined' || filePath.startsWith('content://')) {

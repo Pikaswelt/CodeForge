@@ -527,49 +527,7 @@ async function requireUnityMcpConnection() {
   return unityServer;
 }
 
-async function callMobileVpsApi(
-  config: MobileConnectionConfig,
-  params: {
-    provider: ProviderId;
-    model: string;
-    reasoningEffort: ReasoningEffort;
-    access: AccessMode;
-    systemPrompt: string;
-    prompt: string;
-    projectPath: string;
-  },
-): Promise<{ ok: boolean; output: string; error: string; exitCode: number }> {
-  const url = `${config.vpsUrl || ''}/run`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(config.vpsToken ? { Authorization: `Bearer ${config.vpsToken}` } : {}),
-    },
-    body: JSON.stringify({
-      provider: params.provider,
-      model: params.model,
-      prompt: params.prompt,
-      projectPath: params.projectPath,
-      access: params.access,
-      systemPrompt: params.systemPrompt,
-      reasoningEffort: params.reasoningEffort,
-      outputLimit: 50_000,
-    }),
-    signal: AbortSignal.timeout(10 * 60 * 1000),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    return { ok: false, output: '', error: `Server-Fehler (${res.status}): ${text}`, exitCode: res.status };
-  }
-  const data = await res.json();
-  return {
-    ok: data.ok,
-    output: data.output || '',
-    error: data.error || '',
-    exitCode: data.exitCode ?? (data.ok ? 0 : 1),
-  };
-}
+
 
 function buildLyzDevPrompt(prompt: string, server: McpServerInfo) {
   return [
@@ -2309,16 +2267,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             error: '',
             exitCode: 0,
           }
-        : isMobile && mobileConnectionConfig?.type === 'vps'
-        ? await callMobileVpsApi(mobileConnectionConfig, {
-            provider: runProvider,
-            model: runModel,
-            reasoningEffort,
-            access: accessMode,
-            systemPrompt: shouldUseLyzDev ? `${systemPrompt}\n\n${LYZ_DEV_SYSTEM_PROMPT}` : systemPrompt,
-            prompt,
-            projectPath: mobileConnectionConfig.vpsProjectPath || projectForRun.path,
-          })
         : await window.agentWorkspace.runAgent({
             runId,
             provider: runProvider,
@@ -2328,7 +2276,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             apiKeys,
             systemPrompt: shouldUseLyzDev ? `${systemPrompt}\n\n${LYZ_DEV_SYSTEM_PROMPT}` : systemPrompt,
             prompt,
-            projectPath: projectForRun.path,
+            projectPath: isMobile && mobileConnectionConfig?.type === 'vps' ? (mobileConnectionConfig.vpsProjectPath || projectForRun.path) : projectForRun.path,
             attachments,
             externalServer: externalServer.enabled ? externalServer : isMobile && mobileConnectionConfig?.type === 'ssh'
               ? {
