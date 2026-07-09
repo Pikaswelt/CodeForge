@@ -23,6 +23,7 @@ import type {
   ImportedAntigravityChat,
   Message,
   McpServerInfo,
+  MobileConnectionConfig,
   ProjectFolder,
   ProviderId,
   ResponseDisplayMode,
@@ -189,6 +190,8 @@ interface AppContextType {
   workDisplayMode: WorkDisplayMode;
   responseDisplayMode: ResponseDisplayMode;
   mobileMode: boolean;
+  mobileConnectionConfig: MobileConnectionConfig;
+  setMobileConnectionConfig(config: MobileConnectionConfig): void;
   devicePopupEnabled: boolean;
   spotifyStartUri: string;
   spotifyWidgetEnabled: boolean;
@@ -516,6 +519,50 @@ async function requireUnityMcpConnection() {
   return unityServer;
 }
 
+async function callMobileVpsApi(
+  config: MobileConnectionConfig,
+  params: {
+    provider: ProviderId;
+    model: string;
+    reasoningEffort: ReasoningEffort;
+    access: AccessMode;
+    systemPrompt: string;
+    prompt: string;
+    projectPath: string;
+  },
+): Promise<{ ok: boolean; output: string; error: string; exitCode: number }> {
+  const url = `${config.vpsUrl || ''}/run`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.vpsToken ? { Authorization: `Bearer ${config.vpsToken}` } : {}),
+    },
+    body: JSON.stringify({
+      provider: params.provider,
+      model: params.model,
+      prompt: params.prompt,
+      projectPath: params.projectPath,
+      access: params.access,
+      systemPrompt: params.systemPrompt,
+      reasoningEffort: params.reasoningEffort,
+      outputLimit: 50_000,
+    }),
+    signal: AbortSignal.timeout(10 * 60 * 1000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    return { ok: false, output: '', error: `Server-Fehler (${res.status}): ${text}`, exitCode: res.status };
+  }
+  const data = await res.json();
+  return {
+    ok: data.ok,
+    output: data.output || '',
+    error: data.error || '',
+    exitCode: data.exitCode ?? (data.ok ? 0 : 1),
+  };
+}
+
 function buildLyzDevPrompt(prompt: string, server: McpServerInfo) {
   return [
     LYZ_DEV_SYSTEM_PROMPT,
@@ -634,6 +681,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [mobileMode, setMobileModeState] = useState(() =>
     readStorage('mobileMode', false),
   );
+  const [mobileConnectionConfig, setMobileConnectionConfigState] = useState<MobileConnectionConfig>(() =>
+    readStorage<MobileConnectionConfig>('mobileConnectionConfig', { type: 'vps', connected: false }),
+  );
   const [devicePopupEnabled, setDevicePopupEnabledState] = useState(() =>
     readStorage('devicePopupEnabled', true),
   );
@@ -740,6 +790,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('workDisplayMode', workDisplayMode), [workDisplayMode]);
   useEffect(() => writeStorage('responseDisplayMode', responseDisplayMode), [responseDisplayMode]);
   useEffect(() => writeStorage('mobileMode', mobileMode), [mobileMode]);
+  useEffect(() => writeStorage('mobileConnectionConfig', mobileConnectionConfig), [mobileConnectionConfig]);
   useEffect(() => writeStorage('devicePopupEnabled', devicePopupEnabled), [devicePopupEnabled]);
   useEffect(() => writeStorage('spotifyStartUri', spotifyStartUri), [spotifyStartUri]);
   useEffect(() => writeStorage('spotifyWidgetEnabled', spotifyWidgetEnabled), [spotifyWidgetEnabled]);
@@ -1448,6 +1499,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     writeStorage('mobileMode', value);
   };
 
+  const setMobileConnectionConfig = (config: MobileConnectionConfig) => {
+    setMobileConnectionConfigState(config);
+    writeStorage('mobileConnectionConfig', config);
+  };
+
   const setDevicePopupEnabled = (value: boolean) => {
     setDevicePopupEnabledState(value);
     writeStorage('devicePopupEnabled', value);
@@ -1960,7 +2016,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onTargetId?: (chatId: string) => void,
     overrides?: { provider?: ProviderId; model?: string },
   ) => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    const isMobile = mobileMode && mobileConnectionConfig?.connected;
+    if (!window.agentWorkspace && !isMobile) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
     const projectForRun = await ensureRunnableProject();
     const tokenFreeTest = text.trim().toLowerCase() === 'test';
     const runProvider = overrides?.provider || provider;
@@ -2187,6 +2244,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
             error: '',
             exitCode: 0,
           }
+        : isMobile && mobileConnectionConfig?.type === 'vps'
+        ? await callMobileVpsApi(mobileConnectionConfig, {
+            provider: runProvider,
+            model: runModel,
+            reasoningEffort,
+            access: accessMode,
+            systemPrompt: shouldUseLyzDev ? `${systemPrompt}\n\n${LYZ_DEV_SYSTEM_PROMPT}` : systemPrompt,
+            prompt,
+            projectPath: mobileConnectionConfig.vpsProjectPath || projectForRun.path,
+          })
         : await window.agentWorkspace.runAgent({
             runId,
             provider: runProvider,
@@ -2198,7 +2265,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
             prompt,
             projectPath: projectForRun.path,
             attachments,
-            externalServer: externalServer.enabled ? externalServer : undefined,
+            externalServer: externalServer.enabled ? externalServer : isMobile && mobileConnectionConfig?.type === 'ssh'
+              ? {
+                  enabled: true,
+                  host: mobileConnectionConfig.sshHost || '',
+                  user: mobileConnectionConfig.sshUser || 'root',
+                  port: mobileConnectionConfig.sshPort || 22,
+                  remoteProjectPath: mobileConnectionConfig.sshProjectPath || '~/codeforge-project',
+                  identityFile: mobileConnectionConfig.sshKey || undefined,
+                  acceptNewHostKey: true,
+                }
+              : undefined,
             originalPluginEnabled,
           });
       const tokenUsage = parseTokenUsage(result.output || result.error || '');
@@ -2578,6 +2655,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       workDisplayMode,
       responseDisplayMode,
       mobileMode,
+      mobileConnectionConfig,
+      setMobileConnectionConfig,
       devicePopupEnabled,
       spotifyStartUri,
       spotifyWidgetEnabled,

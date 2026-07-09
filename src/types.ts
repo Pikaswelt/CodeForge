@@ -252,6 +252,26 @@ export type McpServerInfo = {
   details?: string;
 };
 
+export type MobileConnectionType = 'vps' | 'ssh';
+
+export type MobileConnectionConfig = {
+  type: MobileConnectionType;
+  // Debian VPS (HTTP API)
+  vpsUrl?: string;
+  vpsToken?: string;
+  vpsProjectPath?: string;
+  // Windows PC (SSH)
+  sshHost?: string;
+  sshPort?: number;
+  sshUser?: string;
+  sshKey?: string;
+  sshProjectPath?: string;
+  // Status
+  connected: boolean;
+  connectedAt?: number;
+  lastTestedAt?: number;
+};
+
 export type CodexPluginInfo = {
   id: string;
   name: string;
