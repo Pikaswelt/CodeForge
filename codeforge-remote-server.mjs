@@ -130,7 +130,7 @@ function startPairingBroadcast() {
       port: PORT,
       pairingCode,
       tokenRequired: Boolean(TOKEN),
-      version: '2.4.1',
+      version: '2.4.2',
       providers: Object.keys(providers),
       timestamp: Date.now(),
     });
@@ -581,7 +581,7 @@ async function handleDiscover(req, res) {
     ok: true,
     service: 'codeforge-remote',
     name: 'CodeForge Remote Server',
-    version: '2.4.1',
+    version: '2.4.2',
     localIp,
     port: PORT,
     tokenRequired: Boolean(TOKEN),
@@ -627,7 +627,7 @@ server.listen(PORT, HOST, () => {
     console.error('CODEFORGE_TOKEN is not set. The API will reject all requests.');
   }
   const localIp = getLocalIp();
-  console.log(`CodeForge Remote Server v2.4.1 – http://${HOST}:${PORT}`);
+  console.log(`CodeForge Remote Server v2.4.2 – http://${HOST}:${PORT}`);
   console.log(`Entdeckbar unter: http://${getEffectivePublicIp()}:${PORT}`);
 
   if (TOKEN) {
