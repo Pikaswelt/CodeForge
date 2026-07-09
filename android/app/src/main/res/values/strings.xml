@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CodeForge</string>
+    <string name="title_activity_main">CodeForge</string>
+    <string name="package_name">app.codeforge.desktop</string>
+    <string name="custom_url_scheme">app.codeforge.desktop</string>
+</resources>
