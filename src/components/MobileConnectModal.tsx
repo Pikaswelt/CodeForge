@@ -2,18 +2,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckCircle2,
-  Cloud,
   Monitor,
   Loader2,
-  Network,
   Server,
   X,
   ArrowRight,
   RefreshCw,
-  Terminal,
   Wifi,
   Search,
   BookOpen,
+  QrCode,
+  Radio,
+  KeyRound,
+  Copy,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import type { MobileConnectionConfig, MobileConnectionType } from '../types';
@@ -25,6 +26,8 @@ type DiscoveredServer = {
   name: string;
   tokenRequired: boolean;
   providers: string[];
+  pairingActive?: boolean;
+  pairingCode?: string;
 };
 
 async function tryDiscover(ip: string, port: number, signal: AbortSignal): Promise<DiscoveredServer | null> {
@@ -40,6 +43,8 @@ async function tryDiscover(ip: string, port: number, signal: AbortSignal): Promi
         name: data.name || 'CodeForge Server',
         tokenRequired: data.tokenRequired !== false,
         providers: data.providers || [],
+        pairingActive: data.pairingActive,
+        pairingCode: data.pairingCode,
       };
     }
     return null;
@@ -48,54 +53,48 @@ async function tryDiscover(ip: string, port: number, signal: AbortSignal): Promi
   }
 }
 
-function generateLocalIpRange(): string[] {
-  // Common local network ranges
+// Generate a small set of likely IPs for fast LAN discovery
+function generateQuickIpList(): string[] {
   const ips: string[] = [];
-  const ranges = [
-    { subnet: '192.168.', ranges: [[0, 1]] },
-    { subnet: '10.', ranges: [[0]] },
-    { subnet: '172.', ranges: [[16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]] },
-  ];
-
-  // Also try common IPs close to the device's own IP
+  // Try to infer from own connection
   try {
-    // Infer own IP from connection
     const ownIp = window.location.hostname;
     if (ownIp && ownIp !== 'localhost' && ownIp !== '127.0.0.1') {
       const parts = ownIp.split('.');
       if (parts.length === 4) {
         const base = parts.slice(0, 3).join('.');
-        ips.push(`${base}.1`);
-        ips.push(`${base}.2`);
-        ips.push(`${base}.100`);
-        ips.push(`${base}.101`);
+        for (let i = 1; i <= 5; i++) ips.push(`${base}.${i}`);
+        for (let i = 100; i <= 105; i++) ips.push(`${base}.${i}`);
         ips.push(`${base}.254`);
-        // Also try the own IP
-        ips.push(ownIp);
       }
     }
   } catch {}
-
-  // Add common gateway IPs
-  for (const range of ranges) {
-    for (const thirdOctetRange of range.ranges) {
-      const start = thirdOctetRange[0];
-      const end = thirdOctetRange[1] ?? start;
-      for (let i = start; i <= end; i++) {
-        ips.push(`${range.subnet}${i}.1`);
-        ips.push(`${range.subnet}${i}.2`);
-        ips.push(`${range.subnet}${i}.100`);
-        ips.push(`${range.subnet}${i}.254`);
-      }
-    }
-  }
-
+  // Common gateway IPs
+  ips.push('192.168.1.1', '192.168.1.2', '192.168.1.100', '192.168.1.101');
+  ips.push('192.168.0.1', '192.168.0.2', '192.168.0.100', '192.168.0.101');
+  ips.push('10.0.0.1', '10.0.0.2', '10.0.0.100');
   return [...new Set(ips)];
+}
+
+async function verifyPairingCode(serverUrl: string, code: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+  try {
+    const url = `${serverUrl}/pair/verify`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Verbindung fehlgeschlagen.' };
+  }
 }
 
 export default function MobileConnectModal({ onClose }: { onClose: () => void }) {
   const { mobileConnectionConfig, setMobileConnectionConfig, setMobileMode } = useAppContext();
-  const [step, setStep] = useState<'select' | 'lan-scan' | 'vps' | 'ssh'>(
+  const [step, setStep] = useState<'select' | 'pairing' | 'vps' | 'ssh'>(
     mobileConnectionConfig?.type ? (mobileConnectionConfig.type as 'vps' | 'ssh') : 'select',
   );
   const [connectionType, setConnectionType] = useState<MobileConnectionType | null>(
@@ -116,11 +115,81 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   
-  // LAN discovery state
-  const [discovering, setDiscovering] = useState(false);
-  const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
-  const [discoveryProgress, setDiscoveryProgress] = useState('');
+  // Kopplungsmodus / Pairing state
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingPhase, setPairingPhase] = useState<'enter-code' | 'scanning' | 'verifying' | 'found' | 'error'>('enter-code');
+  const [pairingError, setPairingError] = useState('');
+  const [foundServer, setFoundServer] = useState<DiscoveredServer | null>(null);
+  
+  // QR Code state for VPS
+  const [showQr, setShowQr] = useState(false);
+  const [qrData, setQrData] = useState('');
+  
   const [showTutorial, setShowTutorial] = useState(false);
+
+  // Fast LAN discovery
+  const quickScan = useCallback(async (): Promise<DiscoveredServer | null> => {
+    const ips = generateQuickIpList();
+    const ports = [8787, 8788];
+    const totalChecks = ips.length * ports.length;
+    
+    // Run all checks in parallel with 2s timeout each
+    const results = await Promise.all(
+      ips.flatMap((ip) =>
+        ports.map((port) => {
+          const ctrl = new AbortController();
+          const timeout = setTimeout(() => ctrl.abort(), 2000);
+          return tryDiscover(ip, port, ctrl.signal).finally(() => clearTimeout(timeout));
+        }),
+      ),
+    );
+    
+    return results.find(Boolean) || null;
+  }, []);
+
+  const startPairing = async () => {
+    if (!pairingCode || pairingCode.length !== 4 || !/^\d{4}$/.test(pairingCode)) {
+      setPairingPhase('error');
+      setPairingError('Bitte gib einen 4-stelligen Code ein.');
+      return;
+    }
+    setPairingPhase('scanning');
+    setPairingError('');
+    
+    // Step 1: Quick LAN scan
+    const server = await quickScan();
+    
+    if (!server) {
+      setPairingPhase('error');
+      setPairingError('Kein Server im lokalen Netzwerk gefunden. Stelle sicher, dass PC und Handy im selben WLAN sind und der Kopplungsmodus auf dem PC aktiv ist.');
+      return;
+    }
+    
+    setFoundServer(server);
+    setPairingPhase('verifying');
+    
+    // Step 2: Verify pairing code
+    const url = `http://${server.ip}:${server.port}`;
+    const result = await verifyPairingCode(url, pairingCode);
+    
+    if (result.ok) {
+      setPairingPhase('found');
+      const config: MobileConnectionConfig = {
+        type: 'vps',
+        vpsUrl: url,
+        vpsToken: result.token || '',
+        vpsProjectPath: '/root/codeforge-project',
+        connected: true,
+        connectedAt: Date.now(),
+      };
+      setMobileConnectionConfig(config);
+      // Auto-close after short delay
+      setTimeout(() => onClose(), 1500);
+    } else {
+      setPairingPhase('error');
+      setPairingError(result.error || 'Falscher Code. Bitte versuche es erneut.');
+    }
+  };
 
   const testVpsConnection = async () => {
     if (!vpsUrl.trim()) {
@@ -150,79 +219,6 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
       });
     } finally {
       setTesting(false);
-    }
-  };
-
-  const startLanDiscovery = useCallback(async () => {
-    setDiscovering(true);
-    setDiscoveredServers([]);
-    setDiscoveryProgress('Sammle IP-Adressen...');
-    
-    const ips = generateLocalIpRange();
-    const ports = [8787, 8788, 3000, 8080, 8888];
-    const found: DiscoveredServer[] = [];
-    const total = ips.length * ports.length;
-    let checked = 0;
-
-    // Check in batches to avoid overwhelming the network
-    const batchSize = 10;
-    for (let i = 0; i < ips.length; i += batchSize) {
-      const batch = ips.slice(i, i + batchSize);
-      const results = await Promise.all(
-        batch.map(async (ip) => {
-          // Try ports in parallel
-          const portResults = await Promise.all(
-            ports.map((port) => {
-              const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 3000);
-              return tryDiscover(ip, port, controller.signal).finally(() => clearTimeout(timeout));
-            }),
-          );
-          return portResults.filter(Boolean) as DiscoveredServer[];
-        }),
-      );
-      
-      for (const result of results) {
-        found.push(...result);
-      }
-      
-      checked += batch.length * ports.length;
-      const percent = Math.round((checked / total) * 100);
-      setDiscoveryProgress(`Suche... ${percent}% (${found.length > 0 ? `${found.length} gefunden` : ''})`);
-      
-      // Early exit if we found servers
-      if (found.length > 0) {
-        setDiscoveredServers(found);
-        setDiscovering(false);
-        setDiscoveryProgress('');
-        return;
-      }
-    }
-
-    setDiscoveredServers(found);
-    setDiscovering(false);
-    setDiscoveryProgress(found.length === 0 ? 'Kein Server im lokalen Netzwerk gefunden.' : '');
-  }, []);
-
-  const connectToDiscovered = (server: DiscoveredServer) => {
-    const url = `http://${server.ip}:${server.port}`;
-    if (server.tokenRequired) {
-      // Go to VPS config with URL pre-filled
-      setVpsUrl(url);
-      setConnectionType('vps');
-      setStep('vps');
-    } else {
-      // Connect directly (no token configured – just set up)
-      const config: MobileConnectionConfig = {
-        type: 'vps',
-        vpsUrl: url,
-        vpsToken: '',
-        vpsProjectPath: '/root/codeforge-project',
-        connected: true,
-        connectedAt: Date.now(),
-      };
-      setMobileConnectionConfig(config);
-      onClose();
     }
   };
 
@@ -268,7 +264,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
 
   const isConnected = mobileConnectionConfig?.connected;
 
-  // Connection health check – update lastTestedAt when still alive
+  // Connection health check
   useEffect(() => {
     if (!isConnected) return;
     const interval = setInterval(async () => {
@@ -280,18 +276,13 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
         if (res.ok) {
           setMobileConnectionConfig({ ...config, lastTestedAt: Date.now() });
         } else {
-          // Connection lost
           setMobileConnectionConfig({ ...config, connected: false });
         }
-      } catch {
-        // Connection might be temporarily down – don't disconnect immediately
-        // Only disconnect if we've had multiple failures
-      }
-    }, 15000); // Check every 15 seconds
+      } catch {}
+    }, 15000);
     return () => clearInterval(interval);
   }, [isConnected, mobileConnectionConfig?.vpsUrl]);
 
-  // Show duration since connection
   const connectionDuration = isConnected && mobileConnectionConfig?.connectedAt
     ? Math.floor((Date.now() - mobileConnectionConfig.connectedAt) / 1000)
     : 0;
@@ -372,61 +363,35 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
 
         {!isConnected && step === 'select' && (
           <div className="space-y-4">
-            <p className="text-sm text-zinc-400 leading-6">
-              Verbinde dein Handy mit einem Linux-PC / VPS. 
-              Fuehre auf dem PC einfach aus:
-            </p>
-            <pre className="text-[11px] font-mono text-zinc-300 bg-black/30 p-3 rounded-lg border border-white/5 overflow-x-auto">
-              bash codeforge-connect.sh
-            </pre>
-
-            {/* LAN Auto-Discovery */}
-            <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4">
+            {/* ── Kopplungsmodus (Main CTA) ── */}
+            <div className="rounded-xl border border-violet-400/30 bg-violet-400/5 p-4">
               <div className="flex items-center gap-3 mb-3">
-                <Search className="w-5 h-5 text-amber-300" />
-                <div className="text-sm text-amber-200 font-medium">PC im lokalen Netzwerk finden</div>
+                <div className="w-10 h-10 rounded-xl bg-violet-400/15 border border-violet-400/30 flex items-center justify-center">
+                  <Radio className="w-5 h-5 text-violet-300" />
+                </div>
+                <div>
+                  <div className="text-sm text-violet-200 font-semibold">Kopplungsmodus</div>
+                  <p className="text-[11px] text-violet-400/60">Einfach per 4-stelligem Code verbinden</p>
+                </div>
               </div>
               <p className="text-[11px] text-zinc-500 leading-5 mb-3">
-                Suche automatisch nach CodeForge-Servern im selben Netzwerk.
+                Starte auf dem PC/Server den Kopplungsmodus und gib hier den angezeigten Code ein.
               </p>
-              {discoveredServers.length > 0 && (
-                <div className="space-y-2 mb-3">
-                  {discoveredServers.map((server, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => connectToDiscovered(server)}
-                      className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 text-left hover:bg-emerald-400/10 transition-colors"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm text-emerald-200">{server.name}</div>
-                        <div className="text-[10px] text-zinc-500 truncate">
-                          http://{server.ip}:{server.port}
-                          {server.providers.length > 0 && ` - ${server.providers.join(', ')}`}
-                        </div>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0" />
-                    </button>
-                  ))}
-                </div>
-              )}
               <button
-                onClick={startLanDiscovery}
-                disabled={discovering}
-                className="w-full secondary-button"
+                onClick={() => {
+                  setStep('pairing');
+                  setPairingPhase('enter-code');
+                  setPairingCode('');
+                  setPairingError('');
+                  setFoundServer(null);
+                }}
+                className="w-full primary-button bg-violet-500 hover:bg-violet-400"
               >
-                {discovering ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Suche laeuft...</>
-                ) : (
-                  <><Search className="w-4 h-4" /> Netzwerk durchsuchen</>
-                )}
+                <Radio className="w-4 h-4" />
+                Kopplungsmodus starten
               </button>
-              {discoveryProgress && (
-                <p className="text-[10px] text-zinc-600 mt-2 text-center">{discoveryProgress}</p>
-              )}
             </div>
 
-            {/* Manual options */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-white/5" />
@@ -470,72 +435,157 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
           </div>
         )}
 
-        {!isConnected && step === 'lan-scan' && (
+        {/* ── Kopplungsmodus ── */}
+        {!isConnected && step === 'pairing' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <button onClick={() => setStep('select')} className="text-[11px] text-zinc-500 hover:text-white">
                 &larr; Zurueck
               </button>
               <span className="text-zinc-700">|</span>
-              <span className="text-sm text-white font-medium">Netzwerk-Suche</span>
+              <span className="text-sm text-white font-medium">Kopplungsmodus</span>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
-              <p className="text-[11px] text-zinc-500 leading-5 mb-3">
-                Stelle sicher, dass auf dem Linux-PC der Befehl ausgefuehrt wurde:
-              </p>
-              <pre className="text-[11px] font-mono text-zinc-300 bg-black/30 p-3 rounded-lg border border-white/5 overflow-x-auto mb-3">
-                bash codeforge-connect.sh
-              </pre>
-              <button
-                onClick={startLanDiscovery}
-                disabled={discovering}
-                className="w-full primary-button"
-              >
-                {discovering ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Suche...</>
-                ) : (
-                  <><Search className="w-4 h-4" /> Netzwerk durchsuchen</>
-                )}
-              </button>
-              {discoveryProgress && (
-                <p className="text-[10px] text-zinc-600 mt-2 text-center">{discoveryProgress}</p>
-              )}
-            </div>
-
-            {discoveredServers.length > 0 && (
-              <div>
-                <div className="text-xs text-zinc-400 mb-2">Gefundene Server:</div>
-                <div className="space-y-2">
-                  {discoveredServers.map((server, idx) => (
+            {/* Phase: Enter code */}
+            {pairingPhase === 'enter-code' && (
+              <>
+                <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <KeyRound className="w-5 h-5 text-violet-300" />
+                    <div>
+                      <div className="text-sm text-violet-200 font-medium">Code eingeben</div>
+                      <p className="text-[10px] text-zinc-500">Starte den Kopplungsmodus auf deinem PC</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-5 mb-3">
+                    Auf dem PC/Server ausführen:
+                  </p>
+                  <pre className="text-[11px] font-mono text-zinc-300 bg-black/30 p-3 rounded-lg border border-white/5 overflow-x-auto mb-3">
+                    bash codeforge-connect.sh
+                  </pre>
+                  <p className="text-[10px] text-zinc-600 mb-3">
+                    Dann den 4-stelligen Code vom PC-Bildschirm hier eingeben:
+                  </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={pairingCode}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                        setPairingCode(val);
+                      }}
+                      className="input flex-1 text-center text-2xl tracking-[0.5em] font-mono py-3"
+                      placeholder="1234"
+                      autoFocus
+                    />
                     <button
-                      key={idx}
-                      onClick={() => connectToDiscovered(server)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-emerald-400/20 bg-emerald-400/5 text-left hover:bg-emerald-400/10 transition-colors"
+                      onClick={startPairing}
+                      disabled={pairingCode.length !== 4}
+                      className="primary-button bg-violet-500 hover:bg-violet-400 disabled:opacity-30"
                     >
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm text-emerald-200 font-medium">{server.name}</div>
-                        <div className="text-[10px] text-zinc-500 truncate">
-                          http://{server.ip}:{server.port}
-                        </div>
-                      </div>
-                      <span className="text-[11px] text-emerald-400">Verbinden</span>
+                      <Search className="w-4 h-4" />
+                      Suchen
                     </button>
-                  ))}
+                  </div>
+                  <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <QrCode className="w-4 h-4 text-amber-300" />
+                        <span className="text-xs text-amber-200 font-medium">Fuer VPS / Remote-Server:</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!showQr) {
+                            setShowQr(true);
+                            setQrData(`http://codeforge-remote:8787/pair?code=XXXX`);
+                          } else {
+                            setShowQr(false);
+                          }
+                        }}
+                        className="text-[10px] text-amber-300 hover:text-amber-200 underline"
+                      >
+                        {showQr ? 'QR ausblenden' : 'QR anzeigen'}
+                      </button>
+                    </div>
+                    {showQr && (
+                      <div className="bg-white p-3 rounded-lg mb-2 flex items-center justify-center">
+                        <QrCode className="w-32 h-32 text-black" />
+                      </div>
+                    )}
+                    <p className="text-[10px] text-zinc-500 leading-4">
+                      Bei einem entfernten Server: Starte den Server, der QR-Code mit der Verbindungs-URL erscheint im Terminal.
+                      Scanne ihn oder nutze "Server-URL manuell eingeben".
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Phase: Scanning */}
+            {pairingPhase === 'scanning' && (
+              <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-6 text-center">
+                <Loader2 className="w-8 h-8 text-violet-300 animate-spin mx-auto mb-3" />
+                <div className="text-sm text-violet-200 font-medium">Suche Server...</div>
+                <div className="text-[11px] text-zinc-500 mt-1">Durchsuche lokales Netzwerk</div>
+              </div>
+            )}
+
+            {/* Phase: Verifying */}
+            {pairingPhase === 'verifying' && (
+              <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-6 text-center">
+                <Loader2 className="w-8 h-8 text-violet-300 animate-spin mx-auto mb-3" />
+                <div className="text-sm text-violet-200 font-medium">
+                  Prüfe Code mit {foundServer?.name}...
+                </div>
+                <div className="text-[11px] text-zinc-500 mt-1">
+                  http://{foundServer?.ip}:{foundServer?.port}
                 </div>
               </div>
             )}
 
-            {!discovering && discoveredServers.length === 0 && (
-              <div className="text-center text-xs text-zinc-600 py-4">
-                Kein Server gefunden. 
-                Stelle sicher, dass <code className="text-zinc-400">codeforge-connect.sh</code> auf dem PC laeuft.
+            {/* Phase: Found! */}
+            {pairingPhase === 'found' && (
+              <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-6 text-center">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                <div className="text-sm text-emerald-200 font-bold text-lg">Verbunden!</div>
+                <div className="text-[11px] text-zinc-500 mt-1">
+                  {foundServer?.name} – Code akzeptiert
+                </div>
+              </div>
+            )}
+
+            {/* Phase: Error */}
+            {pairingPhase === 'error' && (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <X className="w-5 h-5 text-red-300 shrink-0" />
+                    <div>
+                      <div className="text-sm text-red-200 font-medium">Nicht gefunden</div>
+                      <div className="text-[11px] text-red-400/60 mt-0.5">{pairingError}</div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setPairingPhase('enter-code');
+                    setPairingError('');
+                  }}
+                  className="w-full secondary-button"
+                >
+                  Erneut versuchen
+                </button>
+                <p className="text-[10px] text-zinc-600 text-center">
+                  Du kannst auch die Server-URL manuell eingeben.
+                </p>
               </div>
             )}
           </div>
         )}
 
+        {/* ── VPS Manual Entry ── */}
         {!isConnected && step === 'vps' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
@@ -548,7 +598,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
 
             <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
               <p className="text-[11px] text-zinc-500 leading-5 mb-3">
-                Auf dem Linux-PC ausfuehren:
+                Auf dem Linux-PC ausführen:
               </p>
               <pre className="text-[11px] font-mono text-zinc-300 bg-black/30 p-3 rounded-lg border border-white/5 overflow-x-auto">
                 bash codeforge-connect.sh
@@ -618,6 +668,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
           </div>
         )}
 
+        {/* ── SSH Manual Entry ── */}
         {!isConnected && step === 'ssh' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
@@ -695,6 +746,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
             </div>
           </div>
         )}
+
         {/* Tutorial Modal */}
         <AnimatePresence>
           {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}

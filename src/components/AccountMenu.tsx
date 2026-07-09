@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { CircleUserRound, Gauge, Loader2, LogOut, Play, Settings, Upload } from 'lucide-react';
+import { BookOpen, CircleUserRound, Gauge, Loader2, LogOut, Megaphone, Play, Settings, Upload } from 'lucide-react';
 import { PROVIDER_MODELS, useAppContext } from '../AppContext';
+import TutorialModal from './TutorialModal';
 
 export default function AccountMenu({
   onSettingsClick,
@@ -19,6 +20,7 @@ export default function AccountMenu({
     setApiKey,
     usage,
     setMainView,
+    mobileMode,
     startAntigravityLimit,
     importAntigravityChats,
   } = useAppContext();
@@ -26,126 +28,151 @@ export default function AccountMenu({
   const [limitModel, setLimitModel] = useState(PROVIDER_MODELS.antigravity[0].id);
   const [busy, setBusy] = useState<'limit' | 'import' | null>(null);
   const [status, setStatus] = useState('');
+  const [showTutorial, setShowTutorial] = useState(false);
   const remainingTokens =
     usage.tokenLimit > 0 ? Math.max(0, usage.tokenLimit - usage.totalTokens).toLocaleString('de-DE') : null;
   const providerInfo = PROVIDER_INFO[provider];
 
   return (
-    <div
-      className={`theme-popover absolute z-[140] w-72 overflow-hidden rounded-xl border border-white/10 bg-[#242124]/95 py-1.5 text-sm text-zinc-200 shadow-2xl backdrop-blur-xl ${className}`}
-    >
-      <div className="px-3 pb-2 pt-1">
-        <div className="flex items-center gap-2 rounded-lg px-1 py-1.5">
-          <CircleUserRound className="h-4 w-4 text-zinc-500" />
-          <div className="min-w-0">
-            <div className="truncate text-[13px] text-zinc-200">{providerInfo.label} Konto</div>
-            <div className="truncate text-[11px] text-zinc-500">
-              {apiKeys[provider] ? 'API-Key gesetzt' : 'Lokale CLI / ChatGPT Login'}
+    <>
+      <div
+        className={`theme-popover absolute z-[140] w-72 overflow-hidden rounded-xl border border-white/10 bg-[#242124]/95 py-1.5 text-sm text-zinc-200 shadow-2xl backdrop-blur-xl ${className}`}
+      >
+        <div className="px-3 pb-2 pt-1">
+          <div className="flex items-center gap-2 rounded-lg px-1 py-1.5">
+            <CircleUserRound className="h-4 w-4 text-zinc-500" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] text-zinc-200">{providerInfo.label} Konto</div>
+              <div className="truncate text-[11px] text-zinc-500">
+                {apiKeys[provider] ? 'API-Key gesetzt' : 'Lokale CLI / ChatGPT Login'}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div className="border-t border-white/10 py-1">
-        <AccountMenuButton
-          icon={<CircleUserRound className="h-4 w-4" />}
-          label="Actions"
-          onClick={() => {
-            onActionsClick?.();
-            onClose();
-          }}
-        />
-        <AccountMenuButton
-          icon={<Settings className="h-4 w-4" />}
-          label="Einstellungen"
-          shortcut="Ctrl+,"
-          onClick={() => {
-            onSettingsClick();
-            onClose();
-          }}
-        />
-        <AccountMenuButton
-          icon={<Gauge className="h-4 w-4" />}
-          label="Verbleibendes Kontingent"
-          value={remainingTokens || 'Ansehen'}
-          onClick={() => {
-            setMainView('usage');
-            onClose();
-          }}
-        />
-        <AccountMenuButton
-          icon={busy === 'limit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-          label="Limit starten"
-          onClick={() => {
-            setShowLimitStarter((value) => !value);
-            setStatus('');
-          }}
-        />
-        {showLimitStarter && (
-          <div className="mx-3 mb-1 rounded-lg border border-white/10 bg-black/20 p-2">
-            <label className="text-[10px] uppercase tracking-wide text-zinc-600">
-              Antigravity Modell
-              <select
-                value={limitModel}
-                onChange={(event) => setLimitModel(event.target.value)}
-                className="mt-1 w-full rounded-md border border-white/10 bg-[#181516] px-2 py-1.5 text-xs normal-case tracking-normal text-zinc-200 outline-none"
-              >
-                {PROVIDER_MODELS.antigravity.map((model) => (
-                  <option key={model.id} value={model.id}>{model.name} - {model.intelligence || model.id}</option>
-                ))}
-              </select>
-            </label>
-            <button
-              disabled={busy === 'limit'}
-              onClick={async () => {
-                setBusy('limit');
-                setStatus('');
-                try {
-                  const ok = await startAntigravityLimit(limitModel);
-                  const message = ok ? 'Limit gestartet. Du kannst aus dem Tab raus.' : 'Antigravity hat nicht nur OK geantwortet.';
-                  setStatus(message);
-                  window.alert(message);
-                } catch (error) {
-                  const message = error instanceof Error ? error.message : 'Limit konnte nicht gestartet werden.';
-                  setStatus(message);
-                  window.alert(message);
-                } finally {
-                  setBusy(null);
-                }
-              }}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-white/10 px-2 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-            >
-              {busy === 'limit' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Starten
-            </button>
-            {status && <div className="mt-2 text-[10px] text-zinc-500">{status}</div>}
-          </div>
-        )}
-        <AccountMenuButton
-          icon={busy === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-          label="Antigravity Chats importieren"
-          onClick={async () => {
-            setBusy('import');
-            try {
-              const count = await importAntigravityChats();
-              window.alert(count ? `${count} Antigravity-Chats importiert.` : 'Keine Antigravity-Chats gefunden.');
+        <div className="border-t border-white/10 py-1">
+          <AccountMenuButton
+            icon={<CircleUserRound className="h-4 w-4" />}
+            label="Actions"
+            onClick={() => {
+              onActionsClick?.();
               onClose();
-            } catch (error) {
-              window.alert(error instanceof Error ? error.message : 'Import fehlgeschlagen.');
-            } finally {
-              setBusy(null);
-            }
-          }}
-        />
-        <AccountMenuButton
-          icon={<LogOut className="h-4 w-4" />}
-          label="Abmelden"
-          onClick={() => {
-            setApiKey(provider, '');
-            onClose();
-          }}
-        />
+            }}
+          />
+          <AccountMenuButton
+            icon={<Settings className="h-4 w-4" />}
+            label="Einstellungen"
+            shortcut="Ctrl+,"
+            onClick={() => {
+              onSettingsClick();
+              onClose();
+            }}
+          />
+          <AccountMenuButton
+            icon={<Gauge className="h-4 w-4" />}
+            label="Verbleibendes Kontingent"
+            value={remainingTokens || 'Ansehen'}
+            onClick={() => {
+              setMainView('usage');
+              onClose();
+            }}
+          />
+          <AccountMenuButton
+            icon={busy === 'limit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            label="Limit starten"
+            onClick={() => {
+              setShowLimitStarter((value) => !value);
+              setStatus('');
+            }}
+          />
+          {showLimitStarter && (
+            <div className="mx-3 mb-1 rounded-lg border border-white/10 bg-black/20 p-2">
+              <label className="text-[10px] uppercase tracking-wide text-zinc-600">
+                Antigravity Modell
+                <select
+                  value={limitModel}
+                  onChange={(event) => setLimitModel(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-white/10 bg-[#181516] px-2 py-1.5 text-xs normal-case tracking-normal text-zinc-200 outline-none"
+                >
+                  {PROVIDER_MODELS.antigravity.map((model) => (
+                    <option key={model.id} value={model.id}>{model.name} - {model.intelligence || model.id}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                disabled={busy === 'limit'}
+                onClick={async () => {
+                  setBusy('limit');
+                  setStatus('');
+                  try {
+                    const ok = await startAntigravityLimit(limitModel);
+                    const message = ok ? 'Limit gestartet. Du kannst aus dem Tab raus.' : 'Antigravity hat nicht nur OK geantwortet.';
+                    setStatus(message);
+                    window.alert(message);
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Limit konnte nicht gestartet werden.';
+                    setStatus(message);
+                    window.alert(message);
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-white/10 px-2 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+              >
+                {busy === 'limit' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Starten
+              </button>
+              {status && <div className="mt-2 text-[10px] text-zinc-500">{status}</div>}
+            </div>
+          )}
+          <AccountMenuButton
+            icon={busy === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            label="Antigravity Chats importieren"
+            onClick={async () => {
+              setBusy('import');
+              try {
+                const count = await importAntigravityChats();
+                window.alert(count ? `${count} Antigravity-Chats importiert.` : 'Keine Antigravity-Chats gefunden.');
+                onClose();
+              } catch (error) {
+                window.alert(error instanceof Error ? error.message : 'Import fehlgeschlagen.');
+              } finally {
+                setBusy(null);
+              }
+            }}
+          />
+          {mobileMode && (
+            <AccountMenuButton
+              icon={<BookOpen className="h-4 w-4" />}
+              label="Verbindungsanleitung"
+              onClick={() => {
+                setShowTutorial(true);
+              }}
+            />
+          )}
+          <AccountMenuButton
+            icon={<Megaphone className="h-4 w-4" />}
+            label="Was ist neu"
+            onClick={() => {
+              if (window.confirm('Seite neu laden um das News-Popup erneut anzuzeigen?')) {
+                try {
+                  localStorage.removeItem('agentWorkspace.newsPopupDismissed');
+                } catch {}
+                window.location.reload();
+              }
+            }}
+          />
+          <AccountMenuButton
+            icon={<LogOut className="h-4 w-4" />}
+            label="Abmelden"
+            onClick={() => {
+              setApiKey(provider, '');
+              onClose();
+            }}
+          />
+        </div>
       </div>
-    </div>
+      {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
+    </>
   );
 }
 
@@ -169,6 +196,10 @@ const PROVIDER_INFO = {
   opencode: {
     label: 'OpenCode',
     helpUrl: 'https://opencode.ai/docs/',
+  },
+  freebuff: {
+    label: 'FreeBuff',
+    helpUrl: 'https://freebuff.com/',
   },
 } as const;
 

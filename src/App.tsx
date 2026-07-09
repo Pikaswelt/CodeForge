@@ -5,12 +5,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X as XIcon, Wifi, WifiOff } from 'lucide-react';
+import { Menu, X as XIcon, Wifi } from 'lucide-react';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
 import SettingsModal from './components/SettingsModal';
 import WelcomePopup from './components/WelcomePopup';
+import NewsPopup, { shouldShowNewsPopup, dismissNewsPopup } from './components/NewsPopup';
 import SpotifyWidget from './components/SpotifyWidget';
 import ActionsModal from './components/ActionsModal';
 import SetupModal from './components/SetupModal';
@@ -39,6 +40,7 @@ function AppLayout() {
   const [showSettings, setShowSettings] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showMobileConnect, setShowMobileConnect] = useState(false);
   const [showWelcomePopup, setShowWelcomePopup] = useState(() => {
     try {
       return localStorage.getItem(WELCOME_POPUP_STORAGE_KEY) !== 'true';
@@ -46,6 +48,19 @@ function AppLayout() {
       return true;
     }
   });
+  const [showNewsPopup, setShowNewsPopup] = useState(shouldShowNewsPopup);
+
+  const closeNewsPopup = () => {
+    setShowNewsPopup(false);
+    dismissNewsPopup();
+  };
+
+  // Re-check news popup when setup completes later in the session
+  useEffect(() => {
+    if (hasSetupCompleted && shouldShowNewsPopup()) {
+      setShowNewsPopup(true);
+    }
+  }, [hasSetupCompleted]);
   const customTheme = customThemes.find((item) => item.id === theme);
   const cssTheme = customTheme ? 'custom' : theme;
 
@@ -195,7 +210,12 @@ function AppLayout() {
           <MainArea />
         </div>
         <AnimatePresence>
-          {hasSetupCompleted && showWelcomePopup && (
+          {hasSetupCompleted && showNewsPopup && (
+            <NewsPopup onClose={closeNewsPopup} />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {hasSetupCompleted && !showNewsPopup && showWelcomePopup && (
             <WelcomePopup onClose={closeWelcomePopup} />
           )}
         </AnimatePresence>
@@ -212,33 +232,35 @@ function AppLayout() {
           {!hasSetupCompleted && <SetupModal />}
         </AnimatePresence>
 
-        {/* Mobile Mode: Show connect modal when mobile mode on and not connected */}
+        {/* Mobile Mode: Connect modal */}
         <AnimatePresence>
-          {mobileMode && !mobileConnectionConfig?.connected && (
-            <MobileConnectModal onClose={() => {}} />
-          )}
+          {showMobileConnect && <MobileConnectModal onClose={() => setShowMobileConnect(false)} />}
         </AnimatePresence>
 
-        {/* Mobile Mode: Connection status indicator */}
-        {mobileMode && mobileConnectionConfig?.connected && (
+        {/* Mobile Mode: Show connect button when not connected */}
+        {mobileMode && !mobileConnectionConfig?.connected && (
+          <button
+            onClick={() => setShowMobileConnect(true)}
+            className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md text-xs shadow-2xl border border-amber-400/20 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 transition-all"
+            title="Mit Server verbinden"
+          >
+            <Wifi className="w-3.5 h-3.5" />
+            Verbinden
+          </button>
+        )}
+
+        {/* Mobile Mode: Connection status indicator - only when connected */}
+        {mobileMode && mobileConnectionConfig?.connected && connectionAlive && (
           <button
             onClick={() => setMobileConnectionConfig({ ...mobileConnectionConfig, connected: false })}
-            className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md text-xs shadow-2xl transition-all ${
-              connectionAlive
-                ? 'border border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20'
-                : 'border border-red-400/20 bg-red-400/10 text-red-300 hover:bg-red-400/20'
-            }`}
+            className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md text-xs shadow-2xl transition-all border border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20"
             title={mobileConnectionConfig.type === 'vps' ? mobileConnectionConfig.vpsUrl : `${mobileConnectionConfig.sshUser}@${mobileConnectionConfig.sshHost}`}
           >
-            <span className={`relative flex h-2 w-2 ${connectionAlive ? '' : 'animate-pulse'}`}>
-              <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                connectionAlive ? 'bg-emerald-400 animate-ping' : 'bg-red-400'
-              }`} />
-              <span className={`relative inline-flex h-2 w-2 rounded-full ${
-                connectionAlive ? 'bg-emerald-400' : 'bg-red-400'
-              }`} />
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400 animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
             </span>
-            {connectionAlive ? <><Wifi className="w-3.5 h-3.5" /> Live</> : <><WifiOff className="w-3.5 h-3.5" /> Getrennt</>}
+            <Wifi className="w-3.5 h-3.5" /> Live
           </button>
         )}
       </div>

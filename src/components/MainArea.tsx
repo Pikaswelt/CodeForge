@@ -941,6 +941,7 @@ const getAgentCommand = (provider: string) => {
   if (provider === 'anthropic') return 'claude';
   if (provider === 'openai') return 'codex';
   if (provider === 'cursor') return 'cursor';
+  if (provider === 'freebuff') return 'freebuff';
   return provider;
 };
 
@@ -2454,6 +2455,7 @@ function providerLabel(provider: ReturnType<typeof useAppContext>['provider']) {
   if (provider === 'openai') return 'Codex';
   if (provider === 'anthropic') return 'Claude';
   if (provider === 'cursor') return 'Cursor';
+  if (provider === 'freebuff') return 'FreeBuff';
   return 'OpenCode';
 }
 

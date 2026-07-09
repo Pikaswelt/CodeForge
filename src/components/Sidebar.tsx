@@ -48,6 +48,7 @@ export default function Sidebar({
     addHomeApp,
     removeHomeApp,
     launchHomeApp,
+    mobileMode,
   } = useAppContext();
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
@@ -146,16 +147,18 @@ export default function Sidebar({
           <Blocks className="w-4 h-4" />
           Plugins
         </motion.button>
-        <motion.button
-          onClick={() => setMainView('workspace')}
-          whileHover={{ x: 4 }}
-          whileTap={{ scale: 0.98 }}
-          className={navClass(mainView === 'workspace')}
-        >
-          {renderActiveBg(mainView === 'workspace')}
-          <Terminal className="w-4 h-4" />
-          Workspace
-        </motion.button>
+        {!mobileMode && (
+          <motion.button
+            onClick={() => setMainView('workspace')}
+            whileHover={{ x: 4 }}
+            whileTap={{ scale: 0.98 }}
+            className={navClass(mainView === 'workspace')}
+          >
+            {renderActiveBg(mainView === 'workspace')}
+            <Terminal className="w-4 h-4" />
+            Workspace
+          </motion.button>
+        )}
         <motion.button
           onClick={() => setMainView('usage')}
           whileHover={{ x: 4 }}
@@ -168,12 +171,14 @@ export default function Sidebar({
         </motion.button>
       </div>
 
-      <AppTabs
-        apps={homeApps.filter((app) => app.kind !== 'web' && !app.url)}
-        onAdd={addHomeApp}
-        onLaunch={launchHomeApp}
-        onRemove={removeHomeApp}
-      />
+      {!mobileMode && (
+        <AppTabs
+          apps={homeApps.filter((app) => app.kind !== 'web' && !app.url)}
+          onAdd={addHomeApp}
+          onLaunch={launchHomeApp}
+          onRemove={removeHomeApp}
+        />
+      )}
 
       <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">

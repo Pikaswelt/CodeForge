@@ -1,82 +1,97 @@
-# CodeForge
+# CodeForge v2.1.0
 
-Electron desktop app for local coding agents:
+Desktop & Mobile App für lokale KI-Coding-Agenten. Verbinde dich mit deinem PC, Laptop oder VPS und lasse KI-Agenten direkt in deinen Projekten arbeiten.
 
 ```text
 React UI
-  -> secure Electron IPC bridge
-  -> Node child_process
-  -> Antigravity CLI, Codex CLI, Claude Code, Cursor Agent, or OpenCode
+  -> secure Electron IPC bridge / Capacitor WebView
+  -> Node child_process / HTTP API
+  -> Antigravity CLI, Codex CLI, Claude Code, Cursor Agent, OpenCode, FreeBuff
   -> selected project folder
 ```
 
+## 🆕 Neu in v2.1.0
+
+- **📢 News-Popup** – Beim Start siehst du alle neuen Features auf einen Blick
+- **⌨️ CodeForge CLI** – Nutze CodeForge direkt vom Terminal: `npx codeforge-cli`
+- **🔗 Kopplungsmodus** – PC und Handy finden sich per 4-stelligem Code automatisch
+- **🤖 FreeBuff** – Neuer kostenloser KI-Provider (`npm install -g freebuff`)
+- **📱 Mobile Modus optimiert** – CLI-Status ausgeblendet, klarere Verbindungsinfos
+- **🐧 Debian Installer** – `sudo bash install-codeforge-debian.sh` für VPS
+- **⚙️ systemd Service** – Server läuft als Hintergrunddienst
+
 ## Requirements
 
-- Node.js 20 or newer
-- At least one installed and authenticated CLI:
-  - `agy` for Google Antigravity
-  - `codex` for OpenAI Codex
-  - `claude` for Anthropic Claude Code
-  - `agent` or `cursor-agent` for Cursor Agent
-  - `opencode` for OpenCode
-- Optional: Git for branch selection
+- Node.js 20 oder neuer
+- Mindestens eine installierte CLI:
+  - `agy` – Google Antigravity
+  - `codex` – OpenAI Codex
+  - `claude` – Anthropic Claude Code
+  - `agent` / `cursor-agent` – Cursor Agent
+  - `opencode` – OpenCode
+  - `freebuff` – FreeBuff (kostenlos!)
+- Optional: Git für Branch-Auswahl
 
-## Development
-
-```powershell
-npm install
-npm run dev
-```
-
-## Check and Build
-
-```powershell
-npm run lint
-npm run build
-npm run dist
-```
-
-`npm run dist` creates the Windows installer in `release/`.
-
-## External Server
-
-The settings screen includes an **External Server** section. It lets the desktop
-app run on the PC while the selected CLI runs over SSH on a Debian or Linux
-server.
-
-Quick flow:
-
-1. Install and authenticate Codex or the selected CLI on the server.
-2. Clone or copy the project into a fixed folder on the server.
-3. Enter the host, SSH user, port, and remote project path in CodeForge.
-4. Click **Test**, then enable **Active**.
-
-The local project folder remains the CodeForge selection. Files that the agent
-should edit must also exist in the remote project path.
-
-## Mobile App
-
-The Android app in `smart-home-remote-app/` is CodeForge Mobile. It is optimized
-for phone screens and works remotely against the Debian VPS. Unlike the desktop
-app, it does not use local SSH; it calls a small HTTP/HTTPS API on the server:
+## Quick Start
 
 ```bash
-bash server-setup-codeforge.sh
-codex login
+# Desktop App
+npm install
+npm run dev
+
+# CLI
+npx codeforge-cli --url http://server:8787 --token YOUR_TOKEN --interactive
+
+# Server (Debian/Linux)
+sudo bash install-codeforge-debian.sh
 ```
 
-The app stores the server URL, token, provider, model, remote project path,
-system prompt, access mode, and reasoning level. The tutorial is built directly
-into the app under the **Tutorial** tab.
+## Build & Release
 
-The current debug APK is preconfigured for `http://88.214.56.241:8787` and the
-token from `server-setup-codeforge.sh`. For now, the mobile app exposes Codex
-and Antigravity.
+```bash
+npm run lint          # TypeScript-Check
+npm run build         # Vite Build
+npm run dist:win      # Windows EXE (release/)
+npm run apk:build     # Android APK
+npm run release:all   # Alles auf einmal (EXE + APK + CLI)
+```
+
+## Mobile App (Android APK)
+
+Die Android-App nutzt Capacitor und ist für Smartphones optimiert. Im **Mobile Modus** verbindest du dich mit einem PC oder VPS als KI-Server.
+
+**Kopplungsmodus (einfachste Methode):**
+1. Auf dem PC/Server: `bash codeforge-connect.sh`
+2. 4-stelligen Code ablesen
+3. In der App: Verbinden → Kopplungsmodus → Code eingeben → Fertig!
+
+## Debian VPS Installation
+
+```bash
+sudo bash install-codeforge-debian.sh
+```
+
+Das Skript installiert Node.js, richtet den systemd-Dienst ein und generiert ein Token. Nach der Installation läuft der Server dauerhaft – auch nach Neustarts.
+
+```bash
+# Status prüfen
+systemctl status codeforge-remote
+
+# Kopplungsmodus starten
+curl -X POST http://localhost:8787/pair/start
+```
+
+## Provider
+
+| Provider | CLI | Beschreibung |
+|----------|-----|-------------|
+| Google Antigravity | `agy` | Gemini, Claude & GPT-OSS |
+| OpenAI Codex | `codex` | Nicht-interaktiv im Projekt |
+| Anthropic Claude | `claude` | Claude Code |
+| Cursor Agent | `cursor-agent` | Cursor CLI |
+| OpenCode | `opencode` | OpenCode Run-Modus |
+| **FreeBuff** 🆕 | `freebuff` | Kostenlos, kein API-Key nötig |
 
 ## Security
 
-The renderer has no direct Node access. File operations, Git, npm, window
-controls, and agent processes run exclusively through the restricted preload
-API. The access mode can be set per request to read-only, project access, or
-full access. For the mobile app, expose the remote API through HTTPS, VPN, or a
-private network.
+Der Renderer hat keinen direkten Node-Zugriff. Dateioperationen, Git, npm und Agent-Prozesse laufen ausschließlich über die eingeschränkte Preload-API. Zugriffsmodus pro Request: Read-Only, Workspace-Write oder Full.
