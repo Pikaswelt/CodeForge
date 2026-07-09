@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { existsSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 
 const PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
 const HOST = process.env.HOST || process.env.CODEFORGE_HOST || '0.0.0.0';
@@ -267,12 +268,40 @@ async function handleUsage(req, res) {
   }
 }
 
+async function handleDiscover(req, res) {
+  // Public endpoint – no auth required for discovery
+  const localIp = Object.values(networkInterfaces())
+    .flat()
+    .filter((iface) => iface && !iface.internal && iface.family === 'IPv4')
+    .map((iface) => iface.address)[0] || HOST;
+
+  json(res, 200, {
+    ok: true,
+    service: 'codeforge-remote',
+    name: 'CodeForge Remote Server',
+    version: '1.6.0',
+    localIp,
+    port: PORT,
+    tokenRequired: Boolean(TOKEN),
+    providers: Object.keys(providers),
+  });
+}
+
 const server = createServer((req, res) => {
   if (req.method === 'OPTIONS') return json(res, 204, {});
+  if (req.method === 'GET' && req.url === '/discover') return void handleDiscover(req, res);
   if (req.method === 'GET' && req.url === '/health') return void handleHealth(req, res);
   if (req.method === 'GET' && req.url === '/usage') return void handleUsage(req, res);
   if (req.method === 'POST' && req.url === '/run') return void handleRun(req, res);
   json(res, 404, { ok: false, error: 'Not found.' });
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Try: CODEFORGE_PORT=8788 bash codeforge-connect.sh`);
+    process.exit(1);
+  }
+  console.error('Server error:', err.message);
 });
 
 server.listen(PORT, HOST, () => {
