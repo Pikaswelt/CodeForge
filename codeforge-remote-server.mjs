@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { existsSync, statSync, createReadStream } from 'node:fs';
+import { existsSync, statSync, createReadStream, mkdirSync } from 'node:fs';
 import { randomUUID, randomInt } from 'node:crypto';
 import { networkInterfaces, hostname } from 'node:os';
-import { extname, join } from 'node:path';
+import path, { extname, join } from 'node:path';
 import dgram from 'node:dgram';
 
 let PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
@@ -26,13 +26,70 @@ let udpEaccesLogged = false;
 let pairingFailCount = 0;
 let pairingBlockedUntil = 0;
 
+const userHome = process.env.USERPROFILE || process.env.HOME || '';
 const providers = {
-  antigravity: { command: 'agy', candidates: ['agy', '/root/.local/bin/agy', '/usr/local/bin/agy', '/usr/bin/agy'], versionArgs: ['--version'] },
-  openai: { command: 'codex', candidates: ['codex', '/root/.local/bin/codex', '/usr/local/bin/codex', '/usr/bin/codex'], versionArgs: ['--version'] },
-  anthropic: { command: 'claude', candidates: ['claude', '/root/.local/bin/claude', '/usr/local/bin/claude', '/usr/bin/claude'], versionArgs: ['--version'] },
-  cursor: { command: 'cursor-agent', candidates: ['cursor-agent', 'agent', '/root/.local/bin/cursor-agent', '/usr/local/bin/cursor-agent'], versionArgs: ['--version'] },
-  opencode: { command: 'opencode', candidates: ['opencode', '/root/.local/bin/opencode', '/usr/local/bin/opencode', '/usr/bin/opencode'], versionArgs: ['--version'] },
-  freebuff: { command: 'freebuff', candidates: ['freebuff', '/root/.local/bin/freebuff', '/usr/local/bin/freebuff', '/usr/bin/freebuff'], versionArgs: ['--version'] },
+  antigravity: {
+    command: 'agy',
+    candidates: [
+      'agy',
+      path.join(userHome, 'AppData/Local/agy/bin/agy.exe').replace(/\\/g, '/'),
+      '/root/.local/bin/agy',
+      '/usr/local/bin/agy',
+      '/usr/bin/agy'
+    ],
+    versionArgs: ['--version']
+  },
+  openai: {
+    command: 'codex',
+    candidates: [
+      'codex',
+      path.join(userHome, 'AppData/Local/Programs/OpenAI/Codex/bin/codex.exe').replace(/\\/g, '/'),
+      '/root/.local/bin/codex',
+      '/usr/local/bin/codex',
+      '/usr/bin/codex'
+    ],
+    versionArgs: ['--version']
+  },
+  anthropic: {
+    command: 'claude',
+    candidates: [
+      'claude',
+      '/root/.local/bin/claude',
+      '/usr/local/bin/claude',
+      '/usr/bin/claude'
+    ],
+    versionArgs: ['--version']
+  },
+  cursor: {
+    command: 'cursor-agent',
+    candidates: [
+      'cursor-agent',
+      'agent',
+      '/root/.local/bin/cursor-agent',
+      '/usr/local/bin/cursor-agent'
+    ],
+    versionArgs: ['--version']
+  },
+  opencode: {
+    command: 'opencode',
+    candidates: [
+      'opencode',
+      '/root/.local/bin/opencode',
+      '/usr/local/bin/opencode',
+      '/usr/bin/opencode'
+    ],
+    versionArgs: ['--version']
+  },
+  freebuff: {
+    command: 'freebuff',
+    candidates: [
+      'freebuff',
+      '/root/.local/bin/freebuff',
+      '/usr/local/bin/freebuff',
+      '/usr/bin/freebuff'
+    ],
+    versionArgs: ['--version']
+  },
 };
 
 function getLocalIp() {
@@ -358,16 +415,19 @@ function buildAgentCommand(providerId, model, prompt, access, projectPath, reaso
 
 function runCapture(command, args, options = {}) {
   return new Promise((resolve) => {
+    const isWin = process.platform === 'win32';
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: { 
-        HOME: process.env.HOME || '/root', 
-        USER: process.env.USER || 'root', 
+        ...(!isWin && {
+          HOME: process.env.HOME || '/root', 
+          USER: process.env.USER || 'root',
+        }),
         ...process.env, 
         FORCE_COLOR: '0', 
         NO_COLOR: '1' 
       },
-      shell: false,
+      shell: isWin,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -434,12 +494,47 @@ async function handleRun(req, res) {
 
   if (!provider) return json(res, 400, { ok: false, error: 'Unknown provider.' });
   if (!prompt || prompt.length > MAX_PROMPT_CHARS) return json(res, 400, { ok: false, error: 'Prompt is empty or too large.' });
-  if (!projectPath || !existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
-    return json(res, 400, { ok: false, error: 'Project path does not exist on the server.' });
+
+  let effectiveProjectPath = projectPath;
+  if (!projectPath || !existsSync(effectiveProjectPath) || !statSync(effectiveProjectPath).isDirectory()) {
+    const isWin = process.platform === 'win32';
+    const userHome = process.env.USERPROFILE || process.env.HOME || '';
+    if (isWin) {
+      if (projectPath.startsWith('/root/') || projectPath === '/root/codeforge-project' || projectPath.startsWith('~/')) {
+        const docPath = path.join(userHome, 'OneDrive/Dokumente/CodeForge/Ohne Projekt');
+        const docPathAlt = path.join(userHome, 'Documents/CodeForge/Ohne Projekt');
+        if (existsSync(docPath)) {
+          effectiveProjectPath = docPath;
+        } else if (existsSync(docPathAlt)) {
+          effectiveProjectPath = docPathAlt;
+        } else {
+          try {
+            mkdirSync(docPath, { recursive: true });
+            effectiveProjectPath = docPath;
+          } catch (_) {
+            effectiveProjectPath = userHome || process.cwd();
+          }
+        }
+      } else {
+        try {
+          mkdirSync(projectPath, { recursive: true });
+          effectiveProjectPath = projectPath;
+        } catch (_) {
+          effectiveProjectPath = userHome || process.cwd();
+        }
+      }
+    } else {
+      try {
+        mkdirSync(projectPath, { recursive: true });
+        effectiveProjectPath = projectPath;
+      } catch (_) {
+        return json(res, 400, { ok: false, error: 'Project path does not exist on the server and could not be created.' });
+      }
+    }
   }
 
-  const finalPrompt = buildPrompt(input.systemPrompt, prompt, access, projectPath);
-  const { args, stdin } = buildAgentCommand(providerId, model, finalPrompt, access, projectPath, reasoningEffort);
+  const finalPrompt = buildPrompt(input.systemPrompt, prompt, access, effectiveProjectPath);
+  const { args, stdin } = buildAgentCommand(providerId, model, finalPrompt, access, effectiveProjectPath, reasoningEffort);
   const startedAt = Date.now();
   const runId = randomUUID();
 
@@ -454,7 +549,7 @@ async function handleRun(req, res) {
     const writeEvent = (payload) => res.write(`${JSON.stringify(payload)}\n`);
     writeEvent({ type: 'start', ok: true, runId, provider: providerId, startedAt });
     const result = await runCapture(resolveCommand(provider), args, {
-      cwd: projectPath,
+      cwd: effectiveProjectPath,
       stdin,
       onOutput: (chunk, stream) => writeEvent({ type: 'output', runId, stream, chunk }),
     });
@@ -473,7 +568,7 @@ async function handleRun(req, res) {
     return;
   }
 
-  const result = await runCapture(resolveCommand(provider), args, { cwd: projectPath, stdin });
+  const result = await runCapture(resolveCommand(provider), args, { cwd: effectiveProjectPath, stdin });
   const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
 
   json(res, result.ok ? 200 : 500, {

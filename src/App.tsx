@@ -319,9 +319,8 @@ function toFileUrl(filePath: string) {
   if (typeof (window as any).Capacitor !== 'undefined' || filePath.startsWith('content://')) {
     return filePath;
   }
-  const normalized = filePath.replace(/\\\\/g, '/');
-  const prefixed = normalized.startsWith('/') ? normalized : `/${normalized}`;
-  return encodeURI(`file://${prefixed}`);
+  const normalized = filePath.replace(/\\/g, '/');
+  return `codeforge-media:///${normalized}`;
 }
 
 function IntroScreen({ onComplete }: { onComplete: () => void }) {
