@@ -163,10 +163,32 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
     return results.find(Boolean) || null;
   }, []);
 
-  // Parse omni-input: detect URL vs 4-digit code
-  const parseInput = (input: string): { type: 'url'; serverUrl: string; code: string } | { type: 'code'; code: string } | null => {
+  // Parse omni-input: detect URL vs 4-digit code vs Base64 key
+  const parseInput = (input: string): { type: 'url'; serverUrl: string; code: string } | { type: 'code'; code: string } | { type: 'direct'; url: string; token: string; projectPath: string } | null => {
     const trimmed = input.trim();
     if (!trimmed) return null;
+
+    // Detect Base64 Connection Key
+    const cleanTrimmed = trimmed.replace(/\s/g, '');
+    if (cleanTrimmed.length > 30 && !cleanTrimmed.includes('/') && !cleanTrimmed.startsWith('http')) {
+      try {
+        const decoded = atob(cleanTrimmed);
+        const data = JSON.parse(decoded);
+        if (data.url && data.token) {
+          return { type: 'direct', url: data.url, token: data.token, projectPath: data.projectPath || '/root/codeforge-project' };
+        }
+      } catch {}
+    }
+
+    // Support raw JSON Connection Key
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const data = JSON.parse(trimmed);
+        if (data.url && data.token) {
+          return { type: 'direct', url: data.url, token: data.token, projectPath: data.projectPath || '/root/codeforge-project' };
+        }
+      } catch {}
+    }
     
     // Detect Easy-Setup-URL: http://IP:PORT/pair?code=XXXX
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -199,6 +221,42 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
     pairingInFlight.current = true;
 
     const doPair = async () => {
+      if (parsed.type === 'direct') {
+        // Direct Base64 Connection Key setup
+        setPairingPhase('verifying');
+        setPairingError('');
+        try {
+          const res = await fetch(`${parsed.url}/discover`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!res.ok) throw new Error(`HTTP Status ${res.status}`);
+          const data = await res.json();
+          if (data.ok) {
+            setPairingPhase('found');
+            setMobileConnectionConfig({
+              type: 'vps',
+              vpsUrl: parsed.url,
+              vpsToken: parsed.token,
+              vpsProjectPath: parsed.projectPath,
+              connected: true,
+              connectedAt: Date.now(),
+            });
+            setTimeout(() => onClose(), 1500);
+          } else {
+            setPairingPhase('error');
+            setPairingError(data.error || 'Server-Antwort ungültig.');
+          }
+        } catch (err) {
+          setPairingPhase('error');
+          setPairingError(
+            `Konnte keine Verbindung aufbauen (${err instanceof Error ? err.message : 'Netzwerkfehler'}). ` +
+            `Stelle sicher, dass der Server unter ${parsed.url} läuft, Port ${new URL(parsed.url).port || '80'} in der Firewall offen ist und dein Handy Zugriff hat.`
+          );
+        }
+        pairingInFlight.current = false;
+        return;
+      }
+
       if (parsed.type === 'url') {
         // Easy-Setup URL → direkt verifizieren
         setPairingPhase('verifying');
@@ -423,10 +481,9 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               </div>
 
               <div className="rounded-lg bg-black/30 border border-white/5 p-3 mb-3">
-                <p className="text-[10px] text-zinc-500 mb-1">Auf dem PC/Server ausführen:</p>
+                <p className="text-[10px] text-zinc-500 mb-1">Auf dem PC/Server ausführen (Windows oder Debian):</p>
                 <code className="text-[12px] font-mono text-emerald-300 block">bash codeforge-connect.sh</code>
-                <p className="text-[10px] text-zinc-500 mt-2">Dann den <b>Easy Setup Link</b> kopieren und hier einfügen:</p>
-                <code className="text-[10px] font-mono text-zinc-400 block mt-1">http://DEINE-IP:8787/pair?code=1234</code>
+                <p className="text-[10px] text-zinc-500 mt-2">Kopiere den <b>Connection Key</b> oder <b>Easy Setup Link</b> und füge ihn hier ein:</p>
               </div>
 
               {/* Omni-Input */}
@@ -441,11 +498,11 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                       if (pairingPhase === 'error') setPairingPhase('enter');
                     }}
                     className="input w-full text-sm font-mono py-3 px-3"
-                    placeholder="http://88.214.56.241:8787/pair?code=4821  oder  4821"
+                    placeholder="Connection-Key (Base64) oder Easy Setup Link..."
                     autoFocus
                   />
                   <p className="text-[9px] text-zinc-600 mt-1.5">
-                    🪄 Erkennt automatisch Easy-Setup-Links UND 4-stellige Codes
+                    🪄 Erkennt automatisch Connection-Keys, Easy-Setup-Links und 4-stellige Codes
                   </p>
                 </div>
               ) : pairingPhase === 'scanning' ? (

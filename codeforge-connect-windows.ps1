@@ -130,8 +130,22 @@ Write-Host "║        CodeForge Connect – Windows bereit!          ║" -Fore
 Write-Host "╚══════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
+$ConnectionJson = '{"url":"http://' + $IpAddress + ':' + $Port + '","token":"' + $Token + '","projectPath":"' + $ProjectPath.Replace('\', '/') + '"}'
+$Bytes = [System.Text.Encoding]::UTF8.GetBytes($ConnectionJson)
+$ConnectionKey = [Convert]::ToBase64String($Bytes)
+
+Write-Host "  ╔══════════════════════════════════════════════════════════╗" -ForegroundColor Green
+Write-Host "  ║  📱 CONNECTION KEY FÜR DIE MOBILE APP:                  ║" -ForegroundColor Green
+Write-Host "  ║  Kopiere diesen Key und füge ihn in der App ein:         ║" -ForegroundColor Green
+Write-Host "  ║                                                          ║" -ForegroundColor Green
+Write-Host "  ║  $ConnectionKey" -ForegroundColor Yellow
+Write-Host "  ║                                                          ║" -ForegroundColor Green
+Write-Host "  ║  CodeForge-App -> Verbinden -> Einfügen -> FERTIG! ✨     ║" -ForegroundColor Green
+Write-Host "  ╚══════════════════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host ""
+
 Write-Host "  ═══════════════════════════════════════════════════" -ForegroundColor DarkGray
-Write-Host "   Verbindungsdaten für die CodeForge-App:" -ForegroundColor White
+Write-Host "   Server-Daten (für manuelle Verbindung):" -ForegroundColor White
 Write-Host "" -ForegroundColor White
 Write-Host "   Server:    http://${IpAddress}:${Port}" -ForegroundColor Cyan
 Write-Host "   Token:     ${Token}" -ForegroundColor Cyan

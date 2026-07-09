@@ -1944,7 +1944,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const ensureRunnableProject = async (): Promise<ProjectFolder> => {
     if (selectedProject) return selectedProject;
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) {
+      const defaultPath = mobileConnectionConfig?.vpsProjectPath || '/root/codeforge-project';
+      const scratch = {
+        id: SCRATCH_PROJECT_ID,
+        title: 'Ohne Projekt',
+        path: defaultPath,
+        isScratch: true,
+      };
+      setFolders((current) => {
+        const existing = current.find((item) => item.id === SCRATCH_PROJECT_ID);
+        if (existing) return current.map((item) => (item.id === SCRATCH_PROJECT_ID ? { ...existing, path: defaultPath } : item));
+        return [scratch, ...current];
+      });
+      setSelectedFolderId(SCRATCH_PROJECT_ID);
+      return scratch;
+    }
     const scratchPath = await window.agentWorkspace.getScratchProjectFolder();
     const scratch = {
       id: SCRATCH_PROJECT_ID,
