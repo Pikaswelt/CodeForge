@@ -114,13 +114,19 @@ function startPairingBroadcast() {
       port: PORT,
       pairingCode,
       tokenRequired: Boolean(TOKEN),
-      version: '2.2.0',
+      version: '2.3.0',
       providers: Object.keys(providers),
       timestamp: Date.now(),
     });
     const buffer = Buffer.from(payload, 'utf-8');
     udpSocket.send(buffer, 0, buffer.length, PAIRING_PORT, '255.255.255.255', (err) => {
-      if (err && pairingMode) console.error('UDP broadcast error:', err.message);
+      if (err) {
+        // EACCES = no permission (not root) → log once, suppress repeat
+        if (err.code === 'EACCES' && !udpSocket._eaccesLogged) {
+          udpSocket._eaccesLogged = true;
+          console.log('   ⚠️  UDP-Broadcast nicht möglich (keine root-Rechte). Kopplung funktioniert trotzdem via HTTP.');
+        }
+      }
     });
   };
 
