@@ -1,7 +1,7 @@
-# ⚔️ CodeForge v2.3.0 ☆ コードフォージ
+# ⚔️ CodeForge v2.4.1 ☆ コードフォージ
 
 <p align="center">
-  <i>✨ 君のコードを完全にする！— Make your code perfect, Senpai! ✨</i>
+  <i>✨ 君'のコードを完全にする！— Make your code perfect, Senpai! ✨</i>
 </p>
 
 ---
@@ -16,24 +16,25 @@ Desktop & Mobile App für lokale KI-Coding-Agenten. Verbinde dich mit deinem PC,
   → selected project folder ✨
 ```
 
-## 🆕 Neu in v2.3.0 ～☆
+## 🆕 Neu in v2.4.1 ～☆
 
-- **⚡ Ein-Klick-Kopplung** – `bash codeforge-connect.sh` → Code ablesen → In der App eingeben → **FERTIG!**
-- **🤖 Auto-Pairing** – Server startet automatisch im Kopplungsmodus, kein manuelles `/pair/start` nötig
-- **🔐 Verbesserte Sicherheit** – Token wird automatisch generiert, Kopplungscode nur 10 Min gültig
+- **⚡ Connection Key System** – Einfach den generierten Base64-Key kopieren, in der App einfügen → **SOFORT VERBUNDEN!**
+- **🤖 Auto-Pairing & Fallback** – Server startet automatisch im Kopplungsmodus, falls eine LAN-Verbindung gesucht wird
+- **🔐 Höchste Sicherheit** – Token wird verschlüsselt im Connection-Key transportiert, keine Klartext-Eingaben
 - **🔄 GitHub Actions CI/CD** – Automatische Builds & Releases bei Push/Tag
-- **📱 Vereinfachte Mobile-UI** – Code-Eingabe direkt auf der Startseite
+- **📱 Vereinfachte Mobile-UI** – Connection-Key-Eingabe direkt auf der Startseite
 
-## ⚡ Quick Start – In 30 Sekunden verbunden
+## ⚡ Quick Start – In 10 Sekunden verbunden
 
 ```bash
-# 1. Auf deinem Linux-PC / VPS:
+# 1. Auf deinem Linux-PC / VPS / Windows:
 bash codeforge-connect.sh
+# (Auf Windows: powershell -File codeforge-connect-windows.ps1)
 
-# 2. 4-stelligen Code ablesen (erscheint GROSS im Terminal)
+# 2. Den gedruckten Base64-Key kopieren (wird GROSS im Terminal angezeigt)
 
 # 3. In der CodeForge-App:
-#    Tippe auf »Verbinden« → Code eingeben → ✨ FERTIG!
+#    Tippe auf »Verbinden« → Key einfügen → ✨ FERTIG!
 ```
 
 ### Für Debian VPS (Dauerbetrieb):
@@ -43,8 +44,8 @@ bash codeforge-connect.sh
 sudo bash codeforge-connect-debian.sh
 
 # → Server läuft als systemd-Dienst
-# → Kopplungscode wird GROSS angezeigt
-# → Code in der App eingeben → VERBUNDEN!
+# → Druckt den Connection Key direkt aus
+# → Key in der App einfügen → VERBUNDEN!
 ```
 
 ## Requirements ～☆
@@ -115,21 +116,20 @@ sudo bash codeforge-connect-debian.sh
 
 ---
 
-### 🔢 Schritt 2 – Code ablesen
+### 🔢 Schritt 2 – Connection Key kopieren
 
-Nach dem Start zeigt das Terminal einen **4-stelligen Code** in einer großen Box:
+Nach dem Start zeigt das Terminal den **Connection Key** in einer großen Box:
 
 ```
-  ╔══════════════════════════════════════════════════╗
-  ║                                                  ║
-  ║     📱 DEIN KOPPLUNGSCODE:                       ║
-  ║                                                  ║
-  ║            ✨  4821  ✨                           ║
-  ║                                                  ║
-  ╚══════════════════════════════════════════════════╝
+  ╔══════════════════════════════════════════════════════════╗
+  ║  📱 CONNECTION KEY FÜR DIE MOBILE APP:                  ║
+  ║  Kopiere diesen Key und füge ihn in der App ein:         ║
+  ║                                                          ║
+  ║  eyJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjEwMDo4Nzg3IiwidG9rZW4i...
+  ║                                                          ║
+  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║
+  ╚══════════════════════════════════════════════════════════╝
 ```
-
-> ⏱️ Der Code ist **10 Minuten gültig**. Danach einfach den Server neustarten für einen neuen Code.
 
 ---
 
@@ -137,21 +137,22 @@ Nach dem Start zeigt das Terminal einen **4-stelligen Code** in einer großen Bo
 
 1. **CodeForge-App** auf dem Handy öffnen
 2. Auf **»Verbinden«** tippen (unten rechts)
-3. Den **4-stelligen Code** eingeben
+3. Den **Base64 Connection Key** in das Eingabefeld einfügen
 4. Auf **»Verbinden«** tippen
 
-✨ **FERTIG!** Die App ist jetzt mit deinem Server verbunden und KI-Agenten können arbeiten!
+✨ **FERTIG!** Die App ist jetzt verschlüsselt mit deinem Server verbunden und alle CodeForge-Funktionen können remote genutzt werden!
 
 ---
 
 ### 🔧 Manuelle Verbindung (Alternative)
 
-Falls die automatische Kopplung nicht funktioniert (z.B. Handy und Server nicht im selben Netzwerk):
+Falls du die Verbindung manuell einrichten willst:
 
-1. In der App: **»Server-URL + Token«** wählen
+1. In der App: **»Server-URL + Token (Manuell)«** wählen
 2. Eintragen:
-   - **Server:** `http://DEINE-SERVER-IP:8787`
-   - **Token:** Aus dem Terminal (wird beim Start angezeigt)
+   - **Server-URL:** `http://DEINE-SERVER-IP:8787`
+   - **API-Token:** Dein generierter Token
+   - **Projektpfad:** `/root/codeforge-project`
 3. **Verbinden**
 
 ---

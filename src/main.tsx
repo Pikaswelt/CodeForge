@@ -10,7 +10,12 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
     if (connectPromise) return connectPromise;
     connectPromise = new Promise((resolve) => {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${proto}//${window.location.host}`;
+      // Include sync token from URL search params or localStorage
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token') || params.get('syncToken') || localStorage.getItem('agentWorkspace.syncToken') || '';
+      const wsUrl = token
+        ? `${proto}//${window.location.host}?token=${encodeURIComponent(token)}`
+        : `${proto}//${window.location.host}`;
       console.log('Connecting to sync WebSocket at', wsUrl);
       ws = new WebSocket(wsUrl);
 

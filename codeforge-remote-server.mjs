@@ -130,7 +130,7 @@ function startPairingBroadcast() {
       port: PORT,
       pairingCode,
       tokenRequired: Boolean(TOKEN),
-      version: '2.3.0',
+      version: '2.4.1',
       providers: Object.keys(providers),
       timestamp: Date.now(),
     });
@@ -581,7 +581,7 @@ async function handleDiscover(req, res) {
     ok: true,
     service: 'codeforge-remote',
     name: 'CodeForge Remote Server',
-    version: '2.3.0',
+    version: '2.4.1',
     localIp,
     port: PORT,
     tokenRequired: Boolean(TOKEN),
@@ -627,8 +627,27 @@ server.listen(PORT, HOST, () => {
     console.error('CODEFORGE_TOKEN is not set. The API will reject all requests.');
   }
   const localIp = getLocalIp();
-  console.log(`CodeForge Remote Server v2.4.0 – http://${HOST}:${PORT}`);
+  console.log(`CodeForge Remote Server v2.4.1 – http://${HOST}:${PORT}`);
   console.log(`Entdeckbar unter: http://${getEffectivePublicIp()}:${PORT}`);
+
+  if (TOKEN) {
+    const connectionData = {
+      url: `http://${getEffectivePublicIp()}:${PORT}`,
+      token: TOKEN,
+      projectPath: process.env.CODEFORGE_PROJECT_PATH || process.cwd()
+    };
+    const connectionKey = Buffer.from(JSON.stringify(connectionData)).toString('base64');
+    console.log('');
+    console.log('  ╔══════════════════════════════════════════════════════════╗');
+    console.log('  ║  📱 CONNECTION KEY FÜR DIE MOBILE APP:                  ║');
+    console.log('  ║  Kopiere diesen Key und füge ihn in der App ein:         ║');
+    console.log('  ║                                                          ║');
+    console.log(`  ║  ${connectionKey}`);
+    console.log('  ║                                                          ║');
+    console.log('  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║');
+    console.log('  ╚══════════════════════════════════════════════════════════╝');
+    console.log('');
+  }
   
   // Auto-pairing mode
   if (AUTO_PAIR) {

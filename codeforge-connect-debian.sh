@@ -204,6 +204,19 @@ else
 fi
 echo ""
 
+# Connection Key für Mobile App
+CONNECTION_JSON="{\"url\":\"http://${IP}:${PORT}\",\"token\":\"${TOKEN}\",\"projectPath\":\"${PROJECT_PATH}\"}"
+CONNECTION_KEY=$(echo -n "$CONNECTION_JSON" | base64 | tr -d '\n\r')
+echo "  ╔══════════════════════════════════════════════════════════╗"
+echo "  ║  📱 CONNECTION KEY FÜR DIE MOBILE APP:                  ║"
+echo "  ║  Kopiere diesen Key und füge ihn in der App ein:         ║"
+echo "  ║                                                          ║"
+echo "  ║  $CONNECTION_KEY"
+echo "  ║                                                          ║"
+echo "  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║"
+echo "  ╚══════════════════════════════════════════════════════════╝"
+echo ""
+
 # Kopplungsmodus starten und Code abrufen
 PAIRING_RESPONSE=$(curl -fsS -X POST http://127.0.0.1:$PORT/pair/start 2>/dev/null || echo '{}')
 PAIRING_CODE=$(echo "$PAIRING_RESPONSE" | grep -o '"pairingCode":"[0-9]*"' | grep -o '[0-9]*' || echo "")
@@ -212,7 +225,7 @@ if [ -n "$PAIRING_CODE" ]; then
   EASY_SETUP_URL="http://${IP}:${PORT}/pair?code=${PAIRING_CODE}"
   echo "  ╔══════════════════════════════════════════════════════════╗"
   echo "  ║                                                        ║"
-  echo "  ║  📱 EASY SETUP – In die App einfügen:                  ║"
+  echo "  ║  📱 ALTERNATIVES AUTO-PAIRING (im selben Netzwerk):    ║"
   echo "  ║                                                        ║"
   echo "  ║  ${EASY_SETUP_URL}  ║"
   echo "  ║                                                        ║"
