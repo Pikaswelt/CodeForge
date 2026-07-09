@@ -9,10 +9,8 @@ import {
   ArrowRight,
   RefreshCw,
   Wifi,
-  Search,
   BookOpen,
   Radio,
-  KeyRound,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import type { MobileConnectionConfig, MobileConnectionType } from '../types';
@@ -108,15 +106,13 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
-  // Pairing state
-  const [pairingCode, setPairingCode] = useState('');
-  const [pairingUrl, setPairingUrl] = useState('');
-  const [pairingPhase, setPairingPhase] = useState<'enter-code' | 'scanning' | 'verifying' | 'found' | 'error'>('enter-code');
+  // Omni-Input: erkennt 4-stelligen Code ODER Easy-Setup-URL
+  const [omniInput, setOmniInput] = useState('');
+  const [pairingPhase, setPairingPhase] = useState<'enter' | 'scanning' | 'verifying' | 'found' | 'error'>('enter');
   const [pairingError, setPairingError] = useState('');
   const [foundServer, setFoundServer] = useState<DiscoveredServer | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const pairingInFlight = useRef(false);
-  const [submitTick, setSubmitTick] = useState(0);
 
   // Fast LAN discovery
   const quickScan = useCallback(async (): Promise<DiscoveredServer | null> => {
@@ -134,29 +130,53 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
     return results.find(Boolean) || null;
   }, []);
 
-  // Auto-submit when 4 digits entered (useEffect avoids stale closure)
-  // submitTrigger is bumped by the "Verbinden" button for manual trigger
+  // Parse omni-input: detect URL vs 4-digit code
+  const parseInput = (input: string): { type: 'url'; serverUrl: string; code: string } | { type: 'code'; code: string } | null => {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    
+    // Detect Easy-Setup-URL: http://IP:PORT/pair?code=XXXX
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      try {
+        const urlObj = new URL(trimmed);
+        const code = urlObj.searchParams.get('code') || '';
+        if (code && /^\d{4}$/.test(code)) {
+          const serverUrl = `${urlObj.protocol}//${urlObj.host}`;
+          return { type: 'url', serverUrl, code };
+        }
+      } catch {}
+    }
+    
+    // Detect 4-digit code
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length === 4) {
+      return { type: 'code', code: digits };
+    }
+    
+    return null;
+  };
+
+  // Auto-submit: useEffect that watches omniInput and pairingPhase
   useEffect(() => {
-    if (pairingCode.length !== 4 || !/^\d{4}$/.test(pairingCode)) return;
-    if (pairingPhase !== 'enter-code' && pairingPhase !== 'error') return;
+    const parsed = parseInput(omniInput);
+    if (!parsed) return;
+    if (pairingPhase !== 'enter' && pairingPhase !== 'error') return;
     if (pairingInFlight.current) return;
 
     pairingInFlight.current = true;
-    const code = pairingCode;
-    const url = pairingUrl;
 
     const doPair = async () => {
-      // Remote VPS: direct verify
-      if (url && url.trim()) {
+      if (parsed.type === 'url') {
+        // Easy-Setup URL → direkt verifizieren
         setPairingPhase('verifying');
         setPairingError('');
-        const cleanUrl = url.trim().replace(/\/+$/, '');
-        const result = await verifyPairingCode(cleanUrl, code);
+        const result = await verifyPairingCode(parsed.serverUrl, parsed.code);
         if (result.ok) {
+          setFoundServer({ ip: parsed.serverUrl.replace(/^https?:\/\//, ''), port: 0, name: 'Remote VPS', tokenRequired: true, providers: [] });
           setPairingPhase('found');
           setMobileConnectionConfig({
             type: 'vps',
-            vpsUrl: result.serverUrl || cleanUrl,
+            vpsUrl: result.serverUrl || parsed.serverUrl,
             vpsToken: result.token || '',
             vpsProjectPath: '/root/codeforge-project',
             connected: true,
@@ -171,39 +191,41 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
         return;
       }
 
-      // LAN scan + verify
-      setPairingPhase('scanning');
-      setPairingError('');
-      const server = await quickScan();
-      if (!server) {
-        setPairingPhase('error');
-        setPairingError('Kein Server im lokalen Netzwerk gefunden. Stelle sicher, dass PC und Handy im selben WLAN sind und der Kopplungsmodus auf dem PC aktiv ist.');
+      if (parsed.type === 'code') {
+        // 4-digit code → LAN scan + verify
+        setPairingPhase('scanning');
+        setPairingError('');
+        const server = await quickScan();
+        if (!server) {
+          setPairingPhase('error');
+          setPairingError('Kein Server im lokalen Netzwerk gefunden. Tipp: Kopiere den Easy-Setup-Link vom Server (http://...) und füge ihn hier ein.');
+          pairingInFlight.current = false;
+          return;
+        }
+        setFoundServer(server);
+        setPairingPhase('verifying');
+        const serverUrl = `http://${server.ip}:${server.port}`;
+        const result = await verifyPairingCode(serverUrl, parsed.code);
+        if (result.ok) {
+          setPairingPhase('found');
+          setMobileConnectionConfig({
+            type: 'vps',
+            vpsUrl: result.serverUrl || serverUrl,
+            vpsToken: result.token || '',
+            vpsProjectPath: '/root/codeforge-project',
+            connected: true,
+            connectedAt: Date.now(),
+          });
+          setTimeout(() => onClose(), 1500);
+        } else {
+          setPairingPhase('error');
+          setPairingError(result.error || 'Falscher Code.');
+        }
         pairingInFlight.current = false;
-        return;
       }
-      setFoundServer(server);
-      setPairingPhase('verifying');
-      const serverUrl = `http://${server.ip}:${server.port}`;
-      const result = await verifyPairingCode(serverUrl, code);
-      if (result.ok) {
-        setPairingPhase('found');
-        setMobileConnectionConfig({
-          type: 'vps',
-          vpsUrl: result.serverUrl || serverUrl,
-          vpsToken: result.token || '',
-          vpsProjectPath: '/root/codeforge-project',
-          connected: true,
-          connectedAt: Date.now(),
-        });
-        setTimeout(() => onClose(), 1500);
-      } else {
-        setPairingPhase('error');
-        setPairingError(result.error || 'Falscher Code. Bitte versuche es erneut.');
-      }
-      pairingInFlight.current = false;
     };
     doPair();
-  }, [pairingCode, pairingUrl, pairingPhase, submitTick]);
+  }, [omniInput, pairingPhase]);
 
   const testVpsConnection = async () => {
     if (!vpsUrl.trim()) {
@@ -273,7 +295,6 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
 
   const isConnected = mobileConnectionConfig?.connected;
 
-  // Connection health check
   useEffect(() => {
     if (!isConnected) return;
     const interval = setInterval(async () => {
@@ -321,16 +342,12 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               <p className="text-xs text-zinc-600 mt-0.5">
                 {isConnected
                   ? `Verbunden seit ${connectionDuration > 60 ? `${Math.floor(connectionDuration / 60)} Min` : `${connectionDuration} Sek`}`
-                  : 'Verbinde mit deinem PC/Laptop'}
+                  : 'Verbinde mit deinem PC/Server'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowTutorial(true)}
-              className="p-2 text-zinc-500 hover:text-amber-300 transition-colors"
-              title="Anleitung öffnen"
-            >
+            <button onClick={() => setShowTutorial(true)} className="p-2 text-zinc-500 hover:text-amber-300 transition-colors" title="Anleitung">
               <BookOpen className="w-5 h-5" />
             </button>
             <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white transition-colors">
@@ -351,65 +368,52 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                       ? mobileConnectionConfig.vpsUrl
                       : `${mobileConnectionConfig.sshUser}@${mobileConnectionConfig.sshHost}:${mobileConnectionConfig.sshPort}`}
                   </div>
-                  {mobileConnectionConfig.lastTestedAt && (
-                    <div className="text-[10px] text-emerald-500/60 mt-0.5">
-                      Zuletzt geprueft: vor {Math.floor((Date.now() - mobileConnectionConfig.lastTestedAt) / 1000)}s
-                    </div>
-                  )}
                 </div>
               </div>
-              <button
-                onClick={disconnect}
-                className="shrink-0 text-[11px] text-red-400 hover:text-red-300 border border-red-400/20 px-2.5 py-1 rounded-lg"
-              >
-                Trennen
-              </button>
+              <button onClick={disconnect} className="shrink-0 text-[11px] text-red-400 hover:text-red-300 border border-red-400/20 px-2.5 py-1 rounded-lg">Trennen</button>
             </div>
           </div>
         )}
 
         {!isConnected && step === 'select' && (
           <div className="space-y-4">
-            {/* Pairing mode - main CTA with inline code entry */}
+            {/* ⚡ Easy Setup – Omni-Input (URL oder 4-digit Code) */}
             <div className="rounded-xl border border-violet-400/30 bg-violet-400/5 p-4">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-xl bg-violet-400/15 border border-violet-400/30 flex items-center justify-center">
                   <Radio className="w-5 h-5 text-violet-300" />
                 </div>
                 <div>
-                  <div className="text-sm text-violet-200 font-semibold">⚡ Kopplungsmodus</div>
-                  <p className="text-[11px] text-violet-400/60">Code vom PC ablesen → hier eingeben → FERTIG!</p>
+                  <div className="text-sm text-violet-200 font-semibold">⚡ Easy Setup</div>
+                  <p className="text-[11px] text-violet-400/60">Link vom Server kopieren → hier einfügen → FERTIG!</p>
                 </div>
               </div>
-              <p className="text-[11px] text-zinc-500 leading-5 mb-3">
-                Führe auf deinem PC/Server <code className="text-zinc-300 bg-zinc-800/50 px-1 rounded">bash codeforge-connect.sh</code> aus und gib den 4-stelligen Code ein.
-              </p>
 
-              {/* Code input or loading states */}
-              {pairingPhase === 'enter-code' || pairingPhase === 'error' ? (
-                <div className="flex gap-2">
+              <div className="rounded-lg bg-black/30 border border-white/5 p-3 mb-3">
+                <p className="text-[10px] text-zinc-500 mb-1">Auf dem PC/Server ausführen:</p>
+                <code className="text-[12px] font-mono text-emerald-300 block">bash codeforge-connect.sh</code>
+                <p className="text-[10px] text-zinc-500 mt-2">Dann den <b>Easy Setup Link</b> kopieren und hier einfügen:</p>
+                <code className="text-[10px] font-mono text-zinc-400 block mt-1">http://DEINE-IP:8787/pair?code=1234</code>
+              </div>
+
+              {/* Omni-Input */}
+              {pairingPhase === 'enter' || pairingPhase === 'error' ? (
+                <div>
                   <input
                     type="text"
-                    inputMode="numeric"
-                    maxLength={4}
-                    value={pairingCode}
+                    inputMode="text"
+                    value={omniInput}
                     onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                      setPairingCode(val);
-                      if (pairingPhase === 'error') setPairingPhase('enter-code');
+                      setOmniInput(e.target.value);
+                      if (pairingPhase === 'error') setPairingPhase('enter');
                     }}
-                    className="input flex-1 text-center text-2xl tracking-[0.5em] font-mono py-3"
-                    placeholder="1234"
+                    className="input w-full text-sm font-mono py-3 px-3"
+                    placeholder="http://88.214.56.241:8787/pair?code=4821  oder  4821"
                     autoFocus
                   />
-                  <button
-                    onClick={() => { setSubmitTick((t) => t + 1); }}
-                    disabled={pairingCode.length !== 4}
-                    className="primary-button bg-violet-500 hover:bg-violet-400 disabled:opacity-30"
-                  >
-                    <Search className="w-4 h-4" />
-                    Verbinden
-                  </button>
+                  <p className="text-[9px] text-zinc-600 mt-1.5">
+                    🪄 Erkennt automatisch Easy-Setup-Links UND 4-stellige Codes
+                  </p>
                 </div>
               ) : pairingPhase === 'scanning' ? (
                 <div className="flex items-center justify-center gap-2 py-4 text-violet-200">
@@ -419,7 +423,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               ) : pairingPhase === 'verifying' ? (
                 <div className="flex items-center justify-center gap-2 py-4 text-violet-200">
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="text-sm">Prüfe Code...</span>
+                  <span className="text-sm">Prüfe Verbindung...</span>
                 </div>
               ) : pairingPhase === 'found' ? (
                 <div className="flex items-center justify-center gap-2 py-4 text-emerald-300">
@@ -430,69 +434,41 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
 
               {pairingPhase === 'error' && pairingError && (
                 <div className="rounded-lg border border-red-400/20 bg-red-400/5 p-2 mt-2">
-                  <p className="text-[10px] text-red-300 flex items-center gap-1"><X className="w-3 h-3" />{pairingError}</p>
-                  <button
-                    onClick={() => { setPairingPhase('enter-code'); setPairingError(''); setPairingCode(''); }}
-                    className="text-[10px] text-red-400 hover:text-red-300 underline mt-1"
-                  >
-                    Erneut versuchen
-                  </button>
+                  <p className="text-[10px] text-red-300 flex items-center gap-1"><X className="w-3 h-3 shrink-0" />{pairingError}</p>
+                  <button onClick={() => { setPairingPhase('enter'); setPairingError(''); setOmniInput(''); }}
+                    className="text-[10px] text-red-400 hover:text-red-300 underline mt-1">Erneut versuchen</button>
                 </div>
               )}
-
-              {/* Remote VPS fallback */}
-              <details className="mt-3">
-                <summary className="text-[10px] text-zinc-500 cursor-pointer hover:text-zinc-300">
-                  🔧 Server nicht im LAN? (Remote VPS)
-                </summary>
-                <div className="mt-2">
-                  <input
-                    value={pairingUrl}
-                    onChange={(e) => setPairingUrl(e.target.value)}
-                    className="input w-full text-xs"
-                    placeholder="http://DEINE-VPS-IP:8787"
-                  />
-                  <p className="text-[9px] text-zinc-600 mt-1">Gib die Server-URL deines VPS ein. Der Code wird dann direkt gegen diesen Server geprüft.</p>
-                </div>
-              </details>
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/5" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-[#141214] px-2 text-zinc-600">Oder manuell</span>
-              </div>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5" /></div>
+              <div className="relative flex justify-center text-xs"><span className="bg-[#141214] px-2 text-zinc-600">Oder manuell</span></div>
             </div>
 
-            <button
-              onClick={() => { setConnectionType('vps'); setStep('vps'); }}
-              className="w-full p-4 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-sky-400/30 hover:bg-sky-400/5 transition-all group"
-            >
+            <button onClick={() => { setConnectionType('vps'); setStep('vps'); }}
+              className="w-full p-4 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-sky-400/30 hover:bg-sky-400/5 transition-all group">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-sky-400/10 border border-sky-400/20 flex items-center justify-center shrink-0">
                   <Server className="w-5 h-5 text-sky-300" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-white font-medium">Server-URL + Token (VPS/Remote)</div>
-                  <p className="text-[11px] text-zinc-500 mt-1">Für entfernte Server mit fester IP</p>
+                  <div className="text-sm text-white font-medium">Server-URL + Token (Manuell)</div>
+                  <p className="text-[11px] text-zinc-500 mt-1">IP und Token direkt eingeben</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0 mt-1 group-hover:text-sky-300 transition-colors" />
               </div>
             </button>
 
-            <button
-              onClick={() => { setConnectionType('ssh'); setStep('ssh'); }}
-              className="w-full p-4 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-emerald-400/30 hover:bg-emerald-400/5 transition-all group"
-            >
+            <button onClick={() => { setConnectionType('ssh'); setStep('ssh'); }}
+              className="w-full p-4 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-emerald-400/30 hover:bg-emerald-400/5 transition-all group">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-400/10 border border-emerald-400/20 flex items-center justify-center shrink-0">
                   <Monitor className="w-5 h-5 text-emerald-300" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm text-white font-medium">SSH (Experte)</div>
-                  <p className="text-[11px] text-zinc-500 mt-1">Direkte SSH-Verbindung zum Server</p>
+                  <p className="text-[11px] text-zinc-500 mt-1">Direkte SSH-Verbindung</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0 mt-1 group-hover:text-emerald-300 transition-colors" />
               </div>
@@ -508,26 +484,21 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               <span className="text-zinc-700">|</span>
               <span className="text-sm text-white font-medium">Server verbinden</span>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
-              <p className="text-[11px] text-zinc-500 leading-5 mb-3">Auf dem Linux-PC ausführen:</p>
-              <pre className="text-[11px] font-mono text-zinc-300 bg-black/30 p-3 rounded-lg border border-white/5 overflow-x-auto">bash codeforge-connect.sh</pre>
-            </div>
             <div>
               <label className="text-[11px] text-zinc-400 block mb-1.5">Server-URL *</label>
-              <input value={vpsUrl} onChange={(e) => setVpsUrl(e.target.value)} className="input w-full" placeholder="z.B. http://192.168.1.100:8787" />
+              <input value={vpsUrl} onChange={(e) => setVpsUrl(e.target.value)} className="input w-full" placeholder="http://88.214.56.241:8787" />
             </div>
             <div>
-              <label className="text-[11px] text-zinc-400 block mb-1.5">API-Token (falls erforderlich)</label>
-              <input type="password" value={vpsToken} onChange={(e) => setVpsToken(e.target.value)} className="input w-full" placeholder="Token aus dem Terminal" />
+              <label className="text-[11px] text-zinc-400 block mb-1.5">API-Token</label>
+              <input type="password" value={vpsToken} onChange={(e) => setVpsToken(e.target.value)} className="input w-full" placeholder="Token" />
             </div>
             <div>
-              <label className="text-[11px] text-zinc-400 block mb-1.5">Projektpfad auf Server</label>
+              <label className="text-[11px] text-zinc-400 block mb-1.5">Projektpfad</label>
               <input value={vpsProjectPath} onChange={(e) => setVpsProjectPath(e.target.value)} className="input w-full" placeholder="/root/codeforge-project" />
             </div>
             {testResult && (
               <div className={`text-[12px] leading-5 p-3 rounded-lg border ${testResult.ok ? 'bg-emerald-400/5 border-emerald-400/20 text-emerald-200' : 'bg-red-400/5 border-red-400/20 text-red-300'}`}>
-                {testResult.ok ? <CheckCircle2 className="w-4 h-4 inline mr-2" /> : <X className="w-4 h-4 inline mr-2" />}
-                {testResult.message}
+                {testResult.ok ? <CheckCircle2 className="w-4 h-4 inline mr-2" /> : <X className="w-4 h-4 inline mr-2" />}{testResult.message}
               </div>
             )}
             <div className="flex gap-3 pt-2">
@@ -550,36 +521,17 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               <span className="text-sm text-white font-medium">SSH-Verbindung</span>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="text-[11px] text-zinc-400 block mb-1.5">SSH-Host *</label>
-                <input value={sshHost} onChange={(e) => setSshHost(e.target.value)} className="input w-full" placeholder="z.B. 192.168.1.100" />
-              </div>
-              <div>
-                <label className="text-[11px] text-zinc-400 block mb-1.5">Port</label>
-                <input type="number" value={sshPort} onChange={(e) => setSshPort(Number(e.target.value))} className="input w-full" placeholder="22" />
-              </div>
+              <div className="col-span-2"><label className="text-[11px] text-zinc-400 block mb-1.5">SSH-Host *</label><input value={sshHost} onChange={(e) => setSshHost(e.target.value)} className="input w-full" placeholder="192.168.1.100" /></div>
+              <div><label className="text-[11px] text-zinc-400 block mb-1.5">Port</label><input type="number" value={sshPort} onChange={(e) => setSshPort(Number(e.target.value))} className="input w-full" placeholder="22" /></div>
             </div>
-            <div>
-              <label className="text-[11px] text-zinc-400 block mb-1.5">Benutzername</label>
-              <input value={sshUser} onChange={(e) => setSshUser(e.target.value)} className="input w-full" placeholder="root" />
-            </div>
-            <div>
-              <label className="text-[11px] text-zinc-400 block mb-1.5">SSH-Key (optional)</label>
-              <input value={sshKey} onChange={(e) => setSshKey(e.target.value)} className="input w-full" placeholder="z.B. /home/user/.ssh/id_rsa" />
-            </div>
-            <div>
-              <label className="text-[11px] text-zinc-400 block mb-1.5">Projektpfad auf Zielrechner</label>
-              <input value={sshProjectPath} onChange={(e) => setSshProjectPath(e.target.value)} className="input w-full" placeholder="~/codeforge-project" />
-            </div>
-            <button onClick={saveSshConfig} disabled={!sshHost.trim()} className="primary-button w-full">
-              <CheckCircle2 className="w-4 h-4" />Verbinden
-            </button>
+            <div><label className="text-[11px] text-zinc-400 block mb-1.5">Benutzername</label><input value={sshUser} onChange={(e) => setSshUser(e.target.value)} className="input w-full" placeholder="root" /></div>
+            <div><label className="text-[11px] text-zinc-400 block mb-1.5">SSH-Key (optional)</label><input value={sshKey} onChange={(e) => setSshKey(e.target.value)} className="input w-full" placeholder="/home/user/.ssh/id_rsa" /></div>
+            <div><label className="text-[11px] text-zinc-400 block mb-1.5">Projektpfad</label><input value={sshProjectPath} onChange={(e) => setSshProjectPath(e.target.value)} className="input w-full" placeholder="~/codeforge-project" /></div>
+            <button onClick={saveSshConfig} disabled={!sshHost.trim()} className="primary-button w-full"><CheckCircle2 className="w-4 h-4" />Verbinden</button>
           </div>
         )}
 
-        <AnimatePresence>
-          {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
-        </AnimatePresence>
+        <AnimatePresence>{showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}</AnimatePresence>
       </motion.div>
     </motion.div>
   );

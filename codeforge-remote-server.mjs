@@ -23,6 +23,8 @@ let pairingCode = '';
 let pairingBroadcastInterval = null;
 let udpSocket = null;
 let udpEaccesLogged = false;
+let pairingFailCount = 0;
+let pairingBlockedUntil = 0;
 
 const providers = {
   antigravity: { command: 'agy', candidates: ['agy', '/root/.local/bin/agy', '/usr/local/bin/agy', '/usr/bin/agy'], versionArgs: ['--version'] },
@@ -38,6 +40,10 @@ function getLocalIp() {
     .flat()
     .filter((iface) => iface && !iface.internal && iface.family === 'IPv4')
     .map((iface) => iface.address)[0] || HOST;
+}
+
+function getEffectivePublicIp() {
+  return process.env.CODEFORGE_PUBLIC_IP || getLocalIp();
 }
 
 function getHostname() {
@@ -100,9 +106,18 @@ function startPairingBroadcast() {
   udpSocket = dgram.createSocket('udp4');
   udpSocket.bind(PAIRING_PORT, () => {
     udpSocket.setBroadcast(true);
-    console.log(`🔗 Kopplungsmodus aktiv – Code: ${pairingCode}`);
-    console.log(`   Broadcast auf UDP ${PAIRING_PORT} alle 2 Sekunden`);
-    console.log(`   Server: http://${localIp}:${PORT}`);
+    const easySetupUrl = `http://${getEffectivePublicIp()}:${PORT}/pair?code=${pairingCode}`;
+    console.log('');
+    console.log('  ╔══════════════════════════════════════════════════════════╗');
+    console.log('  ║  📱 EASY SETUP – In die App einfügen:                   ║');
+    console.log('  ║                                                        ║');
+    console.log(`  ║  ${easySetupUrl}  ║`);
+    console.log('  ║                                                        ║');
+    console.log('  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║');
+    console.log('  ╚══════════════════════════════════════════════════════════╝');
+    console.log('');
+    console.log(`   🔢 Kopplungscode: ${pairingCode}  ⏱️  ${PAIRING_AUTO_STOP_MINUTES} Min gültig`);
+    console.log(`   📡 UDP-Broadcast auf Port ${PAIRING_PORT} (LAN-Discovery)`);
   });
 
   const broadcastMessage = () => {
@@ -155,8 +170,8 @@ function stopPairingBroadcast() {
 }
 
 function getPairingQRData() {
-  const localIp = getLocalIp();
-  const url = `http://${localIp}:${PORT}/pair?code=${pairingCode}`;
+  const publicIp = getEffectivePublicIp();
+  const url = `http://${publicIp}:${PORT}/pair?code=${pairingCode}`;
   return {
     url,
     qrContent: url,
@@ -173,22 +188,34 @@ function getPairingQRData() {
 async function handlePairing(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
-  // GET /pair?code=XXXX – return QR data or verify code
+  // GET /pair?code=XXXX – return QR data or verify code (rate-limited)
   if (req.method === 'GET') {
     const code = url.searchParams.get('code');
     if (!pairingMode) {
       return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv. Starte ihn mit POST /pair/start' });
     }
     if (code) {
+      // Same rate limiting as POST /pair/verify
+      if (Date.now() < pairingBlockedUntil) {
+        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. Bitte warte 30 Sekunden.' });
+      }
       if (code === pairingCode) {
+        pairingFailCount = 0;
+        pairingBlockedUntil = 0;
         return json(res, 200, {
           ok: true,
           paired: true,
-          serverUrl: `http://${getLocalIp()}:${PORT}`,
+          serverUrl: `http://${getEffectivePublicIp()}:${PORT}`,
           token: TOKEN || null,
           providers: Object.keys(providers),
           message: 'Code korrekt! Verwende diese Daten für die Verbindung.',
         });
+      }
+      pairingFailCount++;
+      if (pairingFailCount >= 5) {
+        pairingBlockedUntil = Date.now() + 30_000;
+        pairingFailCount = 0;
+        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. 30 Sekunden Sperre.' });
       }
       return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
     }
@@ -213,8 +240,11 @@ async function handlePairing(req, res) {
     return json(res, 200, { ok: true, message: 'Kopplungsmodus beendet.' });
   }
 
-  // POST /pair/verify – verify code and return connection config
+  // POST /pair/verify – verify code and return connection config (rate-limited)
   if (req.method === 'POST' && url.pathname === '/pair/verify') {
+    if (Date.now() < pairingBlockedUntil) {
+      return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. Bitte warte 30 Sekunden.' });
+    }
     let body;
     try { body = JSON.parse(await readBody(req)); } catch {
       return json(res, 400, { ok: false, error: 'Invalid JSON.' });
@@ -223,11 +253,19 @@ async function handlePairing(req, res) {
       return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv.' });
     }
     if (body.code !== pairingCode) {
+      pairingFailCount++;
+      if (pairingFailCount >= 5) {
+        pairingBlockedUntil = Date.now() + 30_000;
+        pairingFailCount = 0;
+        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. 30 Sekunden Sperre.' });
+      }
       return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
     }
+    pairingFailCount = 0;
+    pairingBlockedUntil = 0;
     return json(res, 200, {
       ok: true,
-      serverUrl: `http://${getLocalIp()}:${PORT}`,
+      serverUrl: `http://${getEffectivePublicIp()}:${PORT}`,
       token: TOKEN || body.token || '',
       pairingCode,
       serverName: getHostname(),
@@ -591,7 +629,6 @@ server.listen(PORT, HOST, () => {
   const localIp = getLocalIp();
   console.log(`CodeForge Remote Server v2.3.0 – http://${HOST}:${PORT}`);
   console.log(`Entdeckbar unter: http://${localIp}:${PORT}`);
-  console.log(`Kopplungsmodus starten: POST /pair/start`);
   
   // Auto-pairing mode
   if (AUTO_PAIR) {
