@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X as XIcon, Wifi } from 'lucide-react';
+import { Menu, X as XIcon, Wifi, WifiOff } from 'lucide-react';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
@@ -34,6 +34,7 @@ function AppLayout() {
     mobileMode,
     mobileConnectionConfig,
     setMobileConnectionConfig,
+    setMobileMode,
   } = useAppContext();
   const [showSettings, setShowSettings] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -123,6 +124,33 @@ function AppLayout() {
 
   const isMobileMode = mobileMode;
 
+  // Live health polling for mobile VPS connection
+  const [connectionAlive, setConnectionAlive] = useState(true);
+  useEffect(() => {
+    if (!mobileMode || !mobileConnectionConfig?.connected || mobileConnectionConfig.type !== 'vps' || !mobileConnectionConfig.vpsUrl) {
+      return;
+    }
+    const checkHealth = async () => {
+      try {
+        const url = `${mobileConnectionConfig.vpsUrl}/discover`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          setConnectionAlive(true);
+          setMobileConnectionConfig({ ...mobileConnectionConfig, lastTestedAt: Date.now() });
+        } else {
+          setConnectionAlive(false);
+        }
+      } catch {
+        setConnectionAlive(false);
+      }
+    };
+    // Check immediately
+    checkHealth();
+    // Then every 10 seconds
+    const interval = setInterval(checkHealth, 10000);
+    return () => clearInterval(interval);
+  }, [mobileMode, mobileConnectionConfig?.connected, mobileConnectionConfig?.vpsUrl]);
+
   return (
     <div
       data-theme={cssTheme}
@@ -195,11 +223,22 @@ function AppLayout() {
         {mobileMode && mobileConnectionConfig?.connected && (
           <button
             onClick={() => setMobileConnectionConfig({ ...mobileConnectionConfig, connected: false })}
-            className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 backdrop-blur-md text-emerald-300 text-xs shadow-2xl hover:bg-emerald-400/20 transition-all"
+            className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md text-xs shadow-2xl transition-all ${
+              connectionAlive
+                ? 'border border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20'
+                : 'border border-red-400/20 bg-red-400/10 text-red-300 hover:bg-red-400/20'
+            }`}
             title={mobileConnectionConfig.type === 'vps' ? mobileConnectionConfig.vpsUrl : `${mobileConnectionConfig.sshUser}@${mobileConnectionConfig.sshHost}`}
           >
-            <Wifi className="w-3.5 h-3.5" />
-            Verbunden
+            <span className={`relative flex h-2 w-2 ${connectionAlive ? '' : 'animate-pulse'}`}>
+              <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                connectionAlive ? 'bg-emerald-400 animate-ping' : 'bg-red-400'
+              }`} />
+              <span className={`relative inline-flex h-2 w-2 rounded-full ${
+                connectionAlive ? 'bg-emerald-400' : 'bg-red-400'
+              }`} />
+            </span>
+            {connectionAlive ? <><Wifi className="w-3.5 h-3.5" /> Live</> : <><WifiOff className="w-3.5 h-3.5" /> Getrennt</>}
           </button>
         )}
       </div>
