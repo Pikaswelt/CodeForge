@@ -1,7 +1,7 @@
 {
   "name": "codeforge-desktop",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.18",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "CodeForge",
   "type": "module",
@@ -14,16 +14,24 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "discord-rpc": "^4.0.1",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "node-pty": "^1.1.0",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1"
+    "react-dom": "^19.0.1",
+    "ws": "^8.21.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^22.14.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
-    "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.3",
@@ -37,6 +45,7 @@
     "wait-on": "^8.0.3"
   },
   "build": {
+    "npmRebuild": false,
     "appId": "app.codeforge.desktop",
     "productName": "CodeForge",
     "artifactName": "CodeForge-Setup-${version}.${ext}",
@@ -54,14 +63,14 @@
       "icon": "assets/codeforge.ico"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
       "installerIcon": "assets/codeforge.ico",
       "uninstallerIcon": "assets/codeforge.ico",
       "installerHeaderIcon": "assets/codeforge.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "runAfterFinish": false,
+      "runAfterFinish": true,
       "shortcutName": "CodeForge",
       "menuCategory": "CodeForge"
     }

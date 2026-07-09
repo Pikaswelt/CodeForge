@@ -22,5 +22,17 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "release",
+    "release-fixed*",
+    "release-proper*",
+    "release-real*",
+    "release-copytool*",
+    "release-nocopy*",
+    "out",
+    "build"
+  ]
 }
