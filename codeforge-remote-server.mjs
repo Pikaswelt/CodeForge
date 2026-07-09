@@ -1,0 +1,283 @@
+#!/usr/bin/env node
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { existsSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+
+const PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
+const HOST = process.env.HOST || process.env.CODEFORGE_HOST || '0.0.0.0';
+const TOKEN = process.env.CODEFORGE_TOKEN || '';
+const MAX_PROMPT_CHARS = Number(process.env.CODEFORGE_MAX_PROMPT_CHARS || 100_000);
+
+const providers = {
+  antigravity: { command: 'agy', candidates: ['agy', '/root/.local/bin/agy', '/usr/local/bin/agy', '/usr/bin/agy'], versionArgs: ['--version'] },
+  openai: { command: 'codex', candidates: ['codex', '/root/.local/bin/codex', '/usr/local/bin/codex', '/usr/bin/codex'], versionArgs: ['--version'] },
+};
+
+function json(res, status, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+  });
+  res.end(body);
+}
+
+function unauthorized(res) {
+  json(res, 401, { ok: false, error: 'Unauthorized. Set CODEFORGE_TOKEN on the server and use it in the app.' });
+}
+
+function isAuthorized(req) {
+  if (!TOKEN) return false;
+  const header = req.headers.authorization || '';
+  return header === `Bearer ${TOKEN}`;
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > MAX_PROMPT_CHARS + 20_000) {
+        reject(new Error('Request body too large.'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+function accessToCodexSandbox(access) {
+  if (access === 'read-only') return 'read-only';
+  if (access === 'full') return 'danger-full-access';
+  return 'workspace-write';
+}
+
+function normalizeReasoningEffort(value) {
+  return ['low', 'medium', 'high'].includes(value) ? value : 'medium';
+}
+
+function resolveCommand(provider) {
+  for (const candidate of provider.candidates || [provider.command]) {
+    if (candidate.includes('/') && existsSync(candidate)) return candidate;
+  }
+  return provider.command;
+}
+
+function buildPrompt(systemPrompt, prompt, access, projectPath) {
+  const accessInstruction =
+    access === 'read-only'
+      ? 'WICHTIG: Arbeite ausschliesslich lesend. Veraendere keine Dateien und fuehre keine destruktiven Befehle aus.'
+      : access === 'workspace-write'
+        ? `WICHTIG: Veraendere nur Dateien innerhalb dieses Projektordners: ${projectPath}`
+        : 'Du darfst die fuer die Aufgabe erforderlichen Werkzeuge verwenden.';
+  const system = String(systemPrompt || '').trim();
+  return [accessInstruction, system ? `System-Prompt:\n${system}` : '', prompt].filter(Boolean).join('\n\n');
+}
+
+function buildAgentCommand(providerId, model, prompt, access, projectPath, reasoningEffort) {
+  const args = [];
+  let stdin = '';
+
+  if (providerId === 'antigravity') {
+    args.push('-p', prompt, '--model', model, '--dangerously-skip-permissions');
+  } else if (providerId === 'openai') {
+    args.push(
+      'exec',
+      '-',
+      '--model',
+      model,
+      '--cd',
+      projectPath,
+      '--color',
+      'never',
+      '--skip-git-repo-check',
+      '--config',
+      `model_reasoning_effort="${normalizeReasoningEffort(reasoningEffort)}"`,
+      '--sandbox',
+      accessToCodexSandbox(access),
+    );
+    if (access === 'full') args.push('--dangerously-bypass-approvals-and-sandbox');
+    stdin = prompt;
+  }
+
+  return { args, stdin };
+}
+
+function runCapture(command, args, options = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: { 
+        HOME: process.env.HOME || '/root', 
+        USER: process.env.USER || 'root', 
+        ...process.env, 
+        FORCE_COLOR: '0', 
+        NO_COLOR: '1' 
+      },
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+      options.onOutput?.(chunk, 'stdout');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+      options.onOutput?.(chunk, 'stderr');
+    });
+    child.on('error', (error) => resolve({ ok: false, stdout, stderr, error: error.message, exitCode: -1 }));
+    child.on('close', (exitCode) => {
+      resolve({
+        ok: exitCode === 0,
+        stdout,
+        stderr,
+        error: exitCode === 0 ? '' : stderr.trim() || `Process exited with code ${exitCode}.`,
+        exitCode: exitCode ?? -1,
+      });
+    });
+    if (options.stdin) child.stdin.write(options.stdin);
+    child.stdin.end();
+    setTimeout(() => {
+      if (!child.killed) child.kill('SIGTERM');
+    }, options.timeoutMs || 10 * 60 * 1000).unref();
+  });
+}
+
+async function handleHealth(req, res) {
+  if (!isAuthorized(req)) return unauthorized(res);
+  json(res, 200, {
+    ok: true,
+    name: 'CodeForge Remote Server',
+    providers: Object.fromEntries(
+      Object.entries(providers).map(([id, provider]) => [id, { command: resolveCommand(provider) }]),
+    ),
+    tokenConfigured: Boolean(TOKEN),
+  });
+}
+
+async function handleRun(req, res) {
+  if (!isAuthorized(req)) return unauthorized(res);
+
+  let input;
+  try {
+    input = JSON.parse(await readBody(req));
+  } catch (error) {
+    return json(res, 400, { ok: false, error: error.message || 'Invalid JSON.' });
+  }
+
+  const providerId = String(input.provider || 'openai');
+  const provider = providers[providerId];
+  const prompt = String(input.prompt || '').trim();
+  const projectPath = String(input.projectPath || '').trim();
+  const access = ['read-only', 'workspace-write', 'full'].includes(input.access) ? input.access : 'workspace-write';
+  const model = String(input.model || (providerId === 'openai' ? 'gpt-5.5' : 'default'));
+  const reasoningEffort = normalizeReasoningEffort(input.reasoningEffort);
+  const outputLimit = Math.max(1000, Math.min(50_000, Number(input.outputLimit || 12_000)));
+  const wantsStream = input.stream === true || /\bapplication\/x-ndjson\b/i.test(String(req.headers.accept || ''));
+
+  if (!provider) return json(res, 400, { ok: false, error: 'Unknown provider.' });
+  if (!prompt || prompt.length > MAX_PROMPT_CHARS) return json(res, 400, { ok: false, error: 'Prompt is empty or too large.' });
+  if (!projectPath || !existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
+    return json(res, 400, { ok: false, error: 'Project path does not exist on the server.' });
+  }
+
+  const finalPrompt = buildPrompt(input.systemPrompt, prompt, access, projectPath);
+  const { args, stdin } = buildAgentCommand(providerId, model, finalPrompt, access, projectPath, reasoningEffort);
+  const startedAt = Date.now();
+  const runId = randomUUID();
+
+  if (wantsStream) {
+    res.writeHead(200, {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-cache',
+      'x-accel-buffering': 'no',
+      'access-control-allow-origin': '*',
+    });
+    const writeEvent = (payload) => res.write(`${JSON.stringify(payload)}\n`);
+    writeEvent({ type: 'start', ok: true, runId, provider: providerId, startedAt });
+    const result = await runCapture(resolveCommand(provider), args, {
+      cwd: projectPath,
+      stdin,
+      onOutput: (chunk, stream) => writeEvent({ type: 'output', runId, stream, chunk }),
+    });
+    const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+    writeEvent({
+      type: 'done',
+      ok: result.ok,
+      runId,
+      exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+      output: output.slice(0, outputLimit),
+      truncated: output.length > outputLimit,
+      error: result.error,
+    });
+    res.end();
+    return;
+  }
+
+  const result = await runCapture(resolveCommand(provider), args, { cwd: projectPath, stdin });
+  const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+
+  json(res, result.ok ? 200 : 500, {
+    ok: result.ok,
+    runId,
+    exitCode: result.exitCode,
+    durationMs: Date.now() - startedAt,
+    output: output.slice(0, outputLimit),
+    truncated: output.length > outputLimit,
+    error: result.error,
+  });
+}
+
+async function handleUsage(req, res) {
+  if (!isAuthorized(req)) return unauthorized(res);
+  try {
+    const disk = await runCapture('df', ['-h', '/']);
+    const mem = await runCapture('free', ['-h']);
+    const cpu = await runCapture('uptime', []);
+    let agyOutput = 'Not available';
+    try {
+      const agyVersion = await runCapture('agy', ['--version']);
+      agyOutput = agyVersion.stdout.trim() || agyVersion.stderr.trim() || 'Not available';
+    } catch (_) {}
+    
+    const usageOutput = [
+      `=== SYSTEM STATUS ===`,
+      cpu.stdout.trim(),
+      `\n=== MEMORY USAGE ===`,
+      mem.stdout.trim(),
+      `\n=== DISK SPACE ===`,
+      disk.stdout.trim(),
+      `\n=== ANTIGRAVITY VERSION ===`,
+      agyOutput
+    ].join('\n');
+    
+    json(res, 200, { ok: true, output: usageOutput });
+  } catch (error) {
+    json(res, 500, { ok: false, error: error.message });
+  }
+}
+
+const server = createServer((req, res) => {
+  if (req.method === 'OPTIONS') return json(res, 204, {});
+  if (req.method === 'GET' && req.url === '/health') return void handleHealth(req, res);
+  if (req.method === 'GET' && req.url === '/usage') return void handleUsage(req, res);
+  if (req.method === 'POST' && req.url === '/run') return void handleRun(req, res);
+  json(res, 404, { ok: false, error: 'Not found.' });
+});
+
+server.listen(PORT, HOST, () => {
+  if (!TOKEN) {
+    console.error('CODEFORGE_TOKEN is not set. The API will reject all requests.');
+  }
+  console.log(`CodeForge Remote Server listening on http://${HOST}:${PORT}`);
+});

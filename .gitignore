@@ -2,6 +2,9 @@ node_modules/
 build/
 dist/
 release/
+release-*/
+checkpoints/
+output/
 coverage/
 .DS_Store
 *.log
