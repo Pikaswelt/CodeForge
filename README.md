@@ -98,6 +98,8 @@ curl -X POST http://localhost:8787/pair/start
 - **SSH-Zugang** als `root`
 - Die **CodeForge-App** auf deinem Handy (Android APK aus den [Releases](https://github.com/Pikaswelt/CodeForge/releases))
 
+> ℹ️ **Kein GitHub-Account nötig** – Das Repo ist public. Der `git clone` unten funktioniert ohne Token oder Login.
+
 ---
 
 ### 🚀 Schritt 1 – Mit dem Server verbinden
