@@ -209,17 +209,17 @@ PAIRING_RESPONSE=$(curl -fsS -X POST http://127.0.0.1:$PORT/pair/start 2>/dev/nu
 PAIRING_CODE=$(echo "$PAIRING_RESPONSE" | grep -o '"pairingCode":"[0-9]*"' | grep -o '[0-9]*' || echo "")
 
 if [ -n "$PAIRING_CODE" ]; then
-  echo "  ╔══════════════════════════════════════════════════╗"
-  echo "  ║                                                  ║"
-  echo "  ║     📱 DEIN KOPPLUNGSCODE:                       ║"
-  echo "  ║                                                  ║"
-  printf "  ║            ✨  %s  ✨                       ║\n" "$PAIRING_CODE"
-  echo "  ║                                                  ║"
-  echo "  ║  → In der CodeForge-App eingeben                 ║"
-  echo "  ║  → Verbinden → Code eintippen → FERTIG!          ║"
-  echo "  ║                                                  ║"
-  echo "  ╚══════════════════════════════════════════════════╝"
+  EASY_SETUP_URL="http://${IP}:${PORT}/pair?code=${PAIRING_CODE}"
+  echo "  ╔══════════════════════════════════════════════════════════╗"
+  echo "  ║                                                        ║"
+  echo "  ║  📱 EASY SETUP – In die App einfügen:                  ║"
+  echo "  ║                                                        ║"
+  echo "  ║  ${EASY_SETUP_URL}  ║"
+  echo "  ║                                                        ║"
+  echo "  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║"
+  echo "  ╚══════════════════════════════════════════════════════════╝"
   echo ""
+  echo "  🔢 Alternativ nur den Code: ${PAIRING_CODE}"
   echo "  ⏱️  Code gültig für 10 Minuten"
 else
   echo "  ⚠ Kopplungsmodus konnte nicht automatisch gestartet werden."

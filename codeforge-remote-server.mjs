@@ -627,8 +627,8 @@ server.listen(PORT, HOST, () => {
     console.error('CODEFORGE_TOKEN is not set. The API will reject all requests.');
   }
   const localIp = getLocalIp();
-  console.log(`CodeForge Remote Server v2.3.0 – http://${HOST}:${PORT}`);
-  console.log(`Entdeckbar unter: http://${localIp}:${PORT}`);
+  console.log(`CodeForge Remote Server v2.4.0 – http://${HOST}:${PORT}`);
+  console.log(`Entdeckbar unter: http://${getEffectivePublicIp()}:${PORT}`);
   
   // Auto-pairing mode
   if (AUTO_PAIR) {
