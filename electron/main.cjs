@@ -6,6 +6,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const DiscordRPC = require('discord-rpc');
 const { autoUpdater } = require('electron-updater');
+const { setupUpdater } = require('./updater.cjs');
+let updater = null;
 
 const http = require('node:http');
 const os = require('node:os');
@@ -799,6 +801,13 @@ const PROVIDERS = {
     installCommand: 'npm install -g opencode-ai@latest',
     installUrl: 'https://opencode.ai/docs/',
   },
+  freebuff: {
+    command: 'freebuff',
+    label: 'FreeBuff',
+    versionArgs: ['--version'],
+    installCommand: 'npm install -g freebuff',
+    installUrl: 'https://github.com/FreeBuff/FreeBuff',
+  },
 };
 
 const USAGE_PROBES = {
@@ -830,6 +839,9 @@ const USAGE_PROBES = {
   opencode: [
     ['stats'],
     ['auth', 'list'],
+  ],
+  freebuff: [
+    ['--version'],
   ],
 };
 
@@ -864,6 +876,7 @@ const MODEL_ALLOWLIST = {
   anthropic: new Set(['sonnet', 'opus', 'haiku', 'fable', 'claude-sonnet-4-6', 'claude-opus-4-6']),
   cursor: new Set(['default', 'gpt-5.5', 'claude-sonnet-4-6']),
   opencode: new Set(['default', 'openai/gpt-5.5', 'anthropic/claude-sonnet-4-6', 'google/gemini-3.5-flash']),
+  freebuff: new Set(['default', 'deepseek-v4', 'kimi-k2.6', 'minimax-m2.7']),
 };
 
 function createWindow() {
@@ -1814,6 +1827,7 @@ function providerLabelForDiscord(provider) {
   if (provider === 'antigravity') return 'Antigravity';
   if (provider === 'cursor') return 'Cursor';
   if (provider === 'opencode') return 'OpenCode';
+  if (provider === 'freebuff') return 'FreeBuff';
   return provider;
 }
 
@@ -1880,6 +1894,10 @@ function buildAgentCommand(providerId, model, prompt, access, projectPath, reaso
     } else if (providerId === 'opencode') {
       args.push('run', '--dir', projectPath);
       if (model && model !== 'default') args.push('--model', model);
+    } else if (providerId === 'freebuff') {
+      // FreeBuff: runs non-interactively with -p, even in original-plugin mode
+      args.push('-p', prompt);
+      if (model && model !== 'default') args.push('--model', model);
     }
     return { args, stdin };
   }
@@ -1930,6 +1948,9 @@ function buildAgentCommand(providerId, model, prompt, access, projectPath, reaso
     if (model && model !== 'default') args.push('--model', model);
     if (access === 'full') args.push('--dangerously-skip-permissions');
     args.push(prompt);
+  } else if (providerId === 'freebuff') {
+    args.push('-p', prompt);
+    if (model && model !== 'default') args.push('--model', model);
   }
 
   return { args, stdin };
@@ -3413,9 +3434,9 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('system:status', getCliStatus);
-  ipcMain.handle('updates:status', () => getUpdateState());
-  ipcMain.handle('updates:check', checkForAppUpdates);
-  ipcMain.handle('updates:install', () => installReadyUpdate());
+  ipcMain.handle('updates:status', () => updater ? updater.getUpdateState() : {});
+  ipcMain.handle('updates:check', (_e, input) => updater ? updater.checkForAppUpdates(_e, input) : {});
+  ipcMain.handle('updates:install', () => updater ? updater.installUpdate() : false);
   ipcMain.handle('system:mcp-servers', () => getMcpServers());
   ipcMain.handle('system:install-cli', installCli);
   ipcMain.handle('usage:provider', (_event, providerId) => getProviderUsage(providerId));
@@ -3657,9 +3678,10 @@ app.whenReady().then(() => {
   ipcMain.on('window:close', () => mainWindow?.close());
 
   createWindow();
-  initializeAutoUpdates();
+  updater = setupUpdater({ app, mainWindow, autoUpdater });
+  updater.initializeAutoUpdates();
   setTimeout(() => {
-    void checkForAppUpdates(null, { manual: false });
+    void updater.checkForAppUpdates(null, { manual: false });
   }, 4000).unref?.();
 
   app.on('activate', () => {

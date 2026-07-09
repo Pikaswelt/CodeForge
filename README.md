@@ -1,4 +1,4 @@
-# CodeForge v2.1.0
+# CodeForge v2.2.0
 
 Desktop & Mobile App für lokale KI-Coding-Agenten. Verbinde dich mit deinem PC, Laptop oder VPS und lasse KI-Agenten direkt in deinen Projekten arbeiten.
 
@@ -10,7 +10,7 @@ React UI
   -> selected project folder
 ```
 
-## 🆕 Neu in v2.1.0
+## 🆕 Neu in v2.2.0
 
 - **📢 News-Popup** – Beim Start siehst du alle neuen Features auf einen Blick
 - **⌨️ CodeForge CLI** – Nutze CodeForge direkt vom Terminal: `npx codeforge-cli`
