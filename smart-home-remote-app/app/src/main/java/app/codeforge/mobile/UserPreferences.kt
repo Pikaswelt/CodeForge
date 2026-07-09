@@ -34,6 +34,10 @@ class UserPreferences(private val context: Context) {
         private val UI_TRANSPARENCY_KEY = intPreferencesKey("ui_transparency")
         private val BACKGROUND_ZOOM_KEY = intPreferencesKey("background_zoom")
         private val BACKGROUND_VIDEO_SOUND_KEY = booleanPreferencesKey("background_video_sound")
+        private val RESPONSE_DISPLAY_MODE_KEY = stringPreferencesKey("response_display_mode")
+        private val HAS_COMPLETED_SETUP_KEY = booleanPreferencesKey("has_completed_setup")
+        private val TOKEN_LIMIT_KEY = intPreferencesKey("token_limit")
+        private val TOTAL_TOKENS_USED_KEY = intPreferencesKey("total_tokens_used")
     }
 
     val pin: Flow<String> = context.dataStore.data.map { it[PIN_KEY] ?: "" }
@@ -58,6 +62,10 @@ class UserPreferences(private val context: Context) {
     val uiTransparency: Flow<Int> = context.dataStore.data.map { it[UI_TRANSPARENCY_KEY] ?: 18 }
     val backgroundZoom: Flow<Int> = context.dataStore.data.map { it[BACKGROUND_ZOOM_KEY] ?: 110 }
     val backgroundVideoSound: Flow<Boolean> = context.dataStore.data.map { it[BACKGROUND_VIDEO_SOUND_KEY] ?: false }
+    val responseDisplayMode: Flow<String> = context.dataStore.data.map { it[RESPONSE_DISPLAY_MODE_KEY] ?: "bullets" }
+    val hasCompletedSetup: Flow<Boolean> = context.dataStore.data.map { it[HAS_COMPLETED_SETUP_KEY] ?: false }
+    val tokenLimit: Flow<Int> = context.dataStore.data.map { it[TOKEN_LIMIT_KEY] ?: 0 }
+    val totalTokensUsed: Flow<Int> = context.dataStore.data.map { it[TOTAL_TOKENS_USED_KEY] ?: 0 }
 
     suspend fun savePin(pin: String) {
         context.dataStore.edit { it[PIN_KEY] = pin }
@@ -135,5 +143,28 @@ class UserPreferences(private val context: Context) {
 
     suspend fun saveBackgroundVideoSound(enabled: Boolean) {
         context.dataStore.edit { it[BACKGROUND_VIDEO_SOUND_KEY] = enabled }
+    }
+
+    suspend fun saveResponseDisplayMode(mode: String) {
+        context.dataStore.edit { it[RESPONSE_DISPLAY_MODE_KEY] = mode }
+    }
+
+    suspend fun saveHasCompletedSetup(value: Boolean) {
+        context.dataStore.edit { it[HAS_COMPLETED_SETUP_KEY] = value }
+    }
+
+    suspend fun saveTokenLimit(limit: Int) {
+        context.dataStore.edit { it[TOKEN_LIMIT_KEY] = limit.coerceIn(0, 1_000_000_000) }
+    }
+
+    suspend fun saveTotalTokensUsed(tokens: Int) {
+        context.dataStore.edit { it[TOTAL_TOKENS_USED_KEY] = tokens.coerceIn(0, 1_000_000_000) }
+    }
+
+    suspend fun addTokenUsage(tokens: Int) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[TOTAL_TOKENS_USED_KEY] ?: 0
+            prefs[TOTAL_TOKENS_USED_KEY] = (current + tokens).coerceIn(0, 1_000_000_000)
+        }
     }
 }

@@ -21,7 +21,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 enum class AppState {
-    LOADING, SETUP_PIN, LOGIN, DASHBOARD
+    LOADING, SETUP_PIN, LOGIN, SETUP_WIZARD, DASHBOARD
 }
 
 data class RemoteConfig(
@@ -73,10 +73,13 @@ class CodeForgeMobileViewModel(application: Application) : AndroidViewModel(appl
 
     private val _isAuthenticated = MutableStateFlow(false)
 
-    val appState: StateFlow<AppState> = combine(currentPin, _isAuthenticated) { pin, auth ->
+    val hasCompletedSetup: StateFlow<Boolean> = userPrefs.hasCompletedSetup.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val appState: StateFlow<AppState> = combine(currentPin, _isAuthenticated, hasCompletedSetup) { pin, auth, setupDone ->
         when {
             pin.isEmpty() -> AppState.SETUP_PIN
             !auth -> AppState.LOGIN
+            !setupDone -> AppState.SETUP_WIZARD
             else -> AppState.DASHBOARD
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AppState.LOADING)
@@ -132,6 +135,10 @@ class CodeForgeMobileViewModel(application: Application) : AndroidViewModel(appl
 
     private val _notice = MutableStateFlow<UiNotice?>(null)
     val notice: StateFlow<UiNotice?> = _notice
+
+    val responseDisplayMode: StateFlow<String> = userPrefs.responseDisplayMode.stateIn(viewModelScope, SharingStarted.Eagerly, "bullets")
+    val tokenLimit: StateFlow<Int> = userPrefs.tokenLimit.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    val totalTokensUsed: StateFlow<Int> = userPrefs.totalTokensUsed.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     fun setupPin(newPin: String) {
         viewModelScope.launch {
@@ -216,6 +223,36 @@ class CodeForgeMobileViewModel(application: Application) : AndroidViewModel(appl
     fun saveBackgroundVideoSound(enabled: Boolean) {
         viewModelScope.launch {
             userPrefs.saveBackgroundVideoSound(enabled)
+        }
+    }
+
+    fun saveResponseDisplayMode(mode: String) {
+        viewModelScope.launch {
+            userPrefs.saveResponseDisplayMode(mode)
+        }
+    }
+
+    fun completeSetup() {
+        viewModelScope.launch {
+            userPrefs.saveHasCompletedSetup(true)
+        }
+    }
+
+    fun saveTokenLimit(limit: Int) {
+        viewModelScope.launch {
+            userPrefs.saveTokenLimit(limit)
+        }
+    }
+
+    fun addTokenUsage(tokens: Int) {
+        viewModelScope.launch {
+            userPrefs.addTokenUsage(tokens)
+        }
+    }
+
+    fun resetTokenUsage() {
+        viewModelScope.launch {
+            userPrefs.saveTotalTokensUsed(0)
         }
     }
 
