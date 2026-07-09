@@ -77,6 +77,33 @@ const WINDOWS_GUIDE = {
   ],
 };
 
+const MOBILE_NOTE = {
+  title: 'Wichtig für Mobile-Nutzer',
+  icon: Wifi,
+  steps: [
+    {
+      title: 'Kopplungsmodus (einfachste Methode!)',
+      desc: 'Starte auf dem PC/Server den Kopplungsmodus (POST /pair/start oder automatisch beim Serverstart). Du erhältst einen 4-stelligen Code. In der App: "Verbinden" → "Kopplungsmodus starten" → Code eingeben → Fertig!',
+    },
+    {
+      title: 'Kein CLI nötig!',
+      desc: 'Im Mobile-Modus verbindest du dich mit einem entfernten PC/Server. Du brauchst keine CLI (agy, codex etc.) auf deinem Handy zu installieren. Alles läuft auf dem verbundenen Rechner.',
+    },
+    {
+      title: 'VPS / Remote-Server',
+      desc: 'Für Server ausserhalb deines Netzwerks: Nutze "Server-URL manuell eingeben" mit der IP des Servers und dem Token. Der Server zeigt beim Start die Verbindungsdaten an.',
+    },
+    {
+      title: 'Themen: Bilder & Videos hochladen',
+      desc: 'In den Einstellungen → Aussehen → "Eigenes Theme erstellen" kannst du mit "Hintergrundbild/-video wählen" Dateien von deinem Gerät auswählen. Bilder werden dauerhaft gespeichert, Videos temporär für die Sitzung.',
+    },
+    {
+      title: 'Verbindungsstatus',
+      desc: 'Ein grüner "Live"-Punkt unten rechts zeigt an: Du bist verbunden. Kein Punkt = nicht verbunden. Tippe auf "Verbinden" um die Einrichtung zu starten.',
+    },
+  ],
+};
+
 const TROUBLESHOOTING = [
   {
     title: 'LAN-Suche findet keinen Server',
@@ -124,6 +151,35 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="space-y-8">
+          {/* Mobile Note */}
+          <section>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-violet-400/10 border border-violet-400/20 flex items-center justify-center">
+                <Wifi className="w-4 h-4 text-violet-300" />
+              </div>
+              <div>
+                <h3 className="text-sm text-white font-medium">{MOBILE_NOTE.title}</h3>
+                <p className="text-[10px] text-zinc-600">Das musst du wissen</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-4 space-y-3">
+              {MOBILE_NOTE.steps.map((step, i) => (
+                <div key={i} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-6 h-6 rounded-full bg-violet-400/15 border border-violet-400/25 flex items-center justify-center shrink-0">
+                      <span className="text-[10px] text-violet-300 font-bold">{i + 1}</span>
+                    </div>
+                    {i < MOBILE_NOTE.steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
+                  </div>
+                  <div className="pb-3 min-w-0 flex-1">
+                    <div className="text-xs text-zinc-200 font-medium">{step.title}</div>
+                    <div className="text-[11px] text-zinc-500 mt-1 leading-5">{step.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
           {/* Linux Guide */}
           <section>
             <div className="flex items-center gap-3 mb-4">

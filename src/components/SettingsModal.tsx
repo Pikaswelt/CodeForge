@@ -1,7 +1,8 @@
-import { CheckCircle2, Download, Edit2, FolderOpen, Gauge, Image, KeyRound, Loader2, MessageSquare, Music2, Network, Palette, RefreshCw, Settings, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Edit2, FolderOpen, Gauge, Image, KeyRound, Loader2, MessageSquare, Music2, Network, Palette, RefreshCw, Settings, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RECOMMENDED_SYSTEM_PROMPT, useAppContext, type Theme } from '../AppContext';
+import TutorialModal from './TutorialModal';
 import type { McpServerInfo, ProviderId, ReasoningEffort, ResponseDisplayMode, WorkDisplayMode } from '../types';
 
 const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
@@ -10,6 +11,7 @@ const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
   { id: 'anthropic', label: 'Anthropic Claude', command: 'claude' },
   { id: 'cursor', label: 'Cursor Agent', command: 'agent / cursor-agent' },
   { id: 'opencode', label: 'OpenCode', command: 'opencode' },
+  { id: 'freebuff', label: 'FreeBuff', command: 'freebuff' },
 ];
 
 const THEMES: { id: Theme; label: string; mood: string; colors: string[] }[] = [
@@ -175,6 +177,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     feedUrl: '',
   });
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -344,6 +347,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               exit="exit"
               className="space-y-7"
             >
+              {!mobileMode && (
               <section>
                 <div className="section-label flex items-center justify-between">
                   CLI-Anbieter
@@ -434,6 +438,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 </div>
                 {statusNotice && <div className="mt-3 text-xs text-zinc-400">{statusNotice}</div>}
               </section>
+              )}
 
               <section>
                 <div className="section-label">Aktives Projekt</div>
@@ -446,6 +451,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 </button>
               </section>
 
+              {!mobileMode && (
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
@@ -463,7 +469,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   Bestimmt den Standardordner beim Start einer neuen Terminal-Sitzung. Ohne Pfad wird das aktive Projekt oder der Benutzerordner verwendet.
                 </p>
               </section>
+              )}
 
+              {!mobileMode && (
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
@@ -481,7 +489,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   Dieser Befehl wird beim Starten eines Terminals automatisch eingegeben, wenn die Option im Terminal-Tab aktiv ist.
                 </p>
               </section>
+              )}
 
+              {!mobileMode && (
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
@@ -515,7 +525,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   Fügt vor und nach jeder eingegebenen Nachricht automatisch diesen Text ein, wenn die Option im Terminal-Tab aktiv ist.
                 </p>
               </section>
+              )}
 
+              {!mobileMode && (
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
@@ -533,6 +545,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   Wenn eines dieser Wörter (kommagetrennt) im Terminal ausgegeben wird, wird eine Desktop-Benachrichtigung gesendet.
                 </p>
               </section>
+              )}
 
               <section>
                 <div className="section-label flex items-center justify-between">
@@ -605,7 +618,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   <div>
                     <div className="text-sm text-zinc-200">Mobile Modus aktivieren</div>
                     <div className="mt-0.5 text-[10px] text-zinc-600">
-                      Ermoeglicht das Einklappen der Seitenleiste auf kleinen Bildschirmen. Ein Menue-Button erscheint links oben.
+                      Optimiert die Oberflaeche fuer Smartphones. Verbinde dich mit einem PC oder VPS als KI-Server. CLI-Status und Terminal werden ausgeblendet.
                     </div>
                   </div>
                   <input
@@ -615,6 +628,15 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     className="h-4 w-4 accent-amber-300"
                   />
                 </label>
+                {mobileMode && (
+                  <button
+                    onClick={() => setShowTutorial(true)}
+                    className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-2.5 text-sm text-amber-200 hover:bg-amber-400/10 transition-colors"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    Verbindungsanleitung oeffnen
+                  </button>
+                )}
               </section>
 
               <section>
@@ -1170,8 +1192,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 </div>
               </section>
 
-               <section>
-                 <div className="section-label flex items-center gap-2">
+              {!mobileMode && (
+              <section>
+                <div className="section-label flex items-center gap-2">
                    <Gauge className="w-3.5 h-3.5" />
                    Antigravity Terminal-Nutzung
                  </div>
@@ -1196,7 +1219,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                    </div>
                  </div>
                </section>
+               )}
 
+               {!mobileMode && (
                <section>
                  <div className="section-label flex items-center gap-2">
                    <Terminal className="w-3.5 h-3.5 animate-pulse text-amber-400" />
@@ -1266,6 +1291,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                    </div>
                  </div>
                </section>
+               )}
 
               <section>
                 <div className="section-label flex items-center justify-between">
@@ -1328,6 +1354,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           </AnimatePresence>
         </div>
       </motion.div>
+      <AnimatePresence>
+        {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
+      </AnimatePresence>
     </motion.div>
   );
 }

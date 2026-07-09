@@ -1,0 +1,20 @@
+[Unit]
+Description=CodeForge Remote Server (incl. CLI API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/codeforge
+Environment=PORT=8787
+Environment=CODEFORGE_TOKEN=change-me-to-a-random-token
+Environment=CODEFORGE_HOST=0.0.0.0
+ExecStart=/usr/bin/node /opt/codeforge/codeforge-remote-server.mjs
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

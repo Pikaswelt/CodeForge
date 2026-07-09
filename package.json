@@ -1,17 +1,30 @@
 {
   "name": "codeforge-desktop",
   "private": true,
-  "version": "1.2.0",
+    "version": "2.1.0",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "CodeForge",
   "type": "module",
   "main": "electron/main.cjs",
+  "bin": {
+    "codeforge-cli": "./codeforge-cli.mjs"
+  },
   "scripts": {
     "dev": "concurrently -k \"vite --port=3000 --host=127.0.0.1\" \"wait-on tcp:3000 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:3000 electron .\"",
     "build": "vite build",
     "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android",
+    "apk:build": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug && echo 'APK erstellt unter: android/app/build/outputs/apk/debug/app-debug.apk'",
+    "apk:release": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease && echo 'Release APK unter: android/app/build/outputs/apk/release/'",
+    "server:install": "node codeforge-remote-server.mjs",
+    "cli": "node codeforge-cli.mjs",
+    "cli:install": "npm install -g .",
+    "release:all": "npm run dist:win && npm run apk:build && node -e \"require('fs').copyFileSync('codeforge-cli.mjs','release/codeforge-cli.mjs')\" && echo 'Builds fertig: release/*.exe, android/app/build/outputs/apk/debug/, und release/codeforge-cli.mjs'"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

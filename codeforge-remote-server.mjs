@@ -2,19 +2,38 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { existsSync, statSync, createReadStream } from 'node:fs';
-import { randomUUID } from 'node:crypto';
-import { networkInterfaces } from 'node:os';
+import { randomUUID, randomInt } from 'node:crypto';
+import { networkInterfaces, hostname } from 'node:os';
 import { extname, join } from 'node:path';
+import dgram from 'node:dgram';
 
 const PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
 const HOST = process.env.HOST || process.env.CODEFORGE_HOST || '0.0.0.0';
 const TOKEN = process.env.CODEFORGE_TOKEN || '';
 const MAX_PROMPT_CHARS = Number(process.env.CODEFORGE_MAX_PROMPT_CHARS || 100_000);
 
+// Pairing mode
+const PAIRING_PORT = Number(process.env.CODEFORGE_PAIRING_PORT || 8786);
+let pairingMode = false;
+let pairingCode = '';
+let pairingBroadcastInterval = null;
+let udpSocket = null;
+
 const providers = {
   antigravity: { command: 'agy', candidates: ['agy', '/root/.local/bin/agy', '/usr/local/bin/agy', '/usr/bin/agy'], versionArgs: ['--version'] },
   openai: { command: 'codex', candidates: ['codex', '/root/.local/bin/codex', '/usr/local/bin/codex', '/usr/bin/codex'], versionArgs: ['--version'] },
 };
+
+function getLocalIp() {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((iface) => iface && !iface.internal && iface.family === 'IPv4')
+    .map((iface) => iface.address)[0] || HOST;
+}
+
+function getHostname() {
+  try { return hostname(); } catch { return 'codeforge-server'; }
+}
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -52,6 +71,158 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
+
+// ── Pairing mode ──────────────────────────────────────────────
+
+function generatePairingCode() {
+  return String(randomInt(1000, 9999));
+}
+
+function startPairingBroadcast() {
+  if (pairingMode) return; // Already active
+  pairingMode = true;
+  pairingCode = generatePairingCode();
+
+  const localIp = getLocalIp();
+  const serverName = getHostname();
+
+  // Create UDP socket for broadcasting
+  udpSocket = dgram.createSocket('udp4');
+  udpSocket.bind(PAIRING_PORT, () => {
+    udpSocket.setBroadcast(true);
+    console.log(`🔗 Kopplungsmodus aktiv – Code: ${pairingCode}`);
+    console.log(`   Broadcast auf UDP ${PAIRING_PORT} alle 2 Sekunden`);
+    console.log(`   Server: http://${localIp}:${PORT}`);
+  });
+
+  const broadcastMessage = () => {
+    if (!pairingMode || !udpSocket) return;
+    const payload = JSON.stringify({
+      type: 'codeforge-pairing',
+      service: 'codeforge-remote',
+      name: serverName,
+      ip: localIp,
+      port: PORT,
+      pairingCode,
+      tokenRequired: Boolean(TOKEN),
+      version: '2.1.0',
+      providers: Object.keys(providers),
+      timestamp: Date.now(),
+    });
+    const buffer = Buffer.from(payload, 'utf-8');
+    udpSocket.send(buffer, 0, buffer.length, PAIRING_PORT, '255.255.255.255', (err) => {
+      if (err && pairingMode) console.error('UDP broadcast error:', err.message);
+    });
+  };
+
+  // Send immediately, then every 2 seconds
+  broadcastMessage();
+  pairingBroadcastInterval = setInterval(broadcastMessage, 2000);
+  pairingBroadcastInterval.unref();
+
+  // Auto-stop after 5 minutes
+  setTimeout(() => { if (pairingMode) stopPairingBroadcast(); }, 5 * 60 * 1000).unref();
+}
+
+function stopPairingBroadcast() {
+  pairingMode = false;
+  pairingCode = '';
+  if (pairingBroadcastInterval) {
+    clearInterval(pairingBroadcastInterval);
+    pairingBroadcastInterval = null;
+  }
+  if (udpSocket) {
+    try { udpSocket.close(); } catch {}
+    udpSocket = null;
+  }
+  console.log('🔗 Kopplungsmodus beendet.');
+}
+
+function getPairingQRData() {
+  const localIp = getLocalIp();
+  const url = `http://${localIp}:${PORT}/pair?code=${pairingCode}`;
+  return {
+    url,
+    qrContent: url,
+    pairingCode,
+    serverName: getHostname(),
+    serverIp: localIp,
+    serverPort: PORT,
+    tokenRequired: Boolean(TOKEN),
+  };
+}
+
+// ── Pairing HTTP endpoint ─────────────────────────────────────
+
+async function handlePairing(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  // GET /pair?code=XXXX – return QR data or verify code
+  if (req.method === 'GET') {
+    const code = url.searchParams.get('code');
+    if (!pairingMode) {
+      return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv. Starte ihn mit POST /pair/start' });
+    }
+    if (code) {
+      if (code === pairingCode) {
+        return json(res, 200, {
+          ok: true,
+          paired: true,
+          serverUrl: `http://${getLocalIp()}:${PORT}`,
+          token: TOKEN || null,
+          providers: Object.keys(providers),
+          message: 'Code korrekt! Verwende diese Daten für die Verbindung.',
+        });
+      }
+      return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
+    }
+    return json(res, 200, getPairingQRData());
+  }
+
+  // POST /pair/start – start pairing mode
+  if (req.method === 'POST' && url.pathname === '/pair/start') {
+    if (pairingMode) stopPairingBroadcast();
+    startPairingBroadcast();
+    return json(res, 200, {
+      ok: true,
+      pairingCode,
+      ...getPairingQRData(),
+      message: 'Kopplungsmodus gestartet. Der Server sendet nun UDP-Broadcasts.',
+    });
+  }
+
+  // POST /pair/stop – stop pairing mode
+  if (req.method === 'POST' && url.pathname === '/pair/stop') {
+    stopPairingBroadcast();
+    return json(res, 200, { ok: true, message: 'Kopplungsmodus beendet.' });
+  }
+
+  // POST /pair/verify – verify code and return connection config
+  if (req.method === 'POST' && url.pathname === '/pair/verify') {
+    let body;
+    try { body = JSON.parse(await readBody(req)); } catch {
+      return json(res, 400, { ok: false, error: 'Invalid JSON.' });
+    }
+    if (!pairingMode) {
+      return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv.' });
+    }
+    if (body.code !== pairingCode) {
+      return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
+    }
+    return json(res, 200, {
+      ok: true,
+      serverUrl: `http://${getLocalIp()}:${PORT}`,
+      token: TOKEN || body.token || '',
+      pairingCode,
+      serverName: getHostname(),
+      providers: Object.keys(providers),
+    });
+  }
+
+  return json(res, 404, { ok: false, error: 'Pairing endpoint not found.' });
+}
+
+// ── Existing handlers ─────────────────────────────────────────
 
 function accessToCodexSandbox(access) {
   if (access === 'read-only') return 'read-only';
@@ -295,7 +466,6 @@ async function handleMedia(req, res) {
     return json(res, 400, { ok: false, error: 'Missing path parameter.' });
   }
   
-  // Security: resolve and normalize to prevent path traversal
   const normalized = join('/', filePath.replace(/\\/g, '/').replace(/^~/, 'root'));
   const resolved = join('/', normalized);
   
@@ -329,31 +499,35 @@ async function handleMedia(req, res) {
 }
 
 async function handleDiscover(req, res) {
-  // Public endpoint – no auth required for discovery
-  const localIp = Object.values(networkInterfaces())
-    .flat()
-    .filter((iface) => iface && !iface.internal && iface.family === 'IPv4')
-    .map((iface) => iface.address)[0] || HOST;
-
+  const localIp = getLocalIp();
   json(res, 200, {
     ok: true,
     service: 'codeforge-remote',
     name: 'CodeForge Remote Server',
-    version: '1.6.0',
+    version: '2.1.0',
     localIp,
     port: PORT,
     tokenRequired: Boolean(TOKEN),
     providers: Object.keys(providers),
+    pairingActive: pairingMode,
+    pairingCode: pairingMode ? pairingCode : undefined,
+    hostname: getHostname(),
   });
 }
 
 const server = createServer((req, res) => {
   if (req.method === 'OPTIONS') return json(res, 204, {});
-  if (req.method === 'GET' && req.url === '/discover') return void handleDiscover(req, res);
-  if (req.method === 'GET' && req.url === '/health') return void handleHealth(req, res);
-  if (req.method === 'GET' && (req.url === '/media' || req.url.startsWith('/media?'))) return void handleMedia(req, res);
-  if (req.method === 'GET' && req.url === '/usage') return void handleUsage(req, res);
-  if (req.method === 'POST' && req.url === '/run') return void handleRun(req, res);
+
+  // Pairing endpoints (public – no auth for discovery/verify)
+  const url = req.url || '/';
+  if (url === '/pair' || url.startsWith('/pair?') || url.startsWith('/pair/')) {
+    return void handlePairing(req, res);
+  }
+  if (req.method === 'GET' && url === '/discover') return void handleDiscover(req, res);
+  if (req.method === 'GET' && url === '/health') return void handleHealth(req, res);
+  if (req.method === 'GET' && (url === '/media' || url.startsWith('/media?'))) return void handleMedia(req, res);
+  if (req.method === 'GET' && url === '/usage') return void handleUsage(req, res);
+  if (req.method === 'POST' && url === '/run') return void handleRun(req, res);
   json(res, 404, { ok: false, error: 'Not found.' });
 });
 
@@ -369,5 +543,8 @@ server.listen(PORT, HOST, () => {
   if (!TOKEN) {
     console.error('CODEFORGE_TOKEN is not set. The API will reject all requests.');
   }
-  console.log(`CodeForge Remote Server listening on http://${HOST}:${PORT}`);
+  const localIp = getLocalIp();
+  console.log(`CodeForge Remote Server v2.1.0 – http://${HOST}:${PORT}`);
+  console.log(`Entdeckbar unter: http://${localIp}:${PORT}`);
+  console.log(`Kopplungsmodus starten: POST /pair/start`);
 });

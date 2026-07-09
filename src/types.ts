@@ -1,4 +1,4 @@
-export type ProviderId = 'antigravity' | 'openai' | 'anthropic' | 'cursor' | 'opencode';
+export type ProviderId = 'antigravity' | 'openai' | 'anthropic' | 'cursor' | 'opencode' | 'freebuff';
 export type AccessMode = 'read-only' | 'workspace-write' | 'full';
 export type ReasoningEffort = 'low' | 'medium' | 'high';
 export type WorkDisplayMode = 'codeforge' | 'raw-terminal' | 'compact' | 'timeline' | 'focus';

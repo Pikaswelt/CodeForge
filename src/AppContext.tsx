@@ -89,6 +89,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
     { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
     { id: 'google/gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
   ],
+  freebuff: [
+    { id: 'default', name: 'FreeBuff Standard' },
+    { id: 'deepseek-v4', name: 'DeepSeek v4' },
+    { id: 'kimi-k2.6', name: 'Kimi K2.6' },
+    { id: 'minimax-m2.7', name: 'MiniMax M2.7' },
+  ],
 };
 
 const DEFAULT_MODEL: Record<ProviderId, string> = {
@@ -97,6 +103,7 @@ const DEFAULT_MODEL: Record<ProviderId, string> = {
   anthropic: PROVIDER_MODELS.anthropic[0].id,
   cursor: PROVIDER_MODELS.cursor[0].id,
   opencode: PROVIDER_MODELS.opencode[0].id,
+  freebuff: PROVIDER_MODELS.freebuff[0].id,
 };
 
 const EMPTY_STATUS: CliStatus = {
@@ -105,6 +112,7 @@ const EMPTY_STATUS: CliStatus = {
   anthropic: { installed: false, executable: '', version: '' },
   cursor: { installed: false, executable: '', version: '' },
   opencode: { installed: false, executable: '', version: '' },
+  freebuff: { installed: false, executable: '', version: '' },
 };
 
 const EMPTY_USAGE: UsageState = {
@@ -638,6 +646,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       anthropic: 'modern-dark',
       cursor: 'modern-dark',
       opencode: 'modern-dark',
+      freebuff: 'modern-dark',
     }),
   );
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>(() =>

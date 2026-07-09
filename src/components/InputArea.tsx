@@ -39,6 +39,7 @@ const PROVIDER_OPTIONS: { id: ProviderId; label: string; description: string }[]
   { id: 'anthropic', label: 'Claude', description: 'Claude Code CLI' },
   { id: 'cursor', label: 'Cursor', description: 'Cursor Agent CLI' },
   { id: 'opencode', label: 'OpenCode', description: 'OpenCode CLI' },
+  { id: 'freebuff', label: 'FreeBuff', description: 'FreeBuff CLI' },
 ];
 
 export default function InputArea() {
@@ -76,6 +77,7 @@ export default function InputArea() {
     chats,
     selectedChatId,
     sendEscKey,
+    mobileMode,
   } = useAppContext();
   const [text, setText] = useState('');
   const [dropdown, setDropdown] = useState<'access' | 'provider' | 'model' | 'project' | 'runtime' | 'usage' | 'branch' | null>(
@@ -344,35 +346,39 @@ export default function InputArea() {
         </div>
 
         <div className="px-3 pb-3 pt-1 flex items-center gap-1.5 text-[12px] relative">
-          <button
-            onClick={() => setDropdown(dropdown === 'provider' ? null : 'provider')}
-            className="context-button"
-          >
-            <Bot className="w-3.5 h-3.5" />
-            {selectedProvider.label}
-            <ChevronDown className="w-3 h-3" />
-          </button>
-          <AnimatePresence>
-            {dropdown === 'provider' && (
-              <Dropdown className="left-3 w-64">
-                {PROVIDER_OPTIONS.map((option) => {
-                  const status = cliStatus[option.id];
-                  return (
-                    <DropdownButton
-                      key={option.id}
-                      checked={provider === option.id}
-                      onClick={() => {
-                        setProvider(option.id);
-                        setDropdown(null);
-                      }}
-                      title={option.label}
-                      subtitle={`${option.description}${status?.installed ? ' - bereit' : ' - fehlt'}`}
-                    />
-                  );
-                })}
-              </Dropdown>
-            )}
-          </AnimatePresence>
+          {!mobileMode && (
+            <>
+              <button
+                onClick={() => setDropdown(dropdown === 'provider' ? null : 'provider')}
+                className="context-button"
+              >
+                <Bot className="w-3.5 h-3.5" />
+                {selectedProvider.label}
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              <AnimatePresence>
+                {dropdown === 'provider' && (
+                  <Dropdown className="left-3 w-64">
+                    {PROVIDER_OPTIONS.map((option) => {
+                      const status = cliStatus[option.id];
+                      return (
+                        <DropdownButton
+                          key={option.id}
+                          checked={provider === option.id}
+                          onClick={() => {
+                            setProvider(option.id);
+                            setDropdown(null);
+                          }}
+                          title={option.label}
+                          subtitle={`${option.description}${status?.installed ? ' - bereit' : ' - fehlt'}`}
+                        />
+                      );
+                    })}
+                  </Dropdown>
+                )}
+              </AnimatePresence>
+            </>
+          )}
 
           {lyzDevPluginEnabled && (
             <span className="context-button border-emerald-300/15 bg-emerald-300/10 text-emerald-200">
@@ -414,52 +420,56 @@ export default function InputArea() {
             )}
           </AnimatePresence>
 
-          <button
-            onClick={() => setDropdown(dropdown === 'runtime' ? null : 'runtime')}
-            className="context-button"
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            {runtime.installed ? 'CLI bereit' : 'CLI fehlt'}
-            <span className={`w-1.5 h-1.5 rounded-full ${runtime.installed ? 'bg-emerald-400' : 'bg-red-400'}`} />
-          </button>
-          <AnimatePresence>
-            {dropdown === 'runtime' && (
-              <Dropdown className="left-52 w-80">
-                <div className="px-3 py-2">
-                  <div className="text-xs text-white">{runtime.installed ? runtime.version : 'Nicht installiert'}</div>
-                  <div className="text-[10px] text-zinc-600 mt-1 break-all">
-                    {runtime.executable || 'Die gewaehlte CLI ist nicht im PATH verfuegbar.'}
-                  </div>
-                  <button
-                    onClick={async () => {
-                      setRuntimeBusy(true);
-                      try {
-                        if (runtime.installed) {
-                          const info = await refreshProviderUsage(provider);
-                          window.alert(info?.raw || info?.error || info?.label || 'Keine Terminalausgabe erhalten.');
-                        }
-                        else setError(await installCli(provider));
-                      } catch (runtimeError) {
-                        setError(runtimeError instanceof Error ? runtimeError.message : 'Aktion fehlgeschlagen.');
-                      } finally {
-                        setRuntimeBusy(false);
-                        setDropdown(null);
-                      }
-                    }}
-                    className="mt-3 inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/5 cursor-pointer"
-                  >
-                    {runtimeBusy && <span className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />}
-                    {runtime.installed ? 'Provider-Limit abrufen' : 'Installation starten'}
-                  </button>
-                  {usage.providerLimits?.[provider] && (
-                    <div className="mt-2 text-[10px] text-zinc-600">
-                      Provider: {usage.providerLimits[provider]?.label}
+          {!mobileMode && (
+            <>
+              <button
+                onClick={() => setDropdown(dropdown === 'runtime' ? null : 'runtime')}
+                className="context-button"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                {runtime.installed ? 'CLI bereit' : 'CLI fehlt'}
+                <span className={`w-1.5 h-1.5 rounded-full ${runtime.installed ? 'bg-emerald-400' : 'bg-red-400'}`} />
+              </button>
+              <AnimatePresence>
+                {dropdown === 'runtime' && (
+                  <Dropdown className="left-52 w-80">
+                    <div className="px-3 py-2">
+                      <div className="text-xs text-white">{runtime.installed ? runtime.version : 'Nicht installiert'}</div>
+                      <div className="text-[10px] text-zinc-600 mt-1 break-all">
+                        {runtime.executable || 'Die gewaehlte CLI ist nicht im PATH verfuegbar.'}
+                      </div>
+                      <button
+                        onClick={async () => {
+                          setRuntimeBusy(true);
+                          try {
+                            if (runtime.installed) {
+                              const info = await refreshProviderUsage(provider);
+                              window.alert(info?.raw || info?.error || info?.label || 'Keine Terminalausgabe erhalten.');
+                            }
+                            else setError(await installCli(provider));
+                          } catch (runtimeError) {
+                            setError(runtimeError instanceof Error ? runtimeError.message : 'Aktion fehlgeschlagen.');
+                          } finally {
+                            setRuntimeBusy(false);
+                            setDropdown(null);
+                          }
+                        }}
+                        className="mt-3 inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/5 cursor-pointer"
+                      >
+                        {runtimeBusy && <span className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />}
+                        {runtime.installed ? 'Provider-Limit abrufen' : 'Installation starten'}
+                      </button>
+                      {usage.providerLimits?.[provider] && (
+                        <div className="mt-2 text-[10px] text-zinc-600">
+                          Provider: {usage.providerLimits[provider]?.label}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </Dropdown>
-            )}
-          </AnimatePresence>
+                  </Dropdown>
+                )}
+              </AnimatePresence>
+            </>
+          )}
 
           <button
             onClick={() => setDropdown(dropdown === 'usage' ? null : 'usage')}

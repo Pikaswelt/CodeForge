@@ -36,6 +36,12 @@ const PROVIDERS: { id: ProviderId; name: string; command: string; description: s
     command: 'opencode',
     description: 'OpenCode im nicht-interaktiven Run-Modus verwenden.',
   },
+  {
+    id: 'freebuff',
+    name: 'FreeBuff',
+    command: 'freebuff',
+    description: 'Kostenloser AI Coding Agent via npm.',
+  },
 ];
 
 const containerVariants = {
