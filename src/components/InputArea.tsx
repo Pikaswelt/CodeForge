@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -28,9 +28,9 @@ const ACCESS_OPTIONS: { id: AccessMode; label: string; description: string }[] =
 ];
 
 const INTELLIGENCE_OPTIONS: { id: ReasoningEffort; label: string; description: string }[] = [
-  { id: 'low', label: 'Low', description: 'Schnell' },
-  { id: 'medium', label: 'Medium', description: 'Balance' },
-  { id: 'high', label: 'High', description: 'Gruendlich' },
+  { id: 'low', label: 'Niedrig', description: 'Schneller, weniger Ausfuehrlichkeit' },
+  { id: 'medium', label: 'Standard', description: 'Ausgewogene Logik' },
+  { id: 'high', label: 'Hoch', description: 'Tiefere Analyse fuer komplexe Aufgaben' },
 ];
 
 const PROVIDER_OPTIONS: { id: ProviderId; label: string; description: string }[] = [
@@ -86,6 +86,7 @@ export default function InputArea() {
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   const send = async () => {
     const isInteractiveInput = isSending && originalPluginEnabled;
@@ -105,27 +106,75 @@ export default function InputArea() {
     }
   };
 
-  const startDictation = () => {
+  const startDictation = async () => {
+    if (listening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      setListening(false);
+      return;
+    }
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError('Spracherkennung wird auf diesem System nicht unterstuetzt.');
+      setError('Spracherkennung wird auf diesem System oder Browser nicht unterstuetzt.');
       return;
     }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'de-DE';
-    recognition.interimResults = false;
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => {
+
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    } catch (permErr) {
+      console.error('Mikrofon-Zugriff verweigert:', permErr);
+      setError('Mikrofon-Zugriff wurde verweigert.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = 'de-DE';
+      recognition.interimResults = false;
+      recognition.continuous = false;
+      recognition.onstart = () => {
+        setListening(true);
+        setError('');
+      };
+      recognition.onend = () => {
+        setListening(false);
+        recognitionRef.current = null;
+      };
+      recognition.onerror = (event: any) => {
+        setListening(false);
+        recognitionRef.current = null;
+        const errName = event?.error;
+        if (errName === 'not-allowed') {
+          setError('Mikrofon-Zugriff wurde nicht erlaubt.');
+        } else if (errName === 'audio-capture') {
+          setError('Kein Mikrofon gefunden.');
+        } else if (errName === 'network') {
+          setError('Spracherkennung verlangt Internetverbindung.');
+        } else if (errName !== 'no-speech') {
+          setError(`Spracherkennungsfehler: ${errName || 'Unbekannt'}`);
+        }
+      };
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript;
+        if (transcript) setText((current) => `${current}${current ? ' ' : ''}${transcript}`);
+      };
+      recognition.start();
+    } catch (err) {
+      console.error(err);
       setListening(false);
       setError('Spracherkennung konnte nicht gestartet werden.');
-    };
-    recognition.onresult = (event: any) => {
-      const transcript = event.results?.[0]?.[0]?.transcript;
-      if (transcript) setText((current) => `${current}${current ? ' ' : ''}${transcript}`);
-    };
-    recognition.start();
+    }
   };
 
   const access = ACCESS_OPTIONS.find((option) => option.id === accessMode)!;

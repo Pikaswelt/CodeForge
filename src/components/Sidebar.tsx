@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   AppWindow,
   Blocks,
+  Gamepad2,
   LayoutGrid,
   ExternalLink,
   Gauge,
@@ -159,6 +160,16 @@ export default function Sidebar({
             Workspace
           </motion.button>
         )}
+        <motion.button
+          onClick={() => setMainView('studio')}
+          whileHover={{ x: 4 }}
+          whileTap={{ scale: 0.98 }}
+          className={navClass(mainView === 'studio')}
+        >
+          {renderActiveBg(mainView === 'studio')}
+          <Gamepad2 className="w-4 h-4" />
+          Game Studio
+        </motion.button>
         <motion.button
           onClick={() => setMainView('usage')}
           whileHover={{ x: 4 }}

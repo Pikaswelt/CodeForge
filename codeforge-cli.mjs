@@ -13,7 +13,7 @@
 import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 
-const VERSION = '2.2.1';
+const VERSION = '2.4.3';
 
 // ── ANSI Colors ──────────────────────────────────────────────
 const C = {

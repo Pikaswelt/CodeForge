@@ -99,15 +99,53 @@ function setupUpdater({ app, mainWindow, autoUpdater }) {
     };
   }
 
-  async function installReadyUpdate() {
-    if (updateState.installerPath) {
-      spawn(updateState.installerPath, [], {
+  function executeUninstallAndInstall(installerPath) {
+    const currentPid = process.pid;
+    const uninstallerPath = path.join(path.dirname(process.execPath), 'Uninstall CodeForge.exe');
+
+    if (process.platform === 'win32') {
+      const uninstallerPathNormalized = uninstallerPath.replace(/\\/g, '/');
+      const installerPathNormalized = installerPath ? installerPath.replace(/\\/g, '/') : '';
+      const installDirNormalized = path.dirname(uninstallerPath).replace(/\\/g, '/');
+      const releaseDir = 'C:/Users/Chris/Name/name/release';
+
+      const psCommand = `
+        $pidToWait = ${currentPid};
+        while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {
+          Start-Sleep -Milliseconds 200;
+        }
+        if (Test-Path "${uninstallerPathNormalized}") {
+          Start-Process -FilePath "${uninstallerPathNormalized}" -ArgumentList "/S", "_?=${installDirNormalized}" -Wait;
+        }
+        $latest = Get-ChildItem -Path "${releaseDir}" -Filter "*.exe" -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1;
+        if ($latest) {
+          Start-Process -FilePath $latest.FullName;
+        } elseif ("${installerPathNormalized}" -and (Test-Path "${installerPathNormalized}")) {
+          Start-Process -FilePath "${installerPathNormalized}";
+        }
+      `.replace(/\s+/g, ' ').trim();
+
+      spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCommand], {
         detached: true,
         stdio: 'ignore',
-        windowsHide: false,
+        windowsHide: true,
       }).unref();
-      app.quit();
-      return true;
+    } else {
+      if (installerPath) {
+        spawn(installerPath, [], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: false,
+        }).unref();
+      }
+    }
+    app.quit();
+    return true;
+  }
+
+  async function installReadyUpdate() {
+    if (updateState.installerPath) {
+      return executeUninstallAndInstall(updateState.installerPath);
     }
     return false;
   }
@@ -211,12 +249,7 @@ function setupUpdater({ app, mainWindow, autoUpdater }) {
         installerPath: targetPath,
       });
 
-      spawn(targetPath, [], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: false,
-      }).unref();
-      app.quit();
+      executeUninstallAndInstall(targetPath);
     } catch (error) {
       setUpdateState({
         status: 'error',

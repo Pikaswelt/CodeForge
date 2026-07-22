@@ -1,7 +1,7 @@
 {
   "name": "codeforge-desktop",
   "private": true,
-  "version": "2.5.1",
+  "version": "2.5.3",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "CodeForge",
   "type": "module",
@@ -84,11 +84,12 @@
       "installerIcon": "assets/codeforge.ico",
       "uninstallerIcon": "assets/codeforge.ico",
       "installerHeaderIcon": "assets/codeforge.ico",
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
       "shortcutName": "CodeForge",
-      "menuCategory": "CodeForge"
+      "menuCategory": "CodeForge",
+      "include": "electron/installer.nsh"
     }
   }
 }

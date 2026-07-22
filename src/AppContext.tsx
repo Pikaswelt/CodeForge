@@ -47,7 +47,7 @@ export type CustomTheme = {
   backgroundMedia?: string;
   animatedGradient?: boolean;
 };
-export type MainView = 'library' | 'chat' | 'plugins' | 'workspace' | 'usage';
+export type MainView = 'library' | 'chat' | 'plugins' | 'workspace' | 'usage' | 'studio';
 
 export type ProviderModel = {
   id: string;

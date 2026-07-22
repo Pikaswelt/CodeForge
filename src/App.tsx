@@ -271,12 +271,39 @@ function AppLayout() {
 function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppContext>['customThemes'][number]> }) {
   const mediaPath = theme.backgroundMedia || theme.backgroundImage || '';
   const isVideo = isVideoPath(mediaPath);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+
+  React.useEffect(() => {
+    if (!isVideo) return;
+    const playVideo = () => {
+      if (videoRef.current) {
+        videoRef.current.play().catch(() => {});
+      }
+    };
+
+    playVideo();
+
+    const interval = setInterval(() => {
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
+    }, 1000);
+
+    window.addEventListener('focus', playVideo);
+    window.addEventListener('click', playVideo);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', playVideo);
+      window.removeEventListener('click', playVideo);
+    };
+  }, [isVideo, mediaPath]);
 
   return (
     <div className="theme-backdrop" aria-hidden="true">
       <div className={`theme-custom-gradient ${theme.animatedGradient ? 'theme-custom-gradient-animated' : ''}`} />
       {mediaPath && isVideo && (
         <video
+          ref={videoRef}
           key={toFileUrl(mediaPath)}
           className="theme-media-backdrop"
           src={toFileUrl(mediaPath)}
@@ -284,6 +311,12 @@ function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppC
           muted
           loop
           playsInline
+          onPause={(e) => {
+            e.currentTarget.play().catch(() => {});
+          }}
+          onCanPlay={(e) => {
+            e.currentTarget.play().catch(() => {});
+          }}
         />
       )}
       {mediaPath && !isVideo && (
@@ -298,6 +331,9 @@ function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppC
 }
 
 function isVideoPath(filePath: string) {
+  if (!filePath) return false;
+  if (filePath.startsWith('data:video/')) return true;
+  if (filePath.startsWith('blob:')) return true;
   return /\.(mp4|webm|mov|m4v|ogg|ogv|avi|mkv)$/i.test(filePath);
 }
 

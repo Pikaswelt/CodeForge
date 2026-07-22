@@ -31,6 +31,7 @@ import {
   Maximize2,
   Minimize2,
   Clipboard,
+  Mic,
 } from 'lucide-react';
 import { LYZ_DEV_PLUGIN_NAME, useAppContext } from '../AppContext';
 import InputArea from './InputArea';
@@ -41,6 +42,7 @@ import type { CodexPluginInfo } from '../types';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import GameStudio from './GameStudio';
 
 const PHRASES = [
   'Was wollen wir entwickeln?',
@@ -114,6 +116,8 @@ export default function MainArea() {
           <WorkspaceView />
         ) : mainView === 'usage' ? (
           <UsageView />
+        ) : mainView === 'studio' ? (
+          <GameStudio />
         ) : (
           <ChatView />
         )}
@@ -1266,6 +1270,106 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
 
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const toggleDictation = async () => {
+    if (listening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      setListening(false);
+      return;
+    }
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Spracherkennung wird auf diesem System oder Browser nicht unterstuetzt.');
+      return;
+    }
+
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    } catch (permErr) {
+      console.error('Mikrofon-Zugriff verweigert:', permErr);
+      alert('Mikrofon-Zugriff wurde verweigert.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = 'de-DE';
+      recognition.interimResults = false;
+      recognition.continuous = false;
+      recognition.onstart = () => setListening(true);
+      recognition.onend = () => {
+        setListening(false);
+        recognitionRef.current = null;
+      };
+      recognition.onerror = (event: any) => {
+        setListening(false);
+        recognitionRef.current = null;
+        const errName = event?.error;
+        if (errName === 'not-allowed') {
+          alert('Mikrofon-Zugriff wurde nicht erlaubt.');
+        } else if (errName === 'audio-capture') {
+          alert('Kein Mikrofon gefunden oder Mikrofon wird bereits verwendet.');
+        } else if (errName === 'network') {
+          alert('Spracherkennung verlangt eine aktive Internetverbindung.');
+        } else if (errName !== 'no-speech') {
+          alert(`Spracherkennungsfehler: ${errName || 'Unbekannt'}`);
+        }
+      };
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript;
+        if (transcript) {
+          window.agentWorkspace.writeToShellSession({ chatId: activeTabId, text: transcript });
+        }
+      };
+      recognition.start();
+    } catch (err) {
+      console.error(err);
+      setListening(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.altKey && event.key.toLowerCase() === 's') ||
+        (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's')
+      ) {
+        event.preventDefault();
+        toggleDictation();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [listening, activeTabId]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
   const handleSelectTab = (tabId: string) => {
     setChats((current) =>
       current.map((c) =>
@@ -1552,6 +1656,26 @@ function TerminalChatView({ chat }: { chat: Chat }) {
           >
             <Clipboard className="w-3.5 h-3.5" />
             <span>Einfügen</span>
+          </button>
+
+          <button
+            onClick={toggleDictation}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-colors duration-150 ${
+              listening
+                ? 'bg-red-500/10 border-red-500/30 text-red-400 font-medium animate-pulse'
+                : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
+            }`}
+            title="Spracheingabe aktivieren (Alt+S oder Ctrl+Shift+S)"
+          >
+            {listening ? (
+              <span className="relative flex h-2 w-2 mr-0.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+              </span>
+            ) : (
+              <Mic className="w-3.5 h-3.5" />
+            )}
+            <span>{listening ? 'Aufnahme...' : 'Spracheingabe'}</span>
           </button>
 
           <div className="h-4 w-px bg-white/10" />
@@ -2450,8 +2574,26 @@ function RunMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function cleanTerminalOutput(output: string): string {
+  if (!output) return '';
+  const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+  let cleaned = output.replace(ansiRegex, '');
+  cleaned = cleaned
+    .split('\n')
+    .map(line => {
+      const parts = line.split('\r');
+      if (parts.length > 1 && parts[parts.length - 1] === '') {
+        return parts[parts.length - 2];
+      }
+      return parts[parts.length - 1];
+    })
+    .join('\n');
+  return cleaned;
+}
+
 function tailTerminalOutput(output: string) {
-  const normalized = output.replace(/\r\n/g, '\n').trimEnd();
+  const cleaned = cleanTerminalOutput(output);
+  const normalized = cleaned.replace(/\r\n/g, '\n').trimEnd();
   if (normalized.length <= 12_000) return normalized;
   return `... vorherige Ausgabe gekuerzt ...\n${normalized.slice(-12_000)}`;
 }
@@ -2515,9 +2657,10 @@ function buildProgressItems(
 }
 
 function extractReadableProgress(output: string) {
+  const cleaned = cleanTerminalOutput(output);
   const ignored = /^(sandbox:|reasoning|reasoning summaries|mcp:|session id:|--------|user$|codex$|npm |ps |dir |ls |cd |git |>|\+|-|@@|diff --git|index |--- |\+\+\+ |[{\]}]|import |export |const |let |var |function |return |className=|<\/?)/i;
   const codeLike = /(?:[{};]{2,}|=>|^\s*[),.]+$|^[\w./\\-]+\.(?:ts|tsx|js|jsx|json|css|html|md|cjs|mjs|py|yml|yaml)(?::\d+)?$|^\s*(?:["'][\w-]+["']|\w+):\s*[{[(])/i;
-  const lines = output
+  const lines = cleaned
     .replace(/\r\n/g, '\n')
     .split('\n')
     .map((line) => line.trim())
@@ -2534,10 +2677,11 @@ function extractReadableProgress(output: string) {
 }
 
 function estimateCommandCount(output: string, testSignals: number) {
+  const cleaned = cleanTerminalOutput(output);
   const shellPrompts = (
-    output.match(/(?:^|\n)(?:npm|pnpm|yarn|npx|git|node|powershell|cmd|python|tsc|vite)\b/gi) || []
+    cleaned.match(/(?:^|\n)(?:npm|pnpm|yarn|npx|git|node|powershell|cmd|python|tsc|vite)\b/gi) || []
   ).length;
-  const executedMentions = output.match(/(\d+)\s+Befehle?\s+ausgef/i)?.[1];
+  const executedMentions = cleaned.match(/(\d+)\s+Befehle?\s+ausgef/i)?.[1];
   return Math.max(Number(executedMentions || 0), shellPrompts, Math.floor(testSignals / 2));
 }
 

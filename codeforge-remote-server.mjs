@@ -104,7 +104,490 @@ function json(res, status, payload) {
 
 function isAuthorized(req) {
   if (!TOKEN) return false;
-  return req.headers.authorization === `Bearer ${TOKEN}`;
+  const header = req.headers.authorization || '';
+  return header === `Bearer ${TOKEN}`;
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > MAX_PROMPT_CHARS + 20_000) {
+        reject(new Error('Request body too large.'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+// ── Pairing mode ──────────────────────────────────────────────
+
+function generatePairingCode() {
+  return String(randomInt(1000, 9999));
+}
+
+function startPairingBroadcast() {
+  if (pairingMode) return; // Already active
+  pairingMode = true;
+  pairingCode = generatePairingCode();
+
+  const localIp = getLocalIp();
+  const serverName = getHostname();
+
+  // Create UDP socket for broadcasting
+  udpSocket = dgram.createSocket('udp4');
+  udpSocket.bind(PAIRING_PORT, () => {
+    udpSocket.setBroadcast(true);
+    const easySetupUrl = `http://${getEffectivePublicIp()}:${PORT}/pair?code=${pairingCode}`;
+    console.log('');
+    console.log('  ╔══════════════════════════════════════════════════════════╗');
+    console.log('  ║  📱 EASY SETUP – In die App einfügen:                   ║');
+    console.log('  ║                                                        ║');
+    console.log(`  ║  ${easySetupUrl}  ║`);
+    console.log('  ║                                                        ║');
+    console.log('  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║');
+    console.log('  ╚══════════════════════════════════════════════════════════╝');
+    console.log('');
+    console.log(`   🔢 Kopplungscode: ${pairingCode}  ⏱️  ${PAIRING_AUTO_STOP_MINUTES} Min gültig`);
+    console.log(`   📡 UDP-Broadcast auf Port ${PAIRING_PORT} (LAN-Discovery)`);
+  });
+
+  const broadcastMessage = () => {
+    if (!pairingMode || !udpSocket) return;
+    const payload = JSON.stringify({
+      type: 'codeforge-pairing',
+      service: 'codeforge-remote',
+      name: serverName,
+      ip: localIp,
+      port: PORT,
+      pairingCode,
+      tokenRequired: Boolean(TOKEN),
+      version: '2.4.3',
+      providers: Object.keys(providers),
+      timestamp: Date.now(),
+    });
+    const buffer = Buffer.from(payload, 'utf-8');
+    udpSocket.send(buffer, 0, buffer.length, PAIRING_PORT, '255.255.255.255', (err) => {
+      if (err) {
+        if (err.code === 'EACCES' && !udpEaccesLogged) {
+          udpEaccesLogged = true;
+          console.log('   ⚠️  UDP-Broadcast nicht möglich (keine root-Rechte). Kopplung funktioniert trotzdem via HTTP.');
+        }
+      }
+    });
+  };
+
+  // Send immediately, then every 2 seconds
+  broadcastMessage();
+  pairingBroadcastInterval = setInterval(broadcastMessage, 2000);
+  pairingBroadcastInterval.unref();
+
+  // Auto-stop after configured minutes (default 5)
+  const timeoutMs = (PAIRING_AUTO_STOP_MINUTES || 5) * 60 * 1000;
+  setTimeout(() => { if (pairingMode) stopPairingBroadcast(); }, timeoutMs).unref();
+}
+
+function stopPairingBroadcast() {
+  pairingMode = false;
+  pairingCode = '';
+  if (pairingBroadcastInterval) {
+    clearInterval(pairingBroadcastInterval);
+    pairingBroadcastInterval = null;
+  }
+  if (udpSocket) {
+    try { udpSocket.close(); } catch {}
+    udpSocket = null;
+  }
+  console.log('🔗 Kopplungsmodus beendet.');
+}
+
+function getPairingQRData() {
+  const publicIp = getEffectivePublicIp();
+  const url = `http://${publicIp}:${PORT}/pair?code=${pairingCode}`;
+  return {
+    url,
+    qrContent: url,
+    pairingCode,
+    serverName: getHostname(),
+    serverIp: publicIp,
+    serverPort: PORT,
+    tokenRequired: Boolean(TOKEN),
+  };
+}
+
+// ── Pairing HTTP endpoint ─────────────────────────────────────
+
+async function handlePairing(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  // GET /pair?code=XXXX – return QR data or verify code (rate-limited)
+  if (req.method === 'GET') {
+    const code = url.searchParams.get('code');
+    if (!pairingMode) {
+      return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv. Starte ihn mit POST /pair/start' });
+    }
+    if (code) {
+      // Same rate limiting as POST /pair/verify
+      if (Date.now() < pairingBlockedUntil) {
+        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. Bitte warte 30 Sekunden.' });
+      }
+      if (code === pairingCode) {
+        pairingFailCount = 0;
+        pairingBlockedUntil = 0;
+        return json(res, 200, {
+          ok: true,
+          paired: true,
+          serverUrl: `http://${getEffectivePublicIp()}:${PORT}`,
+          token: TOKEN || null,
+          providers: Object.keys(providers),
+          message: 'Code korrekt! Verwende diese Daten für die Verbindung.',
+        });
+      }
+      pairingFailCount++;
+      if (pairingFailCount >= 5) {
+        pairingBlockedUntil = Date.now() + 30_000;
+        pairingFailCount = 0;
+        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. 30 Sekunden Sperre.' });
+      }
+      return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
+    }
+    return json(res, 200, getPairingQRData());
+  }
+
+  // POST /pair/start – start pairing mode
+  if (req.method === 'POST' && url.pathname === '/pair/start') {
+    if (pairingMode) stopPairingBroadcast();
+    startPairingBroadcast();
+    return json(res, 200, {
+      ok: true,
+      pairingCode,
+      ...getPairingQRData(),
+      message: 'Kopplungsmodus gestartet. Der Server sendet nun UDP-Broadcasts.',
+    });
+  }
+
+  // POST /pair/stop – stop pairing mode
+  if (req.method === 'POST' && url.pathname === '/pair/stop') {
+    stopPairingBroadcast();
+    return json(res, 200, { ok: true, message: 'Kopplungsmodus beendet.' });
+  }
+
+  // POST /pair/verify – verify code and return connection config (rate-limited)
+  if (req.method === 'POST' && url.pathname === '/pair/verify') {
+    if (Date.now() < pairingBlockedUntil) {
+      return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. Bitte warte 30 Sekunden.' });
+    }
+    let body;
+    try { body = JSON.parse(await readBody(req)); } catch {
+      return json(res, 400, { ok: false, error: 'Invalid JSON.' });
+    }
+    if (!pairingMode) {
+      return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv.' });
+    }
+    if (body.code !== pairingCode) {
+      pairingFailCount++;
+      if (pairingFailCount >= 5) {
+        pairingBlockedUntil = Date.now() + 30_000;
+        pairingFailCount = 0;
+        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. 30 Sekunden Sperre.' });
+      }
+      return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
+    }
+    pairingFailCount = 0;
+    pairingBlockedUntil = 0;
+    return json(res, 200, {
+      ok: true,
+      serverUrl: `http://${getEffectivePublicIp()}:${PORT}`,
+      token: TOKEN || body.token || '',
+      pairingCode,
+      serverName: getHostname(),
+      providers: Object.keys(providers),
+    });
+  }
+
+  return json(res, 404, { ok: false, error: 'Pairing endpoint not found.' });
+}
+
+// ── Existing handlers ─────────────────────────────────────────
+
+function accessToCodexSandbox(access) {
+  if (access === 'read-only') return 'read-only';
+  if (access === 'full') return 'danger-full-access';
+  return 'workspace-write';
+}
+
+function normalizeReasoningEffort(value) {
+  return ['low', 'medium', 'high'].includes(value) ? value : 'medium';
+}
+
+function resolveCommand(provider) {
+  for (const candidate of provider.candidates || [provider.command]) {
+    if (candidate.includes('/') && existsSync(candidate)) return candidate;
+  }
+  return provider.command;
+}
+
+function buildPrompt(systemPrompt, prompt, access, projectPath) {
+  const accessInstruction =
+    access === 'read-only'
+      ? 'WICHTIG: Arbeite ausschliesslich lesend. Veraendere keine Dateien und fuehre keine destruktiven Befehle aus.'
+      : access === 'workspace-write'
+        ? `WICHTIG: Veraendere nur Dateien innerhalb dieses Projektordners: ${projectPath}`
+        : 'Du darfst die fuer die Aufgabe erforderlichen Werkzeuge verwenden.';
+  const system = String(systemPrompt || '').trim();
+  return [accessInstruction, system ? `System-Prompt:\n${system}` : '', prompt].filter(Boolean).join('\n\n');
+}
+
+function accessToClaudeMode(access) {
+  if (access === 'read-only') return 'plan';
+  if (access === 'full') return 'bypassPermissions';
+  return 'auto';
+}
+
+function buildAgentCommand(providerId, model, prompt, access, projectPath, reasoningEffort) {
+  const args = [];
+  let stdin = '';
+
+  if (providerId === 'antigravity') {
+    args.push('-p', prompt, '--model', model, '--dangerously-skip-permissions');
+  } else if (providerId === 'openai') {
+    args.push(
+      'exec',
+      '-',
+      '--model',
+      model,
+      '--cd',
+      projectPath,
+      '--color',
+      'never',
+      '--skip-git-repo-check',
+      '--config',
+      `model_reasoning_effort="${normalizeReasoningEffort(reasoningEffort)}"`,
+      '--sandbox',
+      accessToCodexSandbox(access),
+    );
+    if (access === 'full') args.push('--dangerously-bypass-approvals-and-sandbox');
+    stdin = prompt;
+  } else if (providerId === 'anthropic') {
+    args.push('-p', '--model', model, '--output-format', 'text', '--permission-mode', accessToClaudeMode(access));
+    if (access === 'full') args.push('--dangerously-skip-permissions');
+    stdin = prompt;
+  } else if (providerId === 'cursor') {
+    args.push('-p', prompt, '--output-format', 'text');
+    if (model && model !== 'default') args.push('--model', model);
+  } else if (providerId === 'opencode') {
+    args.push('run', '--dir', projectPath);
+    if (model && model !== 'default') args.push('--model', model);
+    if (access === 'full') args.push('--dangerously-skip-permissions');
+    args.push(prompt);
+  } else if (providerId === 'freebuff') {
+    args.push('-p', prompt);
+    if (model && model !== 'default') args.push('--model', model);
+  }
+
+  return { args, stdin };
+}
+
+function runCapture(command, args, options = {}) {
+  return new Promise((resolve) => {
+    const isWin = process.platform === 'win32';
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: { 
+        ...(!isWin && {
+          HOME: process.env.HOME || '/root', 
+          USER: process.env.USER || 'root',
+        }),
+        ...process.env, 
+        FORCE_COLOR: '0', 
+        NO_COLOR: '1' 
+      },
+      shell: isWin,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+      options.onOutput?.(chunk, 'stdout');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+      options.onOutput?.(chunk, 'stderr');
+    });
+    child.on('error', (error) => resolve({ ok: false, stdout, stderr, error: error.message, exitCode: -1 }));
+    child.on('close', (exitCode) => {
+      resolve({
+        ok: exitCode === 0,
+        stdout,
+        stderr,
+        error: exitCode === 0 ? '' : stderr.trim() || `Process exited with code ${exitCode}.`,
+        exitCode: exitCode ?? -1,
+      });
+    });
+    if (options.stdin) child.stdin.write(options.stdin);
+    child.stdin.end();
+    setTimeout(() => {
+      if (!child.killed) child.kill('SIGTERM');
+    }, options.timeoutMs || 10 * 60 * 1000).unref();
+  });
+}
+
+async function handleHealth(req, res) {
+  if (!isAuthorized(req)) return unauthorized(res);
+  json(res, 200, {
+    ok: true,
+    name: 'CodeForge Remote Server',
+    providers: Object.fromEntries(
+      Object.entries(providers).map(([id, provider]) => [id, { command: resolveCommand(provider) }]),
+    ),
+    tokenConfigured: Boolean(TOKEN),
+  });
+}
+
+async function handleRun(req, res) {
+  if (!isAuthorized(req)) return unauthorized(res);
+
+  let input;
+  try {
+    input = JSON.parse(await readBody(req));
+  } catch (error) {
+    return json(res, 400, { ok: false, error: error.message || 'Invalid JSON.' });
+  }
+
+  const providerId = String(input.provider || 'openai');
+  const provider = providers[providerId];
+  const prompt = String(input.prompt || '').trim();
+  const projectPath = String(input.projectPath || '').trim();
+  const access = ['read-only', 'workspace-write', 'full'].includes(input.access) ? input.access : 'workspace-write';
+  const model = String(input.model || (providerId === 'openai' ? 'gpt-5.5' : 'default'));
+  const reasoningEffort = normalizeReasoningEffort(input.reasoningEffort);
+  const outputLimit = Math.max(1000, Math.min(50_000, Number(input.outputLimit || 12_000)));
+  const wantsStream = input.stream === true || /\bapplication\/x-ndjson\b/i.test(String(req.headers.accept || ''));
+
+  if (!provider) return json(res, 400, { ok: false, error: 'Unknown provider.' });
+  if (!prompt || prompt.length > MAX_PROMPT_CHARS) return json(res, 400, { ok: false, error: 'Prompt is empty or too large.' });
+
+  let effectiveProjectPath = projectPath;
+  if (!projectPath || !existsSync(effectiveProjectPath) || !statSync(effectiveProjectPath).isDirectory()) {
+    const isWin = process.platform === 'win32';
+    const userHome = process.env.USERPROFILE || process.env.HOME || '';
+    if (isWin) {
+      if (projectPath.startsWith('/root/') || projectPath === '/root/codeforge-project' || projectPath.startsWith('~/')) {
+        const docPath = path.join(userHome, 'OneDrive/Dokumente/CodeForge/Ohne Projekt');
+        const docPathAlt = path.join(userHome, 'Documents/CodeForge/Ohne Projekt');
+        if (existsSync(docPath)) {
+          effectiveProjectPath = docPath;
+        } else if (existsSync(docPathAlt)) {
+          effectiveProjectPath = docPathAlt;
+        } else {
+          try {
+            mkdirSync(docPath, { recursive: true });
+            effectiveProjectPath = docPath;
+          } catch (_) {
+            effectiveProjectPath = userHome || process.cwd();
+          }
+        }
+      } else {
+        try {
+          mkdirSync(projectPath, { recursive: true });
+          effectiveProjectPath = projectPath;
+        } catch (_) {
+          effectiveProjectPath = userHome || process.cwd();
+        }
+      }
+    } else {
+      try {
+        mkdirSync(projectPath, { recursive: true });
+        effectiveProjectPath = projectPath;
+      } catch (_) {
+        return json(res, 400, { ok: false, error: 'Project path does not exist on the server and could not be created.' });
+      }
+    }
+  }
+
+  const finalPrompt = buildPrompt(input.systemPrompt, prompt, access, effectiveProjectPath);
+  const { args, stdin } = buildAgentCommand(providerId, model, finalPrompt, access, effectiveProjectPath, reasoningEffort);
+  const startedAt = Date.now();
+  const runId = randomUUID();
+
+  if (wantsStream) {
+    const allowedOrigin = process.env.CODEFORGE_CORS_ORIGIN || '*';
+    res.writeHead(200, {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-cache',
+      'x-accel-buffering': 'no',
+      'access-control-allow-origin': allowedOrigin,
+    });
+    const writeEvent = (payload) => res.write(`${JSON.stringify(payload)}\n`);
+    writeEvent({ type: 'start', ok: true, runId, provider: providerId, startedAt });
+    const result = await runCapture(resolveCommand(provider), args, {
+      cwd: effectiveProjectPath,
+      stdin,
+      onOutput: (chunk, stream) => writeEvent({ type: 'output', runId, stream, chunk }),
+    });
+    const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+    writeEvent({
+      type: 'done',
+      ok: result.ok,
+      runId,
+      exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+      output: output.slice(0, outputLimit),
+      truncated: output.length > outputLimit,
+      error: result.error,
+    });
+    res.end();
+    return;
+  }
+
+  const result = await runCapture(resolveCommand(provider), args, { cwd: effectiveProjectPath, stdin });
+  const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+
+  json(res, result.ok ? 200 : 500, {
+    ok: result.ok,
+    runId,
+    exitCode: result.exitCode,
+    durationMs: Date.now() - startedAt,
+    output: output.slice(0, outputLimit),
+    truncated: output.length > outputLimit,
+    error: result.error,
+  });
+}
+
+async function handleUsage(req, res) {
+  if (!isAuthorized(req)) return unauthorized(res);
+  try {
+    const disk = await runCapture('df', ['-h', '/']);
+    const mem = await runCapture('free', ['-h']);
+    const cpu = await runCapture('uptime', []);
+    let agyOutput = 'Not available';
+    try {
+      const agyVersion = await runCapture('agy', ['--version']);
+      agyOutput = agyVersion.stdout.trim() || agyVersion.stderr.trim() || 'Not available';
+    } catch (_) {}
+    
+    const usageOutput = [
+      `=== SYSTEM STATUS ===`,
+      cpu.stdout.trim(),
+      `\n=== MEMORY USAGE ===`,
+      mem.stdout.trim(),
+      `\n=== DISK SPACE ===`,
+      disk.stdout.trim(),
+      `\n=== ANTIGRAVITY VERSION ===`,
+      agyOutput
+    ].join('\n');
+    
+    json(res, 200, { ok: true, output: usageOutput });
+  } catch (error) {
+    json(res, 500, { ok: false, error: error.message });
+  }
 }
 
 const MEDIA_TYPES = {
@@ -140,7 +623,6 @@ async function handleMedia(req, res) {
   stream.on('error', () => { if (!res.headersSent) { json(res, 500, { ok: false, error: 'Error reading file.' }); } else { res.destroy(); } });
   stream.pipe(res);
 }
-
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -279,7 +761,7 @@ handlers.set('system:status', async () => {
 handlers.set('shell:create', async (event, { chatId, cwd, shellType }) => {
   if (activeShells.has(chatId)) return;
   const isWin = process.platform === 'win32';
-  const shell = isWin ? (shellType === 'powershell' ? 'powershell.exe' : 'cmd.exe') : 'bash';
+  const shell = isWin ? (shellType === 'powershell' ? 'powershell.exe' : (process.env.COMSPEC || 'cmd.exe')) : 'bash';
   const args = isWin && shellType === 'powershell' ? ['-NoLogo'] : [];
   
   let spawnCwd = PROJECT_PATH;
@@ -288,11 +770,16 @@ handlers.set('shell:create', async (event, { chatId, cwd, shellType }) => {
   const env = { ...process.env };
   if (isWin) {
     const agyPath = join(userHome, 'AppData/Local/agy/bin');
-    const paths = (env.PATH || '').split(';');
+    const pathKey = Object.keys(env).find(k => k.toUpperCase() === 'PATH') || 'PATH';
+    const paths = (env[pathKey] || '').split(';');
     if (!paths.some(p => p.toLowerCase() === agyPath.toLowerCase())) {
       paths.push(agyPath);
-      env.PATH = paths.join(';');
     }
+    // Clean up case-variant duplicates of PATH on Windows to prevent node-pty launch errors
+    for (const k of Object.keys(env)) {
+      if (k.toUpperCase() === 'PATH') delete env[k];
+    }
+    env[pathKey] = paths.join(';');
   }
 
   try {

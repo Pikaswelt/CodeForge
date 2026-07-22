@@ -12,7 +12,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = if ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path } else { Get-Location }
 $Port = if ($env:CODEFORGE_PORT) { $env:CODEFORGE_PORT } else { "8787" }
 $Token = if ($env:CODEFORGE_TOKEN) { $env:CODEFORGE_TOKEN } else { (-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 16 | ForEach-Object { [char]$_ })) }
 $HostAddr = "0.0.0.0"
