@@ -1,11 +1,11 @@
 #!/bin/bash
-# CodeForge Debian Server Installer v2.4.2
+# CodeForge Debian Server Installer v2.4.3
 # Installation: sudo bash install-codeforge-debian.sh
 
 set -e
 
 echo "==============================================="
-echo "  CodeForge Debian Server Installer v2.4.2"
+echo "  CodeForge Debian Server Installer v2.4.3"
 echo "==============================================="
 echo ""
 

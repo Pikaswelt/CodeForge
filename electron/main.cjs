@@ -1,4 +1,20 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol, net } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol, net, nativeImage, session, systemPreferences } = require('electron');
+
+// Single instance lock
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  process.exit(0);
+}
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'codeforge-media', privileges: { bypassCSP: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
 ]);
@@ -613,7 +629,10 @@ function createWindow() {
     titleBarStyle: 'hidden',
     backgroundColor: '#111111',
     title: 'CodeForge',
-    icon: getAssetPath(process.platform === 'win32' ? 'codeforge.ico' : 'codeforge.png'),
+    icon: (() => {
+      const p = getAssetPath(process.platform === 'win32' ? 'codeforge.ico' : 'codeforge.png');
+      return p && fs.existsSync(p) ? nativeImage.createFromPath(p) : undefined;
+    })(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -2996,7 +3015,7 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
   }
   
   const isWin = process.platform === 'win32';
-  let shell = isWin ? 'cmd.exe' : 'bash';
+  let shell = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'bash';
   let args = [];
   const env = { ...process.env };
 
@@ -3023,11 +3042,16 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
     
     if (isWin) {
       const agyPath = path.join(app.getPath('home'), 'AppData', 'Local', 'agy', 'bin');
-      const paths = (env.PATH || '').split(path.delimiter);
+      const pathKey = Object.keys(env).find(k => k.toUpperCase() === 'PATH') || 'PATH';
+      const paths = (env[pathKey] || '').split(path.delimiter);
       if (!paths.some(p => p.toLowerCase() === agyPath.toLowerCase())) {
         paths.push(agyPath);
-        env.PATH = paths.join(path.delimiter);
       }
+      // Clean up case-variant duplicates of PATH on Windows to prevent node-pty launch errors
+      for (const k of Object.keys(env)) {
+        if (k.toUpperCase() === 'PATH') delete env[k];
+      }
+      env[pathKey] = paths.join(path.delimiter);
     }
   }
 
@@ -3108,6 +3132,17 @@ function killShellSession(_event, chatId) {
 }
 
 app.whenReady().then(() => {
+  if (session && session.defaultSession) {
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      if (permission === 'media' || permission === 'audioCapture' || permission === 'speech') {
+        return callback(true);
+      }
+      callback(true);
+    });
+    session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+      return true;
+    });
+  }
   protocol.handle('codeforge-media', (request) => {
     let filePath = request.url;
     if (filePath.startsWith('codeforge-media:///')) {
@@ -3116,8 +3151,25 @@ app.whenReady().then(() => {
       filePath = filePath.slice('codeforge-media://'.length);
     }
     filePath = decodeURIComponent(filePath);
-    const { pathToFileURL } = require('node:url');
-    return net.fetch(pathToFileURL(filePath).toString());
+
+    // Normalize Windows drive letter path
+    if (process.platform === 'win32') {
+      filePath = filePath.replace(/^\/([a-zA-Z]:)/, '$1');
+    }
+
+    try {
+      if (!fs.existsSync(filePath)) {
+        return new Response('File not found', { status: 404 });
+      }
+
+      const { pathToFileURL } = require('node:url');
+      return net.fetch(pathToFileURL(filePath).toString(), {
+        headers: request.headers
+      });
+    } catch (err) {
+      console.error('Failed to serve codeforge-media:', err);
+      return new Response('Internal server error', { status: 500 });
+    }
   });
 
   ipcMain.handle('dialog:select-project', async () => {
@@ -3443,5 +3495,35 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('before-quit', () => {
+  for (const [runId, child] of activeProcesses) {
+    try {
+      if (child && !child.killed) {
+        if (process.platform === 'win32' && child.pid) {
+          spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+        } else {
+          child.kill('SIGTERM');
+        }
+      }
+    } catch (_) {}
+  }
+  activeProcesses.clear();
+  if (wss) { try { wss.close(); } catch (_) {} wss = null; }
+  if (syncServer) { try { syncServer.close(); } catch (_) {} syncServer = null; }
+  if (discordClient) { try { discordClient.destroy().catch(() => {}); } catch (_) {} discordClient = null; }
+});
+
+app.on('quit', () => {
+  if (process.platform === 'win32') {
+    try { spawn('taskkill', ['/pid', String(process.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' }); } catch (_) {}
+  }
+  process.exit(0);
 });

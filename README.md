@@ -1,4 +1,4 @@
-# ⚔️ CodeForge v2.4.2 ☆ コードフォージ
+# ⚔️ CodeForge V2 (v2.5.3) ☆ コードフォージ
 
 <p align="center">
   <i>✨ 君'のコードを完全にする！— Make your code perfect, Senpai! ✨</i>
@@ -16,13 +16,16 @@ Desktop & Mobile App für lokale KI-Coding-Agenten. Verbinde dich mit deinem PC,
   → selected project folder ✨
 ```
 
-## 🆕 Neu in v2.4.2 ～☆
+## 🆕 Neu in CodeForge V2 (v2.5.3) ～☆
 
-- **⚡ Connection Key System** – Einfach den generierten Base64-Key kopieren, in der App einfügen → **SOFORT VERBUNDEN!**
-- **🤖 Auto-Pairing & Fallback** – Server startet automatisch im Kopplungsmodus, falls eine LAN-Verbindung gesucht wird
-- **🔐 Höchste Sicherheit** – Token wird verschlüsselt im Connection-Key transportiert, keine Klartext-Eingaben
-- **🔄 GitHub Actions CI/CD** – Automatische Builds & Releases bei Push/Tag
-- **📱 Vereinfachte Mobile-UI** – Connection-Key-Eingabe direkt auf der Startseite
+- 🎮 **2D Game Studio Engine** – Integriertes Game Studio mit visueller Node-Logik, Web-Audio Synthesizer Engine, Physik-Simulator & Canvas Live-Preview
+- 🎙️ **Voice Dictation (Spracheingabe)** – Integrierte Spracheingabe im Terminal-Chat & Prompt-Input (`Alt+S` / `Ctrl+Shift+S`)
+- 🌐 **Custom Media Protocol & SSH Gateway** – Unterstützung für eigene Medien-Protokolle und SSH-Gateway-Remoteterminals
+- ⚡ **Connection Key System** – Einfach den generierten Base64-Key kopieren, in der App einfügen → **SOFORT VERBUNDEN!**
+- 🎨 **Glassmorphism & Custom Themes** – Dynamic Glass Themes (Apple Dark/Light, Neon Flow, Aurora Flow), Transparenz & Background Video Support
+- 🤖 **Auto-Pairing & Fallback** – Server startet automatisch im Kopplungsmodus, falls eine LAN-Verbindung gesucht wird
+- 🔐 **Höchste Sicherheit** – Token wird verschlüsselt im Connection-Key transportiert
+- 🔄 **GitHub Actions CI/CD** – Automatische Builds & Releases bei Push/Tag
 
 ## ⚡ Quick Start – In 10 Sekunden verbunden
 

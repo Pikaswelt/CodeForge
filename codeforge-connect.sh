@@ -48,14 +48,27 @@ if ! command -v node &>/dev/null; then
 fi
 
 # Prüfen ob der Remote-Server existiert
-SERVER_SCRIPT="$SCRIPT_DIR/codeforge-remote-server.mjs"
+if [ -d "${SCRIPT_DIR:-}" ]; then
+  SERVER_SCRIPT="$SCRIPT_DIR/codeforge-remote-server.mjs"
+else
+  SERVER_SCRIPT="./codeforge-remote-server.mjs"
+fi
+
 if [ ! -f "$SERVER_SCRIPT" ]; then
   SERVER_SCRIPT="./codeforge-remote-server.mjs"
 fi
+
 if [ ! -f "$SERVER_SCRIPT" ]; then
-  echo "Fehler: codeforge-remote-server.mjs nicht gefunden."
-  echo "Stelle sicher, dass das Skript im selben Ordner liegt wie dieses Script."
-  exit 1
+  echo "  ✗ codeforge-remote-server.mjs nicht gefunden! Lade von GitHub herunter..."
+  if command -v curl &>/dev/null; then
+    curl -fsSL -o "codeforge-remote-server.mjs" "https://raw.githubusercontent.com/Pikaswelt/CodeForge/main/codeforge-remote-server.mjs"
+  elif command -v wget &>/dev/null; then
+    wget -q -O "codeforge-remote-server.mjs" "https://raw.githubusercontent.com/Pikaswelt/CodeForge/main/codeforge-remote-server.mjs"
+  else
+    echo "Fehler: Weder curl noch wget gefunden."
+    exit 1
+  fi
+  SERVER_SCRIPT="./codeforge-remote-server.mjs"
 fi
 
 clear

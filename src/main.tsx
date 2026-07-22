@@ -1,4 +1,17 @@
-const canUseSyncSocket = window.location.protocol !== 'file:' && Boolean(window.location.host);
+const getSavedMobileConfig = () => {
+  try {
+    const saved = localStorage.getItem('agentWorkspace.mobileConnectionConfig');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.connected && parsed.vpsUrl) return parsed;
+    }
+  } catch {}
+  return null;
+};
+
+const savedMobileConfig = getSavedMobileConfig();
+const canUseSyncSocket = (window.location.protocol !== 'file:' && Boolean(window.location.host)) || Boolean(savedMobileConfig);
+
 // Browser-Polyfill fuer window.agentWorkspace
 if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
   const pendingRequests = new Map();
@@ -9,7 +22,18 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
   const connect = (): Promise<WebSocket> => {
     if (connectPromise) return connectPromise;
     connectPromise = new Promise((resolve) => {
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const currentConfig = getSavedMobileConfig();
+      let proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      let host = window.location.host;
+
+      if (currentConfig && currentConfig.vpsUrl) {
+        try {
+          const urlObj = new URL(currentConfig.vpsUrl);
+          proto = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+          host = urlObj.host;
+        } catch {}
+      }
+
       // Include sync token from URL search params or localStorage
       const params = new URLSearchParams(window.location.search);
       let token = params.get('token') || params.get('syncToken') || localStorage.getItem('agentWorkspace.syncToken') || '';

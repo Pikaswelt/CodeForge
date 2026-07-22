@@ -1362,6 +1362,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 }
 
 function isVideoPath(filePath: string) {
+  if (!filePath) return false;
+  if (filePath.startsWith('data:video/')) return true;
+  if (filePath.startsWith('blob:')) return true;
   return /\.(mp4|webm|mov|m4v|ogg|ogv|avi|mkv)$/i.test(filePath);
 }
 
