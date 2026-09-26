@@ -1,5 +1,12 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol, net, nativeImage, session, systemPreferences } = require('electron');
 
+process.on('uncaughtException', (error) => {
+  console.error('[Main Process Uncaught Exception]:', error);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main Process Unhandled Rejection]:', reason);
+});
+
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -24,7 +31,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const DiscordRPC = require('discord-rpc');
-const { autoUpdater } = require('electron-updater');
 const { setupUpdater } = require('./updater.cjs');
 let updater = null;
 
@@ -436,13 +442,7 @@ const originalHandle = ipcMain.handle.bind(ipcMain);
 ipcMain.handle = (channel, fn) => {
   handlers.set(channel, fn);
   originalHandle(channel, async (event, ...args) => {
-    if (event && event.sender && typeof event.sender.send === 'function') {
-      const originalSend = event.sender.send.bind(event.sender);
-      event.sender.send = (ch, data) => {
-        originalSend(ch, data);
-        broadcast({ type: 'ipc-event', channel: ch, data });
-      };
-    }
+    broadcast({ type: 'ipc-event', channel, args: args[0] });
     return fn(event, ...args);
   });
 };
@@ -453,6 +453,7 @@ const nativeAppTabs = new Map();
 let mainWindow = null;
 let discordClient = null;
 let discordReady = false;
+let discordEnabled = true;
 let discordStartedAt = Date.now();
 const DISCORD_CLIENT_ID = '1518686223676342282';
 const UPDATE_OWNER = 'Pikaswelt';
@@ -478,9 +479,6 @@ if (process.platform === 'win32') {
 
 DiscordRPC.register(DISCORD_CLIENT_ID);
 
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.allowPrerelease = false;
 
 // Updater initialized later in createWindow() to have mainWindow reference
 
@@ -639,6 +637,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       webviewTag: true,
+      backgroundThrottling: false,
     },
   });
 
@@ -1509,12 +1508,15 @@ async function createProjectFolder(_event, rawName) {
 }
 
 async function ensureDiscordPresence() {
+  if (!discordEnabled) return false;
   if (discordReady) return true;
   if (!discordClient) {
     discordClient = new DiscordRPC.Client({ transport: 'ipc' });
     discordClient.on('ready', () => {
       discordReady = true;
-      updateDiscordPresence(null, {});
+      if (discordEnabled) {
+        updateDiscordPresence(null, {});
+      }
     });
     discordClient.on('disconnected', () => {
       discordReady = false;
@@ -1532,6 +1534,22 @@ async function ensureDiscordPresence() {
 }
 
 async function updateDiscordPresence(_event, input = {}) {
+  if (typeof input.enabled === 'boolean') {
+    discordEnabled = input.enabled;
+  }
+  if (!discordEnabled) {
+    if (discordClient) {
+      try {
+        if (discordReady) {
+          await discordClient.clearActivity();
+        }
+        await discordClient.destroy();
+      } catch (_) {}
+      discordClient = null;
+      discordReady = false;
+    }
+    return true;
+  }
   const connected = await ensureDiscordPresence();
   if (!connected || !discordClient) return false;
   const projectName = String(input.projectName || '').trim();
@@ -3068,8 +3086,12 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
   console.log(`[Shell] Spawning PTY ${shell} in ${spawnCwd}`);
 
   try {
+    // Full color support so CLIs like Claude Code render their colored UI.
+    env.TERM = 'xterm-256color';
+    env.COLORTERM = 'truecolor';
+    delete env.NO_COLOR;
     const ptyProcess = pty.spawn(shell, args, {
-      name: 'xterm-color',
+      name: 'xterm-256color',
       cols: 100,
       rows: 30,
       cwd: spawnCwd,
@@ -3134,15 +3156,20 @@ function killShellSession(_event, chatId) {
 app.whenReady().then(() => {
   if (session && session.defaultSession) {
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      if (permission === 'media' || permission === 'audioCapture' || permission === 'speech') {
-        return callback(true);
-      }
-      callback(true);
+      const allowedPermissions = ['media', 'audioCapture', 'speech'];
+      const url = webContents.getURL();
+      const isLocal = url.startsWith('file://') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1');
+      callback(isLocal && allowedPermissions.includes(permission));
     });
-    session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-      return true;
+    session.defaultSession.setPermissionCheckHandler((webContents, permission, url) => {
+      const isLocal = !url || url.startsWith('file://') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1');
+      return isLocal;
     });
   }
+
+ipcMain.handle('device:status', () => {
+  return { connected: true };
+});
   protocol.handle('codeforge-media', (request) => {
     let filePath = request.url;
     if (filePath.startsWith('codeforge-media:///')) {
@@ -3162,9 +3189,27 @@ app.whenReady().then(() => {
         return new Response('File not found', { status: 404 });
       }
 
-      const { pathToFileURL } = require('node:url');
-      return net.fetch(pathToFileURL(filePath).toString(), {
-        headers: request.headers
+      // Serve with HTTP Range support: net.fetch(file://) ignores Range,
+      // which makes Chromium stall/pause background videos.
+      const { Readable } = require('node:stream');
+      const size = fs.statSync(filePath).size;
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska', '.ogv': 'video/ogg', '.gif': 'image/gif', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml' }[ext] || 'application/octet-stream';
+      const range = /bytes=(\d*)-(\d*)/.exec(request.headers.get('range') || '');
+      if (range && size > 0) {
+        let start = range[1] ? Number(range[1]) : size - Number(range[2]);
+        let end = range[1] && range[2] ? Number(range[2]) : size - 1;
+        start = Math.max(0, start);
+        end = Math.min(end, size - 1);
+        if (start > end) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
+        return new Response(Readable.toWeb(fs.createReadStream(filePath, { start, end })), {
+          status: 206,
+          headers: { 'Content-Type': mime, 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${size}` },
+        });
+      }
+      return new Response(Readable.toWeb(fs.createReadStream(filePath)), {
+        status: 200,
+        headers: { 'Content-Type': mime, 'Accept-Ranges': 'bytes', 'Content-Length': String(size) },
       });
     } catch (err) {
       console.error('Failed to serve codeforge-media:', err);
@@ -3181,6 +3226,91 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('dialog:create-project', createProjectFolder);
   ipcMain.handle('dialog:scratch-project', () => scratchProjectFolder());
+  // --- Direct API chat (Anthropic / OpenAI / OpenAI-compatible) ---
+  const apiBaseUrl = (provider, baseUrl) => {
+    const fallback = provider === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1';
+    return String(baseUrl || fallback).trim().replace(/\/+$/, '');
+  };
+  const apiHeaders = (provider, apiKey) =>
+    provider === 'anthropic'
+      ? { 'content-type': 'application/json', 'x-api-key': apiKey || '', 'anthropic-version': '2023-06-01' }
+      : { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) };
+  const readApiError = async (response) => {
+    const text = await response.text().catch(() => '');
+    try {
+      const json = JSON.parse(text);
+      return json?.error?.message || json?.message || text;
+    } catch {
+      return text || response.statusText;
+    }
+  };
+
+  ipcMain.handle('apichat:send', async (_event, input = {}) => {
+    const { provider, baseUrl, apiKey, model, system, messages = [] } = input;
+    if (!model) throw new Error('Kein Modell angegeben.');
+    const base = apiBaseUrl(provider, baseUrl);
+    const history = messages
+      .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && item.content)
+      .map((item) => ({ role: item.role, content: String(item.content) }));
+    if (provider === 'anthropic') {
+      const response = await fetch(`${base}/messages`, {
+        method: 'POST',
+        headers: apiHeaders(provider, apiKey),
+        body: JSON.stringify({ model, max_tokens: 8192, ...(system ? { system } : {}), messages: history }),
+      });
+      if (!response.ok) throw new Error(`API-Fehler ${response.status}: ${await readApiError(response)}`);
+      const data = await response.json();
+      return {
+        text: (data.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
+        tokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
+      };
+    }
+    const response = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: apiHeaders(provider, apiKey),
+      body: JSON.stringify({ model, messages: [...(system ? [{ role: 'system', content: system }] : []), ...history] }),
+    });
+    if (!response.ok) throw new Error(`API-Fehler ${response.status}: ${await readApiError(response)}`);
+    const data = await response.json();
+    return { text: data.choices?.[0]?.message?.content || '', tokens: data.usage?.total_tokens || 0 };
+  });
+
+  ipcMain.handle('apichat:models', async (_event, input = {}) => {
+    const { provider, baseUrl, apiKey } = input;
+    const response = await fetch(`${apiBaseUrl(provider, baseUrl)}/models`, { headers: apiHeaders(provider, apiKey) });
+    if (!response.ok) throw new Error(`Modelle konnten nicht geladen werden (${response.status}): ${await readApiError(response)}`);
+    const data = await response.json();
+    return (data.data || data.models || []).map((item) => item.id || item.name).filter(Boolean).sort();
+  });
+
+  ipcMain.handle('apichat:project-files', async (_event, root) => {
+    const skip = new Set(['node_modules', '.git', 'dist', 'build', 'out', 'release', '.next', 'Library', 'Temp', 'obj', 'bin', '.venv', '__pycache__']);
+    const files = [];
+    const walk = (dir, depth) => {
+      if (files.length >= 300 || depth > 4) return;
+      let entries = [];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (files.length >= 300) return;
+        if (skip.has(entry.name) || entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        const rel = path.relative(root, full).replace(/\\/g, '/');
+        if (entry.isDirectory()) {
+          files.push(`${rel}/`);
+          walk(full, depth + 1);
+        } else {
+          files.push(rel);
+        }
+      }
+    };
+    if (root && fs.existsSync(root)) walk(root, 0);
+    return files;
+  });
+
 
   ipcMain.handle('dialog:select-attachments', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -3386,9 +3516,10 @@ app.whenReady().then(() => {
         return;
       }
       
-      const child = spawn('cmd.exe', ['/c', 'action.cmd', 'play', name], {
+      const safeName = String(name).replace(/[^a-zA-Z0-9_-]/g, '');
+      const child = spawn('cmd.exe', ['/c', 'action.cmd', 'play', safeName], {
         cwd: dirPath,
-        shell: true
+        shell: false
       });
       
       let errorOut = '';
@@ -3475,19 +3606,164 @@ app.whenReady().then(() => {
     return { running: false };
   });
 
+  // Native Speech Recognition Engine (Windows System.Speech / SAPI worker)
+  let activeSpeechProcess = null;
+
+  function stopNativeSpeech() {
+    if (activeSpeechProcess) {
+      try {
+        activeSpeechProcess.stdin.write('stop\r\n');
+        activeSpeechProcess.stdin.end();
+      } catch (_) {}
+      const procToKill = activeSpeechProcess;
+      setTimeout(() => {
+        if (procToKill && !procToKill.killed) {
+          try { procToKill.kill(); } catch (_) {}
+        }
+      }, 500);
+      activeSpeechProcess = null;
+    }
+  }
+
+  function startNativeSpeech(lang = 'de-DE') {
+    stopNativeSpeech();
+    return new Promise((resolve) => {
+      if (process.platform !== 'win32') {
+        return resolve({ ok: false, error: 'Native speech recognition is only supported on Windows.' });
+      }
+
+      const psScript = `
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Speech
+
+try {
+    $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine
+    $grammar = New-Object System.Speech.Recognition.DictationGrammar
+    $engine.LoadGrammar($grammar)
+    $engine.SetInputToDefaultAudioDevice()
+
+    Register-ObjectEvent -InputObject $engine -EventName SpeechRecognized -Action {
+        $text = $EventArgs.Result.Text
+        $confidence = $EventArgs.Result.Confidence
+        if ($text) {
+            $msg = @{ type = "final"; text = $text; confidence = $confidence } | ConvertTo-Json -Compress
+            [Console]::WriteLine($msg)
+        }
+    } | Out-Null
+
+    Register-ObjectEvent -InputObject $engine -EventName SpeechHypothesized -Action {
+        $text = $EventArgs.Result.Text
+        if ($text) {
+            $msg = @{ type = "interim"; text = $text } | ConvertTo-Json -Compress
+            [Console]::WriteLine($msg)
+        }
+    } | Out-Null
+
+    Register-ObjectEvent -InputObject $engine -EventName RecognizeCompleted -Action {
+        $msg = @{ type = "completed" } | ConvertTo-Json -Compress
+        [Console]::WriteLine($msg)
+    } | Out-Null
+
+    [Console]::WriteLine('{"type":"ready"}')
+    $engine.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple)
+
+    while ($true) {
+        $line = [Console]::ReadLine()
+        if ($line -eq 'stop' -or $line -eq $null) { break }
+    }
+    $engine.RecognizeAsyncStop()
+} catch {
+    $err = @{ type = "error"; error = $_.Exception.Message } | ConvertTo-Json -Compress
+    [Console]::WriteLine($err)
+}
+`;
+
+      const b64 = Buffer.from(psScript, 'utf16le').toString('base64');
+      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', b64], {
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      activeSpeechProcess = child;
+      let resolved = false;
+
+      child.stdout.on('data', (data) => {
+        const lines = data.toString().split('\n').map(l => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.type === 'ready') {
+              if (!resolved) {
+                resolved = true;
+                resolve({ ok: true });
+              }
+            }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('speech:result', parsed);
+            }
+            broadcast({ type: 'ipc-event', channel: 'speech:result', data: parsed });
+          } catch (_) {}
+        }
+      });
+
+      child.stderr.on('data', (data) => {
+        const text = data.toString();
+        if (!text.includes('#< CLIXML') && !text.includes('System.Management.Automation')) {
+          console.error('[Speech Worker stderr]:', text);
+        }
+      });
+
+      child.on('error', (err) => {
+        if (!resolved) {
+          resolved = true;
+          resolve({ ok: false, error: err.message });
+        }
+        activeSpeechProcess = null;
+      });
+
+      child.on('close', () => {
+        activeSpeechProcess = null;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('speech:result', { type: 'stopped' });
+        }
+      });
+
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve({ ok: true });
+        }
+      }, 4000);
+    });
+  }
+
+  ipcMain.handle('speech:start', (_event, { lang } = {}) => {
+    return startNativeSpeech(lang);
+  });
+
+  ipcMain.handle('speech:stop', () => {
+    stopNativeSpeech();
+    return { ok: true };
+  });
+
+  ipcMain.handle('speech:status', () => {
+    return { listening: activeSpeechProcess !== null, supported: process.platform === 'win32' };
+  });
+
   ipcMain.on('window:minimize', () => mainWindow?.minimize());
   ipcMain.on('window:maximize', () => {
     if (!mainWindow) return;
     mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
   });
-  ipcMain.on('window:close', () => mainWindow?.close());
+  ipcMain.on('window:close', () => {
+    stopNativeSpeech();
+    mainWindow?.close();
+  });
 
   createWindow();
-  updater = setupUpdater({ app, mainWindow, autoUpdater });
+  updater = setupUpdater({ app, mainWindow });
   updater.initializeAutoUpdates();
-  setTimeout(() => {
-    void updater.checkForAppUpdates(null, { manual: false });
-  }, 4000).unref?.();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -3501,6 +3777,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  try { stopNativeSpeech(); } catch (_) {}
   for (const [runId, child] of activeProcesses) {
     try {
       if (child && !child.killed) {

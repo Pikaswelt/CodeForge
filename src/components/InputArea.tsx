@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -106,23 +106,71 @@ export default function InputArea() {
     }
   };
 
+  const nativeSpeechCleanupRef = useRef<(() => void) | null>(null);
+
+  const stopDictation = () => {
+    if (window.agentWorkspace?.stopSpeechRecognition) {
+      window.agentWorkspace.stopSpeechRecognition().catch(() => {});
+    }
+    if (nativeSpeechCleanupRef.current) {
+      nativeSpeechCleanupRef.current();
+      nativeSpeechCleanupRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {
+        console.error(e);
+      }
+      recognitionRef.current = null;
+    }
+    setListening(false);
+  };
+
   const startDictation = async () => {
     if (listening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setListening(false);
+      stopDictation();
       return;
     }
 
+    setError('');
+
+    // 1. Electron Native Windows Speech Engine (Offline, 100% reliable)
+    if (window.agentWorkspace?.startSpeechRecognition && window.agentWorkspace?.onSpeechResult) {
+      try {
+        setListening(true);
+        if (nativeSpeechCleanupRef.current) {
+          nativeSpeechCleanupRef.current();
+        }
+
+        const unsub = window.agentWorkspace.onSpeechResult((payload) => {
+          if (payload.type === 'final' && payload.text) {
+            setText((current) => `${current}${current ? ' ' : ''}${payload.text}`);
+          } else if (payload.type === 'error') {
+            setError(`Spracherkennungsfehler: ${payload.error || 'Unbekannt'}`);
+            setListening(false);
+          } else if (payload.type === 'stopped') {
+            setListening(false);
+          }
+        });
+        nativeSpeechCleanupRef.current = unsub;
+
+        const res = await window.agentWorkspace.startSpeechRecognition({ lang: navigator.language || 'de-DE' });
+        if (!res.ok && res.error) {
+          console.warn('[Speech] Native speech warning:', res.error);
+        }
+        return;
+      } catch (err) {
+        console.error('[Speech] Native speech error, falling back to Web Speech:', err);
+      }
+    }
+
+    // 2. Web Speech API Fallback (Browser / Android)
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError('Spracherkennung wird auf diesem System oder Browser nicht unterstuetzt.');
+      setError('Spracherkennung wird auf diesem System nicht unterstuetzt.');
+      setListening(false);
       return;
     }
 
@@ -134,15 +182,16 @@ export default function InputArea() {
     } catch (permErr) {
       console.error('Mikrofon-Zugriff verweigert:', permErr);
       setError('Mikrofon-Zugriff wurde verweigert.');
+      setListening(false);
       return;
     }
 
     try {
       const recognition = new SpeechRecognition();
       recognitionRef.current = recognition;
-      recognition.lang = 'de-DE';
+      recognition.lang = navigator.language || 'de-DE';
       recognition.interimResults = false;
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.onstart = () => {
         setListening(true);
         setError('');
@@ -160,14 +209,21 @@ export default function InputArea() {
         } else if (errName === 'audio-capture') {
           setError('Kein Mikrofon gefunden.');
         } else if (errName === 'network') {
-          setError('Spracherkennung verlangt Internetverbindung.');
+          setError('Web-Spracherkennung verlangt Internetverbindung.');
         } else if (errName !== 'no-speech') {
           setError(`Spracherkennungsfehler: ${errName || 'Unbekannt'}`);
         }
       };
       recognition.onresult = (event: any) => {
-        const transcript = event.results?.[0]?.[0]?.transcript;
-        if (transcript) setText((current) => `${current}${current ? ' ' : ''}${transcript}`);
+        const results = event.results;
+        for (let i = event.resultIndex || 0; i < results.length; i++) {
+          if (results[i].isFinal) {
+            const transcript = results[i][0]?.transcript;
+            if (transcript) {
+              setText((current) => `${current}${current ? ' ' : ''}${transcript}`);
+            }
+          }
+        }
       };
       recognition.start();
     } catch (err) {
@@ -176,6 +232,12 @@ export default function InputArea() {
       setError('Spracherkennung konnte nicht gestartet werden.');
     }
   };
+
+  useEffect(() => {
+    return () => {
+      stopDictation();
+    };
+  }, []);
 
   const access = ACCESS_OPTIONS.find((option) => option.id === accessMode)!;
   const models = PROVIDER_MODELS[provider];

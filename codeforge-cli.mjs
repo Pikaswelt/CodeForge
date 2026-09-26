@@ -148,7 +148,7 @@ function validateConfig(config) {
 
 async function checkHealth(url, token) {
   try {
-    const res = await fetch(`${url}/discover`, {
+    const res = await fetch(`${url}/health`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5000),
     });
@@ -295,7 +295,11 @@ async function interactiveMode(config) {
     }
 
     config.prompt = input;
-    await sendPrompt(config);
+    try {
+      await sendPrompt(config);
+    } catch (err) {
+      process.stderr.write(`\n  Fehler: ${err.message}\n`);
+    }
     process.stdout.write('\n');
   }
 

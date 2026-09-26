@@ -88,7 +88,7 @@ export type Chat = {
   updatedAt: number;
   folderId: string;
   messages: Message[];
-  mode?: 'standard' | 'lyz-dev' | 'terminal';
+  mode?: 'standard' | 'lyz-dev' | 'terminal' | 'api';
   pluginName?: string;
   requiredMcpServer?: {
     id: string;
@@ -98,7 +98,16 @@ export type Chat = {
   terminalTabs?: { id: string; title: string; shellType?: 'powershell' | 'cmd' }[];
   activeTerminalTabId?: string;
   terminalLayout?: 'single' | 'grid';
-  isUnreal?: boolean;
+  terminalGridSize?: number;
+  harness?: { name: string; command: string; icon: string };
+  api?: { providerId?: string; provider: ApiChatProvider; baseUrl: string; model: string };
+};
+
+export type CliHarness = {
+  id: string;
+  name: string;
+  command: string;
+  icon: string;
 };
 
 export type ProjectFolder = {
@@ -284,4 +293,23 @@ export type CodexPluginInfo = {
   path: string;
   manifestPath: string;
   removable: boolean;
+};
+
+export type ApiChatProvider = 'anthropic' | 'openai' | 'openai-compatible';
+
+export type ApiProviderConfig = {
+  id: string;
+  name: string;
+  provider: ApiChatProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+};
+
+// Per-chat start options; connection details live in ApiProviderConfig.
+export type ApiChatConfig = {
+  providerId: string;
+  model: string;
+  systemPrompt: string;
+  includeProjectFiles: boolean;
 };

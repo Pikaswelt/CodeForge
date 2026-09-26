@@ -225,6 +225,7 @@
   object-fit: cover;
   background-size: cover;
   background-position: center;
+  will-change: transform;
 }
 
 .theme-media-scrim {
@@ -476,9 +477,8 @@
 }
 
 .library-shell {
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f7f8fb 44%, #f3f6fb 100%);
-  color: #18181b;
+  background: var(--lib-bg, linear-gradient(180deg, #ffffff 0%, #f7f8fb 44%, #f3f6fb 100%));
+  color: var(--lib-text, #18181b);
 }
 
 .library-hero {
@@ -489,7 +489,7 @@
   padding: 2rem;
   border: 1px solid #e6eaf0;
   border-radius: 8px;
-  background: #ffffff;
+  background-color: var(--lib-card, #ffffff);
   background-position: center right;
   background-repeat: no-repeat;
   background-size: cover;
@@ -510,6 +510,19 @@
   border-radius: inherit;
   background:
     linear-gradient(90deg, rgb(255 255 255 / 0.96) 0%, rgb(255 255 255 / 0.86) 39%, rgb(255 255 255 / 0.22) 72%, rgb(255 255 255 / 0.05) 100%);
+  opacity: var(--lib-overlay, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.library-hero > .library-hero-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  z-index: 0;
   pointer-events: none;
 }
 
@@ -522,7 +535,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: #2563eb;
+  color: var(--lib-accent, #2563eb);
   font-size: 0.8rem;
   font-weight: 700;
 }
@@ -530,7 +543,7 @@
 .library-hero h1 {
   margin-top: 0.75rem;
   max-width: 780px;
-  color: #111827;
+  color: var(--lib-text, #111827);
   font-size: 2.4rem;
   line-height: 1.08;
   font-weight: 760;
@@ -615,8 +628,8 @@
 }
 
 .library-button.primary {
-  border-color: #111827;
-  background: #111827;
+  border-color: var(--lib-accent, #111827);
+  background: var(--lib-accent, #111827);
   color: #ffffff;
 }
 
@@ -793,7 +806,7 @@
   flex-direction: column;
   border: 1px solid #e6eaf0;
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--lib-card, #ffffff);
   padding: 1rem;
   box-shadow: 0 14px 44px rgb(15 23 42 / 0.04);
   transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
@@ -821,7 +834,7 @@
 
 .library-card h2 {
   margin-top: 1rem;
-  color: #111827;
+  color: var(--lib-text, #111827);
   font-size: 1rem;
   font-weight: 760;
 }

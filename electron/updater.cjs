@@ -1,15 +1,18 @@
 /**
- * CodeForge Auto-Updater Module
- * Extracted from electron/main.cjs
+ * CodeForge Auto-Updater
+ *
+ * Reads latest.yml from the newest public GitHub release, downloads the NSIS
+ * installer in the background (sha512-verified) and installs it on request.
  */
 const { spawn } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const UPDATE_OWNER = 'Pikaswelt';
-const UPDATE_REPO = 'agent-manager';
-const UPDATE_LATEST_YML_URL = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest/download/latest.yml`;
-const UPDATE_DOWNLOAD_BASE_URL = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest/download/`;
+const UPDATE_REPO = 'CodeForge';
+const RELEASE_BASE_URL = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest/download/`;
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function compareVersions(left, right) {
   const a = String(left || '').split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
@@ -27,7 +30,7 @@ function parseLatestYml(text) {
     const match = text.match(new RegExp(`(?:^|\\n)\\s*${key}:\\s*["']?([^"'\\n]+)["']?`, 'i'));
     return match?.[1]?.trim() || '';
   };
-  const url = valueFor('url') || valueFor('path');
+  const url = valueFor('path') || valueFor('url');
   return {
     version: valueFor('version'),
     sha512: valueFor('sha512'),
@@ -35,8 +38,21 @@ function parseLatestYml(text) {
   };
 }
 
-function setupUpdater({ app, mainWindow, autoUpdater }) {
-  const updateState = {
+async function fetchLatestMetadata() {
+  const response = await fetch(`${RELEASE_BASE_URL}latest.yml`, {
+    headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
+  });
+  if (response.status === 404) {
+    throw new Error(`Kein Release gefunden. Ist ${UPDATE_OWNER}/${UPDATE_REPO} oeffentlich und hat ein Release mit latest.yml?`);
+  }
+  if (!response.ok) throw new Error(`Update-Server nicht erreichbar (${response.status}).`);
+  const metadata = parseLatestYml(await response.text());
+  if (!metadata.version || !metadata.fileName) throw new Error('latest.yml ist unvollstaendig.');
+  return { ...metadata, downloadUrl: `${RELEASE_BASE_URL}${encodeURIComponent(metadata.fileName)}` };
+}
+
+function setupUpdater({ app, mainWindow }) {
+  const state = {
     status: 'idle',
     currentVersion: app.getVersion(),
     availableVersion: '',
@@ -47,332 +63,162 @@ function setupUpdater({ app, mainWindow, autoUpdater }) {
     feedUrl: `GitHub Releases: ${UPDATE_OWNER}/${UPDATE_REPO}`,
     installerPath: '',
   };
+  let downloadPromise = null;
 
-  function getUpdateState() {
-    return {
-      ...updateState,
-      currentVersion: app.getVersion(),
-    };
-  }
+  const getUpdateState = () => ({ ...state, currentVersion: app.getVersion() });
 
-  function setUpdateState(patch) {
-    Object.assign(updateState, patch, { currentVersion: app.getVersion() });
+  function setState(patch) {
+    Object.assign(state, patch);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update:status', getUpdateState());
     }
     return getUpdateState();
   }
 
-  function updateMetadataCachePath() {
-    return path.join(app.getPath('userData'), 'update-metadata.json');
-  }
+  const pendingDir = () => path.join(app.getPath('userData'), 'pending-updates');
 
-  function readUpdateMetadataCache() {
-    try {
-      return JSON.parse(fs.readFileSync(updateMetadataCachePath(), 'utf8'));
-    } catch {
-      return {};
+  async function download(metadata) {
+    const targetPath = path.join(pendingDir(), metadata.fileName);
+    // Reuse an already downloaded, verified installer.
+    if (fs.existsSync(targetPath) && (!metadata.sha512 || sha512Of(fs.readFileSync(targetPath)) === metadata.sha512)) {
+      return targetPath;
     }
-  }
-
-  function writeUpdateMetadataCache(cache) {
-    try {
-      fs.mkdirSync(path.dirname(updateMetadataCachePath()), { recursive: true });
-      fs.writeFileSync(updateMetadataCachePath(), JSON.stringify(cache, null, 2));
-    } catch {
-      // Update metadata is a convenience cache; auto-updates still work without it.
-    }
-  }
-
-  async function fetchLatestInstallerMetadata() {
-    const response = await fetch(UPDATE_LATEST_YML_URL, {
-      headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
-    });
-    if (!response.ok) throw new Error(`Update-Metadaten nicht erreichbar (${response.status}).`);
-    const metadata = parseLatestYml(await response.text());
-    if (!metadata.version || !metadata.sha512 || !metadata.fileName) {
-      throw new Error('Update-Metadaten sind unvollstaendig.');
-    }
-    return {
-      ...metadata,
-      downloadUrl: `${UPDATE_DOWNLOAD_BASE_URL}${encodeURIComponent(metadata.fileName)}`,
-    };
-  }
-
-  function executeUninstallAndInstall(installerPath) {
-    const currentPid = process.pid;
-    const uninstallerPath = path.join(path.dirname(process.execPath), 'Uninstall CodeForge.exe');
-
-    if (process.platform === 'win32') {
-      const uninstallerPathNormalized = uninstallerPath.replace(/\\/g, '/');
-      const installerPathNormalized = installerPath ? installerPath.replace(/\\/g, '/') : '';
-      const installDirNormalized = path.dirname(uninstallerPath).replace(/\\/g, '/');
-      const releaseDir = 'C:/Users/Chris/Name/name/release';
-
-      const psCommand = `
-        $pidToWait = ${currentPid};
-        while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {
-          Start-Sleep -Milliseconds 200;
-        }
-        if (Test-Path "${uninstallerPathNormalized}") {
-          Start-Process -FilePath "${uninstallerPathNormalized}" -ArgumentList "/S", "_?=${installDirNormalized}" -Wait;
-        }
-        $latest = Get-ChildItem -Path "${releaseDir}" -Filter "*.exe" -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1;
-        if ($latest) {
-          Start-Process -FilePath $latest.FullName;
-        } elseif ("${installerPathNormalized}" -and (Test-Path "${installerPathNormalized}")) {
-          Start-Process -FilePath "${installerPathNormalized}";
-        }
-      `.replace(/\s+/g, ' ').trim();
-
-      spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCommand], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      }).unref();
-    } else {
-      if (installerPath) {
-        spawn(installerPath, [], {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: false,
-        }).unref();
-      }
-    }
-    app.quit();
-    return true;
-  }
-
-  async function installReadyUpdate() {
-    if (updateState.installerPath) {
-      return executeUninstallAndInstall(updateState.installerPath);
-    }
-    return false;
-  }
-
-  async function downloadSameVersionInstaller(metadata) {
-    setUpdateState({
-      status: 'downloading',
-      availableVersion: metadata.version,
-      downloaded: false,
-      percent: 0,
-      message: 'Aktualisierter Installer wird geladen...',
-      error: '',
-      installerPath: '',
-    });
     const response = await fetch(metadata.downloadUrl, { headers: { 'cache-control': 'no-cache' } });
-    if (!response.ok) throw new Error(`Installer konnte nicht geladen werden (${response.status}).`);
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const targetDir = path.join(app.getPath('userData'), 'pending-updates');
-    fs.mkdirSync(targetDir, { recursive: true });
-    const targetPath = path.join(targetDir, metadata.fileName);
-    fs.writeFileSync(targetPath, buffer);
-    setUpdateState({
-      status: 'downloaded',
-      downloaded: true,
-      percent: 100,
-      message: 'Aktualisierter Installer ist bereit.',
-      installerPath: targetPath,
-    });
-    void installReadyUpdate();
-  }
-
-  async function checkSameVersionInstallerUpdate() {
-    const metadata = await fetchLatestInstallerMetadata();
-    const cache = readUpdateMetadataCache();
-    const currentVersion = app.getVersion();
-    if (compareVersions(metadata.version, currentVersion) !== 0) return false;
-
-    const previousSha = cache[metadata.version]?.sha512 || '';
-    writeUpdateMetadataCache({
-      ...cache,
-      [metadata.version]: {
-        sha512: metadata.sha512,
-        fileName: metadata.fileName,
-        checkedAt: new Date().toISOString(),
-      },
-    });
-
-    if (!previousSha || previousSha === metadata.sha512) return false;
-    await downloadSameVersionInstaller(metadata);
-    return true;
-  }
-
-  async function downloadAndInstallLatest() {
-    if (['downloading'].includes(updateState.status)) return;
-
-    setUpdateState({
-      status: 'downloading',
-      percent: 0,
-      message: 'Lade neuesten Installer...',
-      error: '',
-      installerPath: '',
-    });
-
-    try {
-      const metadata = await fetchLatestInstallerMetadata();
-      const response = await fetch(metadata.downloadUrl, { headers: { 'cache-control': 'no-cache' } });
-      if (!response.ok) throw new Error(`Installer konnte nicht geladen werden (${response.status}).`);
-
-      const contentLength = Number(response.headers.get('content-length')) || 0;
-      const reader = response.body.getReader();
-      const chunks = [];
-      let receivedLength = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        receivedLength += value.length;
-        if (contentLength > 0) {
-          const percent = Math.round((receivedLength / contentLength) * 100);
-          setUpdateState({
-            status: 'downloading',
-            percent,
-            message: `Lade neuesten Installer (${percent}%)...`,
-            error: '',
-          });
-        }
+    if (!response.ok || !response.body) throw new Error(`Installer konnte nicht geladen werden (${response.status}).`);
+    const total = Number(response.headers.get('content-length')) || 0;
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+    let lastPercent = -1;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      const percent = total ? Math.round((received / total) * 100) : 0;
+      if (percent !== lastPercent) {
+        lastPercent = percent;
+        setState({ status: 'downloading', percent, message: `Lade Update ${metadata.version} (${percent}%)...` });
       }
-
-      const buffer = Buffer.concat(chunks);
-      const targetDir = path.join(app.getPath('userData'), 'pending-updates');
-      fs.mkdirSync(targetDir, { recursive: true });
-      const targetPath = path.join(targetDir, metadata.fileName);
-      fs.writeFileSync(targetPath, buffer);
-
-      setUpdateState({
-        status: 'downloaded',
-        downloaded: true,
-        percent: 100,
-        message: 'Installer bereit. Starte Installation...',
-        installerPath: targetPath,
-      });
-
-      executeUninstallAndInstall(targetPath);
-    } catch (error) {
-      setUpdateState({
-        status: 'error',
-        message: 'Update fehlgeschlagen.',
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
+    const buffer = Buffer.concat(chunks);
+    if (metadata.sha512 && sha512Of(buffer) !== metadata.sha512) {
+      throw new Error('Download beschaedigt (Pruefsumme stimmt nicht).');
+    }
+    fs.rmSync(pendingDir(), { recursive: true, force: true });
+    fs.mkdirSync(pendingDir(), { recursive: true });
+    fs.writeFileSync(targetPath, buffer);
+    return targetPath;
+  }
+
+  function sha512Of(buffer) {
+    return crypto.createHash('sha512').update(buffer).digest('base64');
   }
 
   async function checkForAppUpdates(_event, input = {}) {
-    const manual = Boolean(input.manual);
-    if (manual) {
-      void downloadAndInstallLatest();
-      return getUpdateState();
-    }
-
-    if (['checking', 'downloading'].includes(updateState.status)) return getUpdateState();
-    setUpdateState({
-      status: 'checking',
-      downloaded: false,
-      percent: 0,
-      message: 'Pruefe Updates...',
-      error: '',
-      installerPath: '',
-    });
-
+    if (['checking', 'downloading'].includes(state.status)) return getUpdateState();
+    if (state.status === 'downloaded' && input.manual) return getUpdateState();
+    setState({ status: 'checking', message: 'Pruefe Updates...', error: '' });
     try {
-      const metadata = await fetchLatestInstallerMetadata();
-      const currentVersion = app.getVersion();
-      const isNewer = compareVersions(metadata.version, currentVersion) > 0;
-
-      if (isNewer) {
-        return setUpdateState({
-          status: 'available',
-          availableVersion: metadata.version,
-          downloaded: false,
-          percent: 0,
-          message: `Update ${metadata.version} verfuegbar.`,
-          error: '',
-        });
-      } else {
-        return setUpdateState({
+      const metadata = await fetchLatestMetadata();
+      if (compareVersions(metadata.version, app.getVersion()) <= 0) {
+        return setState({
           status: 'idle',
           availableVersion: metadata.version,
           downloaded: false,
           percent: 0,
           message: 'CodeForge ist aktuell.',
-          error: '',
-          installerPath: '',
         });
       }
-    } catch (error) {
-      return setUpdateState({
-        status: 'error',
-        message: 'Update-Pruefung fehlgeschlagen.',
-        error: error instanceof Error ? error.message : 'Unbekannter Update-Fehler.',
+      setState({ status: 'downloading', availableVersion: metadata.version, percent: 0, message: `Update ${metadata.version} gefunden.` });
+      downloadPromise = download(metadata);
+      const installerPath = await downloadPromise;
+      return setState({
+        status: 'downloaded',
+        downloaded: true,
+        percent: 100,
+        installerPath,
+        message: `Update ${metadata.version} bereit. Zum Installieren neu starten.`,
       });
+    } catch (error) {
+      return setState({
+        status: 'error',
+        message: input.manual ? 'Update fehlgeschlagen.' : 'Update-Pruefung fehlgeschlagen.',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      downloadPromise = null;
     }
   }
 
+  function installUpdate() {
+    if (!state.installerPath || !fs.existsSync(state.installerPath)) return false;
+    const installerPath = state.installerPath;
+    const exePath = process.execPath;
+    const installDir = path.dirname(exePath);
+
+    if (process.platform !== 'win32') {
+      spawn(installerPath, [], { detached: true, stdio: 'ignore' }).unref();
+      app.quit();
+      return true;
+    }
+
+    // Runs after CodeForge exits. Kills leftover processes from the install dir
+    // (terminal helpers like OpenConsole.exe lock files), removes broken
+    // uninstall entries, installs silently and falls back to a clean install.
+    const ps = (value) => value.replace(/'/g, "''");
+    const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+$appPid = ${process.pid}
+$installer = '${ps(installerPath)}'
+$installDir = '${ps(installDir)}'
+$exe = '${ps(exePath)}'
+while (Get-Process -Id $appPid) { Start-Sleep -Milliseconds 250 }
+function Stop-AppProcesses {
+  Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  Start-Sleep -Milliseconds 800
+}
+function Remove-BrokenUninstallEntries {
+  Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall' | ForEach-Object {
+    $p = Get-ItemProperty $_.PSPath
+    if ($p.DisplayName -like 'CodeForge*' -and -not $p.UninstallString) { Remove-Item $_.PSPath -Recurse -Force }
+  }
+}
+Stop-AppProcesses
+Remove-BrokenUninstallEntries
+$proc = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+if ($proc.ExitCode -ne 0) {
+  Stop-AppProcesses
+  Remove-Item $installDir -Recurse -Force
+  Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall' | ForEach-Object {
+    if ((Get-ItemProperty $_.PSPath).DisplayName -like 'CodeForge*') { Remove-Item $_.PSPath -Recurse -Force }
+  }
+  Start-Process -FilePath $installer -ArgumentList '/S' -Wait
+}
+Start-Process -FilePath $exe
+`;
+    const scriptPath = path.join(pendingDir(), 'install-update.ps1');
+    fs.writeFileSync(scriptPath, `﻿${script}`, 'utf8');
+    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', scriptPath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    }).unref();
+    app.quit();
+    return true;
+  }
+
   function initializeAutoUpdates() {
-    autoUpdater.on('checking-for-update', () => {
-      setUpdateState({ status: 'checking', message: 'Suche nach Updates...', error: '' });
-    });
-    autoUpdater.on('update-available', (info) => {
-      setUpdateState({
-        status: 'available',
-        availableVersion: info?.version || '',
-        downloaded: false,
-        percent: 0,
-        message: `Update ${info?.version || ''} gefunden.`.trim(),
-        error: '',
-      });
-    });
-    autoUpdater.on('update-not-available', async (info) => {
-      setUpdateState({
-        status: 'idle',
-        availableVersion: info?.version || '',
-        downloaded: false,
-        percent: 0,
-        message: 'CodeForge ist aktuell.',
-        error: '',
-        installerPath: '',
-      });
-      try {
-        await checkSameVersionInstallerUpdate();
-      } catch {
-        // A same-version metadata probe should not turn a normal "current" result into an error.
-      }
-    });
-    autoUpdater.on('download-progress', (progress) => {
-      setUpdateState({
-        status: 'downloading',
-        percent: Math.max(0, Math.min(100, Math.round(progress?.percent || 0))),
-        message: 'Update wird geladen...',
-        error: '',
-      });
-    });
-    autoUpdater.on('update-downloaded', (info) => {
-      setUpdateState({
-        status: 'downloaded',
-        availableVersion: info?.version || updateState.availableVersion,
-        downloaded: true,
-        percent: 100,
-        message: 'Update ist bereit.',
-        error: '',
-      });
-      void installReadyUpdate();
-    });
-    autoUpdater.on('error', (error) => {
-      setUpdateState({
-        status: 'error',
-        message: 'Update-Fehler.',
-        error: error instanceof Error ? error.message : String(error || 'Unbekannter Update-Fehler.'),
-      });
-    });
+    if (!app.isPackaged) return;
+    setTimeout(() => void checkForAppUpdates(null, { manual: false }), 5000).unref?.();
+    setInterval(() => void checkForAppUpdates(null, { manual: false }), CHECK_INTERVAL_MS).unref?.();
   }
 
   return {
     getUpdateState,
     checkForAppUpdates,
     initializeAutoUpdates,
-    installUpdate: () => installReadyUpdate(),
+    installUpdate,
     UPDATE_OWNER,
     UPDATE_REPO,
   };

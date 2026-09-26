@@ -71,6 +71,7 @@ declare global {
       generateSystemPrompt(request: SystemPromptRequest): Promise<AgentResult>;
       notifyAgentComplete(input: { title: string; body: string }): Promise<boolean>;
       updateDiscordPresence(input: {
+        enabled?: boolean;
         state?: string;
         details?: string;
         projectName?: string;
@@ -124,6 +125,17 @@ declare global {
       maximizeWindow(): void;
       closeWindow(): void;
       startSyncServer(): Promise<{ url: string; ip: string; port: number }>;
+      getPathForFile?(file: File): string;
+      apiChatSend(input: {
+        provider: string;
+        baseUrl: string;
+        apiKey: string;
+        model: string;
+        system: string;
+        messages: { role: 'user' | 'assistant'; content: string }[];
+      }): Promise<{ text: string; tokens: number }>;
+      apiChatModels(input: { provider: string; baseUrl: string; apiKey: string }): Promise<string[]>;
+      apiChatProjectFiles(root: string): Promise<string[]>;
       getSyncServerStatus(): Promise<{ running: boolean; url?: string; ip?: string; port?: number }>;
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;
       cancelTerminalCommand(id: string): Promise<boolean>;
@@ -133,6 +145,9 @@ declare global {
       killShellSession(chatId: string): Promise<boolean>;
       resizeShellSession(request: { chatId: string; cols: number; rows: number }): Promise<boolean>;
       onShellOutput(chatId: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
+      startSpeechRecognition(options?: { lang?: string }): Promise<{ ok: boolean; error?: string }>;
+      stopSpeechRecognition(): Promise<{ ok: boolean }>;
+      onSpeechResult(callback: (payload: { type: 'ready' | 'final' | 'interim' | 'completed' | 'stopped' | 'error'; text?: string; error?: string; confidence?: number }) => void): () => void;
     };
   }
 }

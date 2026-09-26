@@ -14,14 +14,14 @@ import {
   ExternalLink,
   FileCode2,
   FileText,
-  Gauge,
   Gamepad2,
+  Home,
+  MessageSquare,
   LayoutGrid,
   GitPullRequest,
   Loader2,
   Play,
   Plus,
-  Power,
   RotateCw,
   Search,
   Smartphone,
@@ -33,23 +33,17 @@ import {
   Clipboard,
   Mic,
 } from 'lucide-react';
-import { LYZ_DEV_PLUGIN_NAME, useAppContext } from '../AppContext';
+import { useAppContext } from '../AppContext';
 import InputArea from './InputArea';
-import type { Chat, HomeAppTab, Message, ProviderId, ProviderUsageInfo, ResponseDisplayMode } from '../types';
+import { harnessIcon } from '../harnessIcons';
+import { ApiChatSetup, ApiChatView } from './ApiChat';
+import { isVideoPath, toFileUrl } from '../media';
+import type { Chat, HomeAppTab, Message, ResponseDisplayMode } from '../types';
 import type { HomeApp } from '../types';
 import libraryBannerUrl from '../../assets/library-banner.png';
-import type { CodexPluginInfo } from '../types';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import GameStudio from './GameStudio';
-
-const PHRASES = [
-  'Was wollen wir entwickeln?',
-  'Was steht heute an?',
-  'Lass uns dein Projekt verbessern.',
-  'Welcher Agent soll uebernehmen?',
-];
 
 const libraryGridVariants = {
   hidden: { opacity: 0 },
@@ -110,14 +104,8 @@ export default function MainArea() {
           <HomeTabsView />
         ) : mainView === 'library' ? (
           <LibraryView />
-        ) : mainView === 'plugins' ? (
-          <PluginsView />
         ) : mainView === 'workspace' ? (
           <WorkspaceView />
-        ) : mainView === 'usage' ? (
-          <UsageView />
-        ) : mainView === 'studio' ? (
-          <GameStudio />
         ) : (
           <ChatView />
         )}
@@ -138,6 +126,7 @@ function LibraryView() {
     launchLibraryApp,
     libraryTags,
     libraryBannerBackgroundEnabled,
+    libraryStyle,
     createLibraryTag,
     deleteLibraryTag,
   } = useAppContext();
@@ -178,21 +167,34 @@ function LibraryView() {
     return haystack.includes(query.toLowerCase());
   });
   const mobileCount = libraryProjects.filter((folder) => isMobileProject(folder.path)).length;
+  const bannerMedia = libraryStyle.bannerMedia;
+  const bannerIsVideo = Boolean(bannerMedia) && isVideoPath(bannerMedia);
+  const bannerImageUrl = bannerMedia ? (bannerIsVideo ? '' : toFileUrl(bannerMedia)) : libraryBannerUrl;
+  const libraryVars = {
+    ...(libraryStyle.pageBackground ? { '--lib-bg': libraryStyle.pageBackground } : {}),
+    ...(libraryStyle.cardBackground ? { '--lib-card': libraryStyle.cardBackground } : {}),
+    ...(libraryStyle.textColor ? { '--lib-text': libraryStyle.textColor } : {}),
+    ...(libraryStyle.accentColor ? { '--lib-accent': libraryStyle.accentColor } : {}),
+    '--lib-overlay': String(libraryStyle.bannerOverlay / 100),
+  } as React.CSSProperties;
   return (
-    <main className="library-shell flex-1 overflow-y-auto custom-scrollbar px-8 py-8">
+    <main className="library-shell flex-1 overflow-y-auto custom-scrollbar px-8 py-8" style={libraryVars}>
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <section
           className={`library-hero ${libraryBannerBackgroundEnabled ? 'with-banner-image' : ''}`}
-          style={libraryBannerBackgroundEnabled ? { backgroundImage: `url(${libraryBannerUrl})` } : undefined}
+          style={libraryBannerBackgroundEnabled && bannerImageUrl ? { backgroundImage: `url("${bannerImageUrl}")` } : undefined}
         >
+          {libraryBannerBackgroundEnabled && bannerIsVideo && (
+            <video className="library-hero-media" src={toFileUrl(bannerMedia)} autoPlay muted loop playsInline />
+          )}
           <div className="min-w-0">
             <div className="library-kicker">
               <LayoutGrid className="h-4 w-4" />
               Projekt Library
             </div>
-            <h1>Alle Projekte, Apps und Handy Apps an einem Ort.</h1>
+            <h1>{libraryStyle.bannerTitle || 'Alle Projekte, Apps und Handy Apps an einem Ort.'}</h1>
             <p>
-              Sammle lokale Projekte, Programme und mobile Apps in einer cleanen Uebersicht und starte sie direkt.
+              {libraryStyle.bannerText || 'Sammle lokale Projekte, Programme und mobile Apps in einer cleanen Uebersicht und starte sie direkt.'}
             </p>
           </div>
           <div className="library-actions relative">
@@ -1015,6 +1017,8 @@ function TerminalInstance({
     theme,
     customThemes,
     externalServer,
+    platformStartCommands,
+    platformWaitTimes
   } = useAppContext();
 
   const settingsRef = useRef({
@@ -1081,7 +1085,8 @@ function TerminalInstance({
     });
 
     if (chat.mode === 'standard') {
-      const agentCmd = getAgentCommand(provider);
+      const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
+      const waitTime = platformWaitTimes[provider] || 5000;
       if (!startedTerminalTabs.has(tabId)) {
         startedTerminalTabs.add(tabId);
         setTimeout(() => {
@@ -1091,8 +1096,16 @@ function TerminalInstance({
           if (initialPrompt) {
             setTimeout(() => {
               window.agentWorkspace.writeToShellSession({ chatId: tabId, text: initialPrompt + '\r' });
-            }, 3000);
+            }, waitTime);
           }
+        }, 1000);
+      }
+    } else if (chat.harness) {
+      if (chat.harness.command && !startedTerminalTabs.has(tabId)) {
+        startedTerminalTabs.add(tabId);
+        const harnessCommand = chat.harness.command;
+        setTimeout(() => {
+          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: harnessCommand + '\r' });
         }, 1000);
       }
     } else {
@@ -1241,6 +1254,24 @@ function TerminalInstance({
       className={`w-full h-full ${active ? '' : 'hidden'}`} 
       ref={terminalRef} 
       onClick={() => xtermRef.current?.focus()}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('Files')) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(event) => {
+        const files = Array.from(event.dataTransfer.files);
+        if (!files.length) return;
+        event.preventDefault();
+        const paths = files
+          .map((file) => window.agentWorkspace?.getPathForFile?.(file) || '')
+          .filter(Boolean)
+          .map((filePath) => (/s/.test(filePath) ? `"${filePath}"` : filePath));
+        if (!paths.length) return;
+        window.agentWorkspace.writeToShellSession({ chatId: tabId, text: paths.join(' ') + ' ' });
+        xtermRef.current?.focus();
+      }}
     />
   );
 }
@@ -1267,6 +1298,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const tabs = currentChat.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
   const activeTabId = currentChat.activeTerminalTabId || chat.id;
   const terminalLayout = currentChat.terminalLayout || 'single';
+  const gridSize = Math.max(1, Math.min(4, currentChat.terminalGridSize || 4));
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
 
@@ -1275,9 +1307,12 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
   const toggleDictation = async () => {
     if (listening) {
+      if (window.agentWorkspace?.stopSpeechRecognition) {
+        window.agentWorkspace.stopSpeechRecognition().catch(() => {});
+      }
       if (recognitionRef.current) {
         try {
-          recognitionRef.current.stop();
+          recognitionRef.current.abort();
         } catch (e) {
           console.error(e);
         }
@@ -1286,10 +1321,35 @@ function TerminalChatView({ chat }: { chat: Chat }) {
       return;
     }
 
+    // 1. Electron Native Windows Speech Engine
+    if (window.agentWorkspace?.startSpeechRecognition && window.agentWorkspace?.onSpeechResult) {
+      try {
+        setListening(true);
+        const unsub = window.agentWorkspace.onSpeechResult((payload) => {
+          if (payload.type === 'final' && payload.text) {
+            if (window.agentWorkspace?.writeToShellSession && activeTabId) {
+              window.agentWorkspace.writeToShellSession({ chatId: activeTabId, text: payload.text });
+            }
+          } else if (payload.type === 'error' || payload.type === 'stopped') {
+            setListening(false);
+          }
+        });
+        const res = await window.agentWorkspace.startSpeechRecognition({ lang: navigator.language || 'de-DE' });
+        if (!res.ok && res.error) {
+          console.warn('[Speech] Native speech warning:', res.error);
+        }
+        return;
+      } catch (err) {
+        console.error('[Speech] Native speech error in terminal, falling back to Web Speech:', err);
+      }
+    }
+
+    // 2. Web Speech API Fallback
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Spracherkennung wird auf diesem System oder Browser nicht unterstuetzt.');
+      console.warn('[Speech] Recognition not supported on this browser context.');
+      setListening(false);
       return;
     }
 
@@ -1300,16 +1360,17 @@ function TerminalChatView({ chat }: { chat: Chat }) {
       }
     } catch (permErr) {
       console.error('Mikrofon-Zugriff verweigert:', permErr);
-      alert('Mikrofon-Zugriff wurde verweigert.');
+      console.warn('[Speech] Microphone access denied.');
+      setListening(false);
       return;
     }
 
     try {
       const recognition = new SpeechRecognition();
       recognitionRef.current = recognition;
-      recognition.lang = 'de-DE';
+      recognition.lang = navigator.language || 'de-DE';
       recognition.interimResults = false;
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.onstart = () => setListening(true);
       recognition.onend = () => {
         setListening(false);
@@ -1320,19 +1381,24 @@ function TerminalChatView({ chat }: { chat: Chat }) {
         recognitionRef.current = null;
         const errName = event?.error;
         if (errName === 'not-allowed') {
-          alert('Mikrofon-Zugriff wurde nicht erlaubt.');
+          console.warn('[Speech] Microphone permission not allowed.');
         } else if (errName === 'audio-capture') {
-          alert('Kein Mikrofon gefunden oder Mikrofon wird bereits verwendet.');
+          console.warn('[Speech] Audio capture error or microphone in use.');
         } else if (errName === 'network') {
-          alert('Spracherkennung verlangt eine aktive Internetverbindung.');
+          console.warn('[Speech] Network connection required for speech recognition.');
         } else if (errName !== 'no-speech') {
-          alert(`Spracherkennungsfehler: ${errName || 'Unbekannt'}`);
+          console.warn(`[Speech] Error: ${errName || 'Unbekannt'}`);
         }
       };
       recognition.onresult = (event: any) => {
-        const transcript = event.results?.[0]?.[0]?.transcript;
-        if (transcript) {
-          window.agentWorkspace.writeToShellSession({ chatId: activeTabId, text: transcript });
+        const results = event.results;
+        for (let i = event.resultIndex || 0; i < results.length; i++) {
+          if (results[i].isFinal) {
+            const transcript = results[i][0]?.transcript;
+            if (transcript && window.agentWorkspace?.writeToShellSession && activeTabId) {
+              window.agentWorkspace.writeToShellSession({ chatId: activeTabId, text: transcript });
+            }
+          }
         }
       };
       recognition.start();
@@ -1360,9 +1426,12 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
   useEffect(() => {
     return () => {
+      if (window.agentWorkspace?.stopSpeechRecognition) {
+        window.agentWorkspace.stopSpeechRecognition().catch(() => {});
+      }
       if (recognitionRef.current) {
         try {
-          recognitionRef.current.stop();
+          recognitionRef.current.abort();
         } catch (e) {
           // ignore
         }
@@ -1713,8 +1782,8 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
       <div className="flex-1 min-h-0 w-full relative">
         {terminalLayout === 'grid' ? (
-          <div className="grid grid-cols-2 grid-rows-2 gap-3 h-full w-full">
-            {tabs.slice(0, 4).map((tab) => (
+          <div className={`grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : 'grid-cols-2 grid-rows-2'}`}>
+            {tabs.slice(0, gridSize).map((tab) => (
               <div key={tab.id} className="border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col h-full min-h-0">
                 <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
                   <span className="font-semibold text-zinc-300">{tab.title}</span>
@@ -1731,7 +1800,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 </div>
               </div>
             ))}
-            {tabs.length < 4 && Array.from({ length: 4 - tabs.length }).map((_, i) => (
+            {tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
               <div key={`empty-${i}`} className="border border-dashed border-white/5 rounded-lg flex flex-col items-center justify-center bg-black/10">
                 <span className="text-[10px] text-zinc-600 uppercase font-mono">Kein Tab</span>
                 <button
@@ -1760,9 +1829,142 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   );
 }
 
+function HomeView() {
+  const { cliHarnesses, startWorkspace, selectedProject } = useAppContext();
+  const [picking, setPicking] = useState<false | 'workspace' | 'chat'>(false);
+  const [harnessId, setHarnessId] = useState(() => cliHarnesses[0]?.id || '');
+  const [grid, setGrid] = useState(true);
+  const [count, setCount] = useState(1);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleStart = async () => {
+    setStarting(true);
+    setError('');
+    try {
+      await startWorkspace({ harnessId, grid, count });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Workspace konnte nicht gestartet werden.');
+      setStarting(false);
+    }
+  };
+
+  return (
+    <main className="flex-1 flex flex-col items-center justify-center px-8 overflow-y-auto custom-scrollbar">
+      <div className="w-full max-w-[640px] flex flex-col items-center">
+        <div className="empty-orbit w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-6">
+          <Home className="w-6 h-6 text-zinc-400" />
+        </div>
+        <h1 className="text-3xl text-white font-medium text-center tracking-tight">Home</h1>
+        <p className="text-sm text-zinc-600 mt-3 text-center max-w-lg">
+          {selectedProject ? `Workspace startet in ${selectedProject.path}` : 'Ohne Projekt nutzt CodeForge einen eigenen Arbeitsordner.'}
+        </p>
+
+        {!picking ? (
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => setPicking('workspace')}
+              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+            >
+              <Play className="w-4 h-4 fill-current text-white" />
+              <span>Workspace starten</span>
+            </button>
+            <button
+              onClick={() => setPicking('chat')}
+              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+            >
+              <MessageSquare className="w-4 h-4 text-white" />
+              <span>Chat starten</span>
+            </button>
+          </div>
+        ) : picking === 'chat' ? (
+          <ApiChatSetup onCancel={() => setPicking(false)} />
+        ) : (
+          <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-6">
+            <div>
+              <div className="section-label">CLI-Harness</div>
+              {cliHarnesses.length === 0 ? (
+                <p className="text-xs text-zinc-500 mt-3">
+                  Keine Harnesses angelegt.{' '}
+                  <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true }))} className="text-orange-300 hover:underline">In den Einstellungen hinzufuegen</button>
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {cliHarnesses.map((harness) => {
+                    const Icon = harnessIcon(harness.icon);
+                    const selected = harness.id === harnessId;
+                    return (
+                      <button
+                        key={harness.id}
+                        onClick={() => setHarnessId(harness.id)}
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${selected ? 'border-orange-400/60 bg-orange-500/10' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'}`}
+                      >
+                        <Icon className={`w-5 h-5 shrink-0 ${selected ? 'text-orange-300' : 'text-zinc-400'}`} />
+                        <span className="min-w-0">
+                          <span className="block text-sm text-white truncate">{harness.name}</span>
+                          <span className="block text-[11px] font-mono text-zinc-500 truncate">{harness.command || 'kein Befehl'}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="section-label">Grid</div>
+                <p className="text-[11px] text-zinc-600 mt-1">Terminals nebeneinander statt als Tabs anzeigen.</p>
+              </div>
+              <button
+                onClick={() => setGrid((value) => !value)}
+                className={`relative w-11 h-6 rounded-full transition-colors ${grid ? 'bg-orange-500' : 'bg-white/10'}`}
+                aria-pressed={grid}
+                title={grid ? 'Grid aus' : 'Grid an'}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${grid ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            <div>
+              <div className="section-label">Anzahl Terminals</div>
+              <div className="grid grid-cols-4 gap-2 mt-3">
+                {[1, 2, 3, 4].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setCount(value)}
+                    className={`rounded-lg border py-2 text-sm transition-colors ${count === value ? 'border-orange-400/60 bg-orange-500/10 text-white' : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'}`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
+
+            <div className="flex gap-2">
+              <button onClick={() => setPicking(false)} className="flex-1 rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
+                Abbrechen
+              </button>
+              <button
+                onClick={handleStart}
+                disabled={starting || !cliHarnesses.some((item) => item.id === harnessId)}
+                className="primary-button flex-[2] !py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
+                <span>Starten</span>
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
+    </main>
+  );
+}
+
 function ChatView() {
   const { chats, selectedChatId, selectedProject, isSending, provider, runStats, themeBackgroundBehindComposer } = useAppContext();
-  const [phrase, setPhrase] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.id === selectedChatId),
@@ -1770,32 +1972,19 @@ function ChatView() {
   );
 
   useEffect(() => {
-    const timer = window.setInterval(() => setPhrase((value) => (value + 1) % PHRASES.length), 4000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedChat?.messages.length, isSending]);
 
   if (!selectedChat) {
+    return <HomeView />;
+  }
+
+  if (selectedChat.mode === 'api') {
     return (
-      <main className="flex-1 flex flex-col items-center justify-center px-8 overflow-y-auto custom-scrollbar">
-        <div className="w-full max-w-[760px] flex flex-col items-center">
-          <div className="empty-orbit w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-6">
-            <Terminal className="w-6 h-6 text-zinc-400" />
-          </div>
-          <h1 className="headline-swap text-3xl text-white font-medium text-center tracking-tight">
-            {selectedProject ? PHRASES[phrase] : 'Ohne Projekt starten'}
-          </h1>
-          <p className="text-sm text-zinc-600 mt-3 text-center max-w-lg">
-            {selectedProject
-              ? `Agenten arbeiten direkt in ${selectedProject.path}`
-              : 'Schreibe eine Nachricht, oder erstelle links ein neues Projekt. Ohne Auswahl nutzt CodeForge einen eigenen Arbeitsordner.'}
-          </p>
-          <InputArea />
-        </div>
-      </main>
+      <ApiChatView
+        chat={selectedChat}
+        renderMessage={(message) => <MessageBubble key={message.id} message={message} />}
+      />
     );
   }
 
@@ -2410,9 +2599,14 @@ function RunStatus({ provider }: { provider: ReturnType<typeof useAppContext>['p
   const preRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setElapsed(runStats ? Math.max(0, Math.floor((Date.now() - runStats.startedAt) / 1000)) : 0);
-    }, 500);
+    const startedAt = runStats?.startedAt;
+    if (!startedAt) {
+      setElapsed(0);
+      return;
+    }
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, [runStats?.startedAt]);
 
@@ -2685,469 +2879,22 @@ function estimateCommandCount(output: string, testSignals: number) {
   return Math.max(Number(executedMentions || 0), shellPrompts, Math.floor(testSignals / 2));
 }
 
-function PluginsView() {
-  const {
-    plugins,
-    codexPlugins,
-    lyzDevPluginEnabled,
-    originalPluginEnabled,
-    installPlugin,
-    removePlugin,
-    setLyzDevPluginEnabled,
-    setOriginalPluginEnabled,
-    startLyzDevChat,
-    refreshCodexPlugins,
-    installCodexPlugin,
-    removeCodexPlugin,
-    selectedProject,
-  } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'codeforge' | 'codex'>('codeforge');
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
-  const [notice, setNotice] = useState('');
-  const [codexNotice, setCodexNotice] = useState('');
-  const [codexBusy, setCodexBusy] = useState<string | null>(null);
-  const [lyzNotice, setLyzNotice] = useState('');
-  const [lyzBusy, setLyzBusy] = useState(false);
-
-  const groupedCodexPlugins = useMemo(() => {
-    return codexPlugins.reduce<Record<string, CodexPluginInfo[]>>((groups, plugin) => {
-      const key = sourceLabel(plugin.source);
-      groups[key] = groups[key] || [];
-      groups[key].push(plugin);
-      return groups;
-    }, {});
-  }, [codexPlugins]);
-
-  const install = async () => {
-    if (!name.trim()) return;
-    setBusy(name.trim());
-    setNotice('');
-    try {
-      await installPlugin(name.trim());
-      setNotice(`${name.trim()} wurde im Projekt installiert.`);
-      setName('');
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Installation fehlgeschlagen.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const loadCodexPlugin = async (target: 'personal' | 'project') => {
-    setCodexBusy(`install-${target}`);
-    setCodexNotice('');
-    try {
-      await installCodexPlugin(target);
-      setCodexNotice(target === 'project' ? 'Codex-Plugin ins Projekt geladen.' : 'Codex-Plugin global geladen.');
-    } catch (error) {
-      setCodexNotice(error instanceof Error ? error.message : 'Codex-Plugin konnte nicht geladen werden.');
-    } finally {
-      setCodexBusy(null);
-    }
-  };
-
-  const openLyzDevChat = async () => {
-    setLyzBusy(true);
-    setLyzNotice('');
-    try {
-      await startLyzDevChat();
-      setLyzNotice('Lyz Dev Chat wurde erstellt.');
-    } catch (error) {
-      setLyzNotice(error instanceof Error ? error.message : 'Lyz Dev konnte nicht gestartet werden.');
-    } finally {
-      setLyzBusy(false);
-    }
-  };
-
-  return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar px-8 py-10">
-      <div className="max-w-4xl mx-auto">
-        <Header icon={Blocks} title="Plugins" subtitle="CodeForge-Erweiterungen verwalten und Codex-Plugins laden." />
-
-        <div className="mt-6 inline-flex rounded-lg border border-white/10 bg-black/20 p-1">
-          <button
-            onClick={() => setActiveTab('codeforge')}
-            className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
-              activeTab === 'codeforge' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-200'
-            }`}
-          >
-            CodeForge
-          </button>
-          <button
-            onClick={() => setActiveTab('codex')}
-            className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
-              activeTab === 'codex' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-200'
-            }`}
-          >
-            Codex
-          </button>
-        </div>
-
-        {activeTab === 'codeforge' && (
-          <>
-            <section className="panel panel-animate mt-7">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex min-w-0 gap-4">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg border border-emerald-300/20 bg-emerald-300/10">
-                    <Gamepad2 className="h-6 w-6 text-emerald-300" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-white">{LYZ_DEV_PLUGIN_NAME}</h3>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
-                        lyzDevPluginEnabled
-                          ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-300'
-                          : 'border-white/10 bg-white/[0.03] text-zinc-500'
-                      }`}>
-                        {lyzDevPluginEnabled ? 'Aktiv' : 'Aus'}
-                      </span>
-                    </div>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-                      Gaming-Development-Modus fuer Unity-Projekte. Lyz Dev erstellt spezialisierte Chats und startet nur, wenn eine Unity-MCP-Verbindung gefunden wird.
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">Unity</span>
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">MCP erforderlich</span>
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">Game Dev</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <button
-                    onClick={() => setLyzDevPluginEnabled(!lyzDevPluginEnabled)}
-                    className={lyzDevPluginEnabled ? 'secondary-button' : 'primary-button'}
-                  >
-                    <Power className="h-4 w-4" />
-                    {lyzDevPluginEnabled ? 'Deaktivieren' : 'Aktivieren'}
-                  </button>
-                  <button
-                    onClick={() => void openLyzDevChat()}
-                    disabled={lyzBusy}
-                    className="secondary-button"
-                  >
-                    {lyzBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    Chat erstellen
-                  </button>
-                </div>
-              </div>
-              {lyzNotice && <div className="mt-4 text-xs text-zinc-400">{lyzNotice}</div>}
-            </section>
-
-            <section className="panel panel-animate mt-7">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex min-w-0 gap-4">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg border border-emerald-300/20 bg-emerald-300/10">
-                    <Terminal className="h-6 w-6 text-emerald-300" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-white">Original - Terminal-Treue</h3>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
-                        originalPluginEnabled
-                          ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-300'
-                          : 'border-white/10 bg-white/[0.03] text-zinc-500'
-                      }`}>
-                        {originalPluginEnabled ? 'Aktiv' : 'Aus'}
-                      </span>
-                    </div>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-                      Deaktiviert den automatischen Permission-Bypass. Der Agent fragt dich wie im echten Terminal nach Bestaetigungen (y/n) fuer Dateiaenderungen und Befehlsausfuehrungen.
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">Terminal</span>
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">Interaktiv</span>
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">Permissions</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <button
-                    onClick={() => setOriginalPluginEnabled(!originalPluginEnabled)}
-                    className={originalPluginEnabled ? 'secondary-button' : 'primary-button'}
-                  >
-                    <Power className="h-4 w-4" />
-                    {originalPluginEnabled ? 'Deaktivieren' : 'Aktivieren'}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <section className="panel panel-animate mt-7">
-              <div className="text-sm text-white font-medium">npm-Paket installieren</div>
-              <div className="text-xs text-zinc-600 mt-1">
-                Ziel: {selectedProject?.path || 'Kein Projekt ausgewaehlt'}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && install()}
-                  placeholder="z.B. zod oder @scope/package"
-                  className="input flex-1"
-                />
-                <button disabled={!name.trim() || !!busy || !selectedProject} onClick={install} className="primary-button">
-                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Installieren
-                </button>
-              </div>
-              {notice && <div className="text-xs text-zinc-400 mt-3">{notice}</div>}
-            </section>
-            <section className="mt-7">
-              <div className="text-xs text-zinc-600 uppercase tracking-wider mb-3">
-                Ueber CodeForge installiert ({plugins.length})
-              </div>
-              <div className="space-y-2">
-                {plugins.map((plugin) => (
-                  <div key={plugin} className="panel tile-animate !p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span className="text-sm text-zinc-200">{plugin}</span>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (!window.confirm(`Plugin "${plugin}" wirklich deinstallieren?`)) return;
-                        setBusy(plugin);
-                        try {
-                          await removePlugin(plugin);
-                        } finally {
-                          setBusy(null);
-                        }
-                      }}
-                      disabled={!!busy}
-                      className="p-2 text-zinc-600 hover:text-red-400"
-                      title="Deinstallieren"
-                    >
-                      {busy === plugin ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                    </button>
-                  </div>
-                ))}
-                {plugins.length === 0 && <div className="text-sm text-zinc-700">Noch keine Pakete ueber CodeForge installiert.</div>}
-              </div>
-            </section>
-          </>
-        )}
-
-        {activeTab === 'codex' && (
-        <section className="panel panel-animate mt-7">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="text-sm text-white font-medium">Codex-Plugins</div>
-              <div className="text-xs text-zinc-600 mt-1">
-                Liest `~/.codex/plugins/cache` und optional `.codex/plugins` im aktiven Projekt.
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={async () => {
-                  setCodexBusy('refresh');
-                  setCodexNotice('');
-                  try {
-                    await refreshCodexPlugins();
-                    setCodexNotice('Codex-Plugins wurden abgerufen.');
-                  } catch (error) {
-                    setCodexNotice(error instanceof Error ? error.message : 'Abrufen fehlgeschlagen.');
-                  } finally {
-                    setCodexBusy(null);
-                  }
-                }}
-                disabled={!!codexBusy}
-                className="secondary-button"
-              >
-                {codexBusy === 'refresh' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
-                Abrufen
-              </button>
-              <button
-                onClick={() => void loadCodexPlugin('personal')}
-                disabled={!!codexBusy}
-                className="primary-button"
-              >
-                {codexBusy === 'install-personal' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Global laden
-              </button>
-              <button
-                onClick={() => void loadCodexPlugin('project')}
-                disabled={!!codexBusy || !selectedProject}
-                className="secondary-button"
-              >
-                {codexBusy === 'install-project' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Ins Projekt
-              </button>
-            </div>
-          </div>
-          {codexNotice && <div className="text-xs text-zinc-400 mt-3">{codexNotice}</div>}
-
-          <div className="mt-5 space-y-5">
-            {Object.entries(groupedCodexPlugins).map(([source, sourcePlugins]) => (
-              <div key={source}>
-                <div className="section-label mb-2">{source} ({sourcePlugins.length})</div>
-                <div className="grid gap-2 md:grid-cols-2">
-                  {sourcePlugins.map((plugin) => (
-                    <CodexPluginCard
-                      key={plugin.id}
-                      plugin={plugin}
-                      busy={codexBusy === plugin.path}
-                      onRemove={async () => {
-                        if (!window.confirm(`Codex-Plugin "${plugin.displayName}" wirklich entfernen?`)) return;
-                        setCodexBusy(plugin.path);
-                        setCodexNotice('');
-                        try {
-                          await removeCodexPlugin(plugin);
-                          setCodexNotice(`${plugin.displayName} wurde entfernt.`);
-                        } catch (error) {
-                          setCodexNotice(error instanceof Error ? error.message : 'Entfernen fehlgeschlagen.');
-                        } finally {
-                          setCodexBusy(null);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-            {codexPlugins.length === 0 && (
-              <div className="rounded-lg border border-dashed border-white/10 px-4 py-5 text-sm text-zinc-600">
-                Noch keine Codex-Plugins gefunden. Klicke auf Abrufen oder lade einen Plugin-Ordner mit `.codex-plugin/plugin.json`.
-              </div>
-            )}
-          </div>
-        </section>
-        )}
-      </div>
-    </main>
-  );
-}
-
-const WORKSPACE_TERMINALS_KEY = 'agentWorkspace.workspaceTerminals';
-const WORKSPACE_AGENT_COUNTS_KEY = 'agentWorkspace.workspaceAgentCounts';
-const MAX_WORKSPACE_TERMINALS = 8;
-
-type WorkspaceTerminal = {
-  id: string;
-  agent: ProviderId;
-  title: string;
-  prompt: string;
-  chatId?: string;
-  lastStartedAt?: number;
-};
-
-type WorkspaceAgentOption = {
-  id: ProviderId;
-  label: string;
-  description: string;
-};
-
-const WORKSPACE_AGENTS: WorkspaceAgentOption[] = [
-  { id: 'anthropic', label: 'Claude Code', description: 'Claude Code CLI' },
-  { id: 'antigravity', label: 'Antigravity CLI', description: 'Google Antigravity CLI' },
-  { id: 'openai', label: 'Codex CLI', description: 'OpenAI Codex CLI' },
-  { id: 'cursor', label: 'Cursor CLI', description: 'Cursor Agent CLI' },
-];
-
 function WorkspaceView() {
   const {
-    syncServerUrl,
-    startSyncServer,
     startTerminalChat,
-    startUnrealTerminalChat,
     terminalStartCommandEnabled,
     setTerminalStartCommandEnabled,
     terminalPrefixSuffixEnabled,
     setTerminalPrefixSuffixEnabled,
   } = useAppContext();
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleStart = async () => {
-    setStarting(true);
-    setError(null);
-    try {
-      await startSyncServer();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Web-App konnte nicht gestartet werden.');
-    } finally {
-      setStarting(false);
-    }
-  };
-
   return (
     <main className="flex-1 overflow-y-auto custom-scrollbar px-8 py-10">
       <div className="max-w-md mx-auto space-y-6">
         <Header
-          icon={Smartphone}
-          title="Mobile Web-App & Sync"
-          subtitle="Starte die Web-App und synchronisiere dein Handy live mit deinem PC."
+          icon={Terminal}
+          title="Workspace"
+          subtitle="Terminals und Agents direkt in der App."
         />
-
-        <section className="panel flex flex-col items-center justify-center p-8 text-center border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl">
-          {!syncServerUrl ? (
-            <div className="w-full py-6 flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-400 mb-6 animate-pulse">
-                <Smartphone className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Web-App auf localhost starten</h3>
-              <p className="text-xs text-zinc-500 max-w-sm mb-6 leading-relaxed">
-                Klicke auf den Button unten, um den lokalen Synchronisations-Server zu starten. Dadurch wird diese Anwendung fuer dein Handy freigegeben.
-              </p>
-              
-              {error && (
-                <div className="mb-4 text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">
-                  {error}
-                </div>
-              )}
-
-              <button
-                onClick={handleStart}
-                disabled={starting}
-                className="primary-button !py-3 !px-6 w-full flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
-              >
-                {starting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>Server wird gestartet...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-current text-white" />
-                    <span>Web-App starten</span>
-                  </>
-                )}
-              </button>
-            </div>
-          ) : (
-            <div className="w-full flex flex-col items-center">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-4">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-1">Web-App laeuft!</h3>
-              <p className="text-xs text-zinc-400 mb-6">Scanne den QR-Code mit deinem Handy:</p>
-              
-              <div className="p-4 bg-white rounded-2xl shadow-2xl mb-6 transform hover:scale-105 transition-transform duration-300">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(syncServerUrl)}`}
-                  alt="QR Code"
-                  className="w-[200px] h-[200px]"
-                />
-              </div>
-
-              <div className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mb-2 flex flex-col items-center">
-                <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-1">Manuelle Adresse</span>
-                <a 
-                  href={syncServerUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="text-xs font-mono text-orange-300 hover:underline"
-                >
-                  {syncServerUrl}
-                </a>
-              </div>
-
-              <div className="text-[11px] text-zinc-600 leading-normal max-w-xs mt-4">
-                Alle Chats, Prompts, Einstellungen und der Videohintergrund werden live 1-zu-1 synchronisiert.
-              </div>
-            </div>
-          )}
-        </section>
 
         <section className="panel flex flex-col items-center justify-center p-8 text-center border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl">
           <div className="w-full py-6 flex flex-col items-center">
@@ -3198,314 +2945,12 @@ function WorkspaceView() {
               <Terminal className="w-4 h-4 text-white" />
               <span>Terminal öffnen</span>
             </button>
-            <button
-              onClick={startUnrealTerminalChat}
-              className="secondary-button !py-3 !px-6 w-full flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 mt-2"
-            >
-              <Terminal className="w-4 h-4 text-amber-400" />
-              <span>Unreal MCP Terminal</span>
-            </button>
           </div>
         </section>
       </div>
     </main>
   );
 }
-function CodexPluginCard({
-  plugin,
-  busy,
-  onRemove,
-}: {
-  plugin: CodexPluginInfo;
-  busy: boolean;
-  onRemove(): Promise<void>;
-}) {
-  return (
-    <div className="tile-animate rounded-lg border border-white/10 bg-black/15 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-            <div className="truncate text-sm font-medium text-zinc-100">{plugin.displayName}</div>
-          </div>
-          <div className="mt-1 truncate font-mono text-[11px] text-zinc-600">
-            {plugin.name}@{plugin.version}
-          </div>
-        </div>
-        {plugin.removable && (
-          <button
-            onClick={() => void onRemove()}
-            disabled={busy}
-            className="rounded-md p-1.5 text-zinc-600 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-40"
-            title="Codex-Plugin entfernen"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-          </button>
-        )}
-      </div>
-      {plugin.description && (
-        <p className="mt-3 line-clamp-2 text-xs leading-5 text-zinc-500">{plugin.description}</p>
-      )}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {plugin.category && (
-          <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">{plugin.category}</span>
-        )}
-        {plugin.capabilities?.slice(0, 3).map((capability) => (
-          <span key={capability} className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">
-            {capability}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function sourceLabel(source: CodexPluginInfo['source']) {
-  if (source === 'personal') return 'Persoenlich';
-  if (source === 'project') return 'Projekt';
-  if (source === 'bundled') return 'Gebundelt';
-  if (source === 'curated') return 'Kuratierte Plugins';
-  if (source === 'remote') return 'Remote-Katalog';
-  if (source === 'runtime') return 'Runtime';
-  return 'Weitere';
-}
-
-function UsageView() {
-  const { provider, usage, setTokenLimit, resetUsage, refreshProviderUsage, refreshAntigravityTerminalUsage } = useAppContext();
-  const [refreshingProvider, setRefreshingProvider] = useState(false);
-  const [refreshingAntigravity, setRefreshingAntigravity] = useState(false);
-  const [rawUsageOutput, setRawUsageOutput] = useState('');
-  const remaining = usage.tokenLimit > 0 ? Math.max(0, usage.tokenLimit - usage.totalTokens) : null;
-  const percent = usage.tokenLimit > 0 ? Math.min(100, (usage.totalTokens / usage.tokenLimit) * 100) : 0;
-  const providerUsage = usage.providerLimits?.[provider];
-
-  return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar px-8 py-10">
-      <div className="max-w-3xl mx-auto">
-        <Header
-          icon={Gauge}
-          title="Nutzung"
-          subtitle="Verbrauchte Tokens und verbleibendes lokal eingestelltes Nutzungslimit."
-        />
-
-        <section className="panel mt-7">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-sm font-medium text-white">Provider-Limits</div>
-              <div className="text-xs text-zinc-600 mt-1">
-                Fragt beim aktuellen Anbieter die CLI-Nutzung ab. Bei Antigravity wird der Slash-Command `/usage` ausgefuehrt.
-              </div>
-            </div>
-            <button
-              onClick={async () => {
-                setRefreshingProvider(true);
-                try {
-                  await refreshProviderUsage(provider);
-                } finally {
-                  setRefreshingProvider(false);
-                }
-              }}
-              className="inline-flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5"
-            >
-              {refreshingProvider ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
-              Abrufen
-            </button>
-            <button
-              onClick={async () => {
-                setRefreshingAntigravity(true);
-                try {
-                  await refreshAntigravityTerminalUsage();
-                } finally {
-                  setRefreshingAntigravity(false);
-                }
-              }}
-              className="inline-flex items-center gap-2 rounded-md border border-amber-300/20 px-3 py-2 text-xs text-amber-100 hover:bg-amber-300/10"
-            >
-              {refreshingAntigravity ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Terminal className="w-3.5 h-3.5" />}
-              Antigravity /usage
-            </button>
-          </div>
-          <ProviderUsageDetails info={providerUsage} onShowRaw={setRawUsageOutput} />
-        </section>
-
-        {rawUsageOutput && (
-          <div className="modal-backdrop fixed inset-0 z-[240] grid place-items-center bg-black/30 px-4">
-            <div className="modal-card w-full max-w-3xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                <div className="text-sm font-semibold text-slate-950">Terminalausgabe</div>
-                <button onClick={() => setRawUsageOutput('')} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-950">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap bg-slate-950 p-4 font-mono text-xs leading-5 text-slate-100 custom-scrollbar">
-                {rawUsageOutput}
-              </pre>
-            </div>
-          </div>
-        )}
-
-        <section className="grid grid-cols-3 gap-3 mt-7">
-          <UsageMetric label="Verbraucht" value={formatTokens(usage.totalTokens)} />
-          <UsageMetric label="Limit" value={usage.tokenLimit ? formatTokens(usage.tokenLimit) : 'Nicht gesetzt'} />
-          <UsageMetric label="Verbleibend" value={remaining === null ? 'Unbekannt' : formatTokens(remaining)} />
-        </section>
-
-        <section className="panel mt-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-sm font-medium text-white">Nutzungslimit</div>
-              <div className="text-xs text-zinc-600 mt-1">
-                Das echte Provider-Limit wird von den CLIs nicht einheitlich geliefert. Dieses Limit dient als lokaler Zaehler.
-              </div>
-            </div>
-            <input
-              type="number"
-              min={0}
-              value={usage.tokenLimit || ''}
-              onChange={(event) => setTokenLimit(Number(event.target.value))}
-              placeholder="z.B. 200000"
-              className="input w-40"
-            />
-          </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/30">
-            <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-amber-300" style={{ width: `${percent}%` }} />
-          </div>
-          <div className="mt-3 flex justify-between text-[11px] text-zinc-600">
-            <span>{usage.tokenLimit ? `${Math.round(percent)}% genutzt` : 'Limit setzen, um verbleibende Tokens zu sehen'}</span>
-            <button onClick={resetUsage} className="text-zinc-500 hover:text-red-300">Zaehler zuruecksetzen</button>
-          </div>
-        </section>
-
-        <section className="mt-7">
-          <div className="section-label mb-3">Letzte Agent-Laeufe</div>
-          <div className="overflow-hidden rounded-lg border border-white/10">
-            {usage.records.length > 0 ? (
-              usage.records.map((record) => (
-                <div key={record.id} className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/5 px-3 py-3 last:border-b-0">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm text-zinc-200">{record.title}</div>
-                    <div className="mt-0.5 text-[11px] text-zinc-600">
-                      {record.provider} - {record.model} - {new Date(record.timestamp).toLocaleString('de-DE')}
-                    </div>
-                  </div>
-                  <div className="font-mono text-sm text-zinc-300">{formatTokens(record.tokens)}</div>
-                </div>
-              ))
-            ) : (
-              <div className="px-3 py-8 text-center text-sm text-zinc-600">
-                Noch keine Token-Daten. Sie erscheinen, sobald die Agent-Ausgabe `tokens used` enthaelt.
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function ProviderUsageDetails({ info, onShowRaw }: { info?: ProviderUsageInfo; onShowRaw?: (raw: string) => void }) {
-  if (!info) {
-    return <div className="mt-4 text-sm text-zinc-600">Noch nicht abgerufen.</div>;
-  }
-
-  const groups = info.quotaGroups || [];
-  if (groups.length > 0) {
-    return (
-      <div className="mt-4 space-y-3">
-        {groups.map((group) => (
-          <div key={group.name} className="rounded-lg border border-white/10 bg-black/15 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium text-zinc-100">{group.name}</div>
-                {group.models.length > 0 && (
-                  <div className="mt-1 text-[11px] text-zinc-600">{group.models.join(', ')}</div>
-                )}
-              </div>
-              <div className="text-[10px] text-zinc-700">{formatCheckedAt(info.checkedAt)}</div>
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {group.limits.map((limit) => (
-                <div key={limit.name} className="rounded-md bg-white/[0.03] px-3 py-2">
-                  <div className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="font-medium text-zinc-300">{limit.name}</span>
-                    <span className="font-mono text-zinc-400">
-                      {limit.status || formatPercent(limit.remainingPercent ?? limit.percent)}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-300"
-                      style={{ width: `${Math.max(0, Math.min(100, limit.remainingPercent ?? limit.percent ?? 100))}%` }}
-                    />
-                  </div>
-                  {limit.refreshesIn && (
-                    <div className="mt-1.5 text-[10px] text-zinc-600">Refresh in {limit.refreshesIn}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-        <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-700 mt-2">
-          <span>Quelle: {info.sourceCommand || 'Provider CLI'}</span>
-          {onShowRaw && info.raw && (
-            <button
-              onClick={() => onShowRaw(info.raw || '')}
-              className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300 hover:underline transition-colors cursor-pointer"
-            >
-              <Terminal className="w-3 h-3" />
-              Terminal-Rohdaten anzeigen
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-4 rounded-lg border border-white/10 bg-black/15 p-3 text-sm text-zinc-500">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          {info.label}
-          {info.remainingTokens !== undefined && (
-            <span className="ml-2 font-mono text-zinc-300">{info.remainingTokens.toLocaleString('de-DE')} uebrig</span>
-          )}
-        </div>
-        {onShowRaw && info.raw && (
-          <button
-            onClick={() => onShowRaw(info.raw || '')}
-            className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 hover:underline transition-colors cursor-pointer"
-          >
-            <Terminal className="w-3 h-3" />
-            Terminal-Rohdaten anzeigen
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function UsageMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="panel !p-4">
-      <div className="section-label">{label}</div>
-      <div className="mt-2 font-mono text-lg text-white">{value}</div>
-    </div>
-  );
-}
-
-function formatPercent(value?: number) {
-  return value === undefined ? 'Unbekannt' : `${Math.round(value)}% uebrig`;
-}
-
-function formatCheckedAt(value: number) {
-  return new Date(value).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatTokens(value: number) {
-  return new Intl.NumberFormat('de-DE').format(value);
-}
-
 function Header({
   icon: Icon,
   title,

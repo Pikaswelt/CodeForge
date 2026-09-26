@@ -1,17 +1,31 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { existsSync, statSync, createReadStream } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { existsSync, statSync, createReadStream, mkdirSync } from 'node:fs';
+import { randomUUID, randomInt } from 'node:crypto';
 import { networkInterfaces, hostname } from 'node:os';
-import { extname, join } from 'node:path';
+import path, { extname, join } from 'node:path';
+import dgram from 'node:dgram';
 import { WebSocketServer } from 'ws';
 import pty from 'node-pty';
+
+let pairingMode = false;
+let pairingCode = '';
+let pairingBroadcastInterval = null;
+let udpSocket = null;
+let udpEaccesLogged = false;
+let pairingBlockedUntil = 0;
+let pairingFailCount = 0;
+
+function getHostname() { return hostname(); }
 
 const PORT = Number(process.env.PORT || process.env.CODEFORGE_PORT || 8787);
 const HOST = process.env.HOST || process.env.CODEFORGE_HOST || '0.0.0.0';
 const TOKEN = process.env.CODEFORGE_TOKEN || '';
 const PROJECT_PATH = process.env.CODEFORGE_PROJECT_PATH || process.cwd();
+const PAIRING_PORT = Number(process.env.CODEFORGE_PAIRING_PORT || 8789);
+const PAIRING_AUTO_STOP_MINUTES = Number(process.env.CODEFORGE_PAIRING_TIMEOUT_MINUTES || 5);
+const MAX_PROMPT_CHARS = Number(process.env.CODEFORGE_MAX_PROMPT_CHARS || 100_000);
 
 const userHome = process.env.USERPROFILE || process.env.HOME || '';
 
@@ -106,6 +120,10 @@ function isAuthorized(req) {
   if (!TOKEN) return false;
   const header = req.headers.authorization || '';
   return header === `Bearer ${TOKEN}`;
+}
+
+function unauthorized(res) {
+  return json(res, 401, { ok: false, error: 'Unauthorized.' });
 }
 
 function readBody(req) {
@@ -322,13 +340,6 @@ function accessToCodexSandbox(access) {
 
 function normalizeReasoningEffort(value) {
   return ['low', 'medium', 'high'].includes(value) ? value : 'medium';
-}
-
-function resolveCommand(provider) {
-  for (const candidate of provider.candidates || [provider.command]) {
-    if (candidate.includes('/') && existsSync(candidate)) return candidate;
-  }
-  return provider.command;
 }
 
 function buildPrompt(systemPrompt, prompt, access, projectPath) {
@@ -624,48 +635,16 @@ async function handleMedia(req, res) {
   stream.pipe(res);
 }
 
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk) => { body += chunk; });
-    req.on('end', () => resolve(body));
-    req.on('error', reject);
-  });
-}
-
-async function handleRun(req, res) {
-  if (!isAuthorized(req)) return json(res, 401, { ok: false, error: 'Unauthorized.' });
-  let body;
-  try {
-    body = JSON.parse(await readBody(req));
-  } catch (err) {
-    return json(res, 400, { ok: false, error: 'Invalid JSON' });
-  }
-  const runHandler = handlers.get('agent:run');
-  if (!runHandler) {
-    return json(res, 500, { ok: false, error: 'Agent runner not initialized' });
-  }
-  try {
-    const mockEvent = { sender: { send: () => {} } };
-    const result = await runHandler(mockEvent, body);
-    const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
-    return json(res, result.ok ? 200 : 500, {
-      ok: result.ok,
-      output: output,
-      error: result.error,
-      exitCode: result.exitCode ?? (result.ok ? 0 : 1)
-    });
-  } catch (err) {
-    return json(res, 500, { ok: false, error: err.message });
-  }
-}
-
 const server = createServer((req, res) => {
   if (req.method === 'OPTIONS') return json(res, 204, {});
-  const url = req.url || '/';
+  const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const pathname = parsedUrl.pathname;
 
-  if (req.method === 'GET' && url === '/discover') {
+  if (pathname.startsWith('/pair')) {
+    return handlePairing(req, res);
+  }
+
+  if (req.method === 'GET' && pathname === '/discover') {
     return json(res, 200, {
       ok: true,
       service: 'codeforge-remote',
@@ -679,17 +658,20 @@ const server = createServer((req, res) => {
     });
   }
 
-  if (req.method === 'POST' && url === '/run') {
+  if (req.method === 'POST' && pathname === '/run') {
     return handleRun(req, res);
   }
 
-  if (req.method === 'GET' && (url === '/media' || url.startsWith('/media?'))) {
+  if (req.method === 'GET' && pathname === '/media') {
     return handleMedia(req, res);
   }
 
-  if (req.method === 'GET' && url === '/health') {
-    if (!isAuthorized(req)) return json(res, 401, { ok: false, error: 'Unauthorized.' });
-    return json(res, 200, { ok: true, name: 'CodeForge Remote Server' });
+  if (req.method === 'GET' && pathname === '/usage') {
+    return handleUsage(req, res);
+  }
+
+  if (req.method === 'GET' && pathname === '/health') {
+    return handleHealth(req, res);
   }
 
   json(res, 404, { ok: false, error: 'Not found.' });
@@ -701,10 +683,10 @@ const handlers = new Map();
 const activeShells = new Map();
 const activeTerminalProcesses = new Map();
 
-function broadcast(msg, excludeWs = null) {
+function broadcast(msg, excludeWs = null, targetWs = null) {
   const data = JSON.stringify(msg);
   for (const client of wss.clients) {
-    if (client !== excludeWs && client.readyState === 1) {
+    if (client !== excludeWs && client.readyState === 1 && (!targetWs || client === targetWs)) {
       client.send(data);
     }
   }
@@ -732,8 +714,9 @@ wss.on('connection', (ws, req) => {
         if (fn) {
           try {
             const mockEvent = {
+              ws,
               sender: {
-                send: (ch, data) => broadcast({ type: 'ipc-event', channel: ch, data })
+                send: (ch, data) => broadcast({ type: 'ipc-event', channel: ch, data }, null, ws)
               }
             };
             const result = await fn(mockEvent, ...msg.args);
@@ -749,6 +732,14 @@ wss.on('connection', (ws, req) => {
       console.error('WS Error:', err);
     }
   });
+
+  ws.on('close', () => {
+    if (ws.activeChatId && activeShells.has(ws.activeChatId)) {
+      const ptyProc = activeShells.get(ws.activeChatId);
+      try { ptyProc.kill(); } catch (e) {}
+      activeShells.delete(ws.activeChatId);
+    }
+  });
 });
 
 // IPC Handlers
@@ -759,6 +750,7 @@ handlers.set('system:status', async () => {
 });
 
 handlers.set('shell:create', async (event, { chatId, cwd, shellType }) => {
+  if (event.ws) event.ws.activeChatId = chatId;
   if (activeShells.has(chatId)) return;
   const isWin = process.platform === 'win32';
   const shell = isWin ? (shellType === 'powershell' ? 'powershell.exe' : (process.env.COMSPEC || 'cmd.exe')) : 'bash';

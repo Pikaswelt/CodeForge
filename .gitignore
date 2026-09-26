@@ -10,3 +10,6 @@ coverage/
 *.log
 .env*
 !.env.example
+.agents/
+*.cmd
+codeforge_review_report.md

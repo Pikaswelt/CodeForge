@@ -5,7 +5,6 @@ import {
   ArrowRight,
   Check,
   Folder,
-  HelpCircle,
   Minus,
   Settings,
   Square,
@@ -17,10 +16,8 @@ import AppLogo from './AppLogo';
 
 export default function TopBar({
   onSettingsClick,
-  onActionsClick,
 }: {
   onSettingsClick: () => void;
-  onActionsClick: () => void;
 }) {
   const {
     selectedProject,
@@ -187,7 +184,7 @@ export default function TopBar({
         </div>
         <div className="flex items-center gap-1 text-[13px]">
           {menuButton('Datei', [
-            { label: 'Neuer Chat', action: () => selectChat(null) },
+            { label: 'Home', action: () => selectChat(null) },
             { label: 'Projektordner oeffnen...', action: addProject },
             { label: 'App schliessen', action: () => window.agentWorkspace?.closeWindow() },
           ])}
@@ -258,7 +255,6 @@ export default function TopBar({
           {menu === 'account' && (
             <AccountMenu
               onSettingsClick={onSettingsClick}
-              onActionsClick={onActionsClick}
               onClose={() => setMenu(null)}
             />
           )}
