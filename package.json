@@ -1,7 +1,7 @@
 {
   "name": "codeforge-desktop",
   "private": true,
-  "version": "2.6.2",
+  "version": "2.6.3",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "CodeForge <info@codeforge.app>",
   "type": "module",
@@ -14,7 +14,7 @@
     "build": "vite build",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
-    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "cap:sync": "npx cap sync",
@@ -77,7 +77,15 @@
       "icon": "assets/codeforge.ico"
     },
     "linux": {
-      "target": ["tar.gz", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/codeforge.png",
+      "category": "Development",
+      "artifactName": "CodeForge-${version}-${arch}.${ext}",
+      "synopsis": "Desktop workspace for AI coding agents",
+      "maintainer": "Pikaswelt <info@codeforge.app>"
     },
     "nsis": {
       "oneClick": true,
@@ -98,6 +106,19 @@
         "owner": "Pikaswelt",
         "repo": "CodeForge"
       }
-    ]
-  }
+    ],
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ]
+    }
+  },
+  "homepage": "https://github.com/Pikaswelt/CodeForge"
 }

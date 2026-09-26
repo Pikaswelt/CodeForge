@@ -1,10 +1,15 @@
 /**
  * CodeForge Auto-Updater
  *
- * Reads latest.yml from the newest public GitHub release, downloads the NSIS
- * installer in the background (sha512-verified) and installs it on request.
+ * Reads latest.yml (Windows) or latest-linux.yml (Linux) from the newest public
+ * GitHub release, downloads the matching artifact in the background
+ * (sha512-verified) and installs it on request:
+ *   Windows  -> silent NSIS install
+ *   AppImage -> replaces the running AppImage file and relaunches
+ *   .deb     -> opens the package with the system installer
  */
 const { spawn } = require('node:child_process');
+const { shell } = require('electron');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -30,24 +35,36 @@ function parseLatestYml(text) {
     const match = text.match(new RegExp(`(?:^|\\n)\\s*${key}:\\s*["']?([^"'\\n]+)["']?`, 'i'));
     return match?.[1]?.trim() || '';
   };
+  // "files:" entries look like "- url: X" followed by "sha512: Y".
+  const files = [...text.matchAll(/-\s*url:\s*["']?([^"'\n]+)["']?\s*\n\s*sha512:\s*["']?([^"'\n]+)/g)].map((match) => ({
+    fileName: path.basename(match[1].trim()),
+    sha512: match[2].trim(),
+  }));
+  const wantedExt = process.platform === 'linux' ? (isAppImage() ? '.AppImage' : '.deb') : '.exe';
+  const file = files.find((item) => item.fileName.endsWith(wantedExt));
   const url = valueFor('path') || valueFor('url');
   return {
     version: valueFor('version'),
-    sha512: valueFor('sha512'),
-    fileName: url ? path.basename(url.replace(/\\/g, '/')) : '',
+    sha512: file?.sha512 || valueFor('sha512'),
+    fileName: file?.fileName || (url ? path.basename(url.replace(/\\/g, '/')) : ''),
   };
 }
 
+function isAppImage() {
+  return process.platform === 'linux' && Boolean(process.env.APPIMAGE);
+}
+
 async function fetchLatestMetadata() {
-  const response = await fetch(`${RELEASE_BASE_URL}latest.yml`, {
+  const feedFile = process.platform === 'linux' ? 'latest-linux.yml' : 'latest.yml';
+  const response = await fetch(`${RELEASE_BASE_URL}${feedFile}`, {
     headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
   });
   if (response.status === 404) {
-    throw new Error(`Kein Release gefunden. Ist ${UPDATE_OWNER}/${UPDATE_REPO} oeffentlich und hat ein Release mit latest.yml?`);
+    throw new Error(`Kein Release gefunden (${feedFile} fehlt in ${UPDATE_OWNER}/${UPDATE_REPO}).`);
   }
   if (!response.ok) throw new Error(`Update-Server nicht erreichbar (${response.status}).`);
   const metadata = parseLatestYml(await response.text());
-  if (!metadata.version || !metadata.fileName) throw new Error('latest.yml ist unvollstaendig.');
+  if (!metadata.version || !metadata.fileName) throw new Error(`${feedFile} ist unvollstaendig.`);
   return { ...metadata, downloadUrl: `${RELEASE_BASE_URL}${encodeURIComponent(metadata.fileName)}` };
 }
 
@@ -157,9 +174,21 @@ function setupUpdater({ app, mainWindow }) {
     const exePath = process.execPath;
     const installDir = path.dirname(exePath);
 
-    if (process.platform !== 'win32') {
-      spawn(installerPath, [], { detached: true, stdio: 'ignore' }).unref();
+    if (isAppImage()) {
+      // Replace the AppImage in place (allowed while it runs on Linux) and relaunch it.
+      const target = process.env.APPIMAGE;
+      const temp = `${target}.update`;
+      fs.copyFileSync(installerPath, temp);
+      fs.chmodSync(temp, 0o755);
+      fs.renameSync(temp, target);
+      spawn(target, [], { detached: true, stdio: 'ignore' }).unref();
       app.quit();
+      return true;
+    }
+
+    if (process.platform !== 'win32') {
+      // .deb and other packages: hand them to the system installer.
+      void shell.openPath(installerPath);
       return true;
     }
 

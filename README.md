@@ -13,11 +13,11 @@
   <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Pikaswelt/CodeForge?style=flat-square&color=f59e0b" /></a>
   <a href="https://github.com/Pikaswelt/CodeForge/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Pikaswelt/CodeForge/total?style=flat-square" /></a>
   <a href="https://github.com/Pikaswelt/CodeForge/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Pikaswelt/CodeForge/ci.yml?branch=main&style=flat-square&label=CI" /></a>
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0078d4?style=flat-square" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><strong>Download for Windows &amp; Linux</strong></a>
   ·
   <a href="#features">Features</a>
   ·
@@ -51,7 +51,7 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - Chats are grouped by project in the sidebar.
 
 ### Voice input
-- Dictate prompts with the built-in Windows speech recognition, with no cloud service involved.
+- Dictate prompts with the built-in Windows speech recognition, with no cloud service involved. Voice input is Windows-only for now.
 - Works in API chats (microphone button) and in terminals: press <kbd>Alt</kbd> + <kbd>S</kbd> to toggle.
 
 ### Library
@@ -72,19 +72,36 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 
 ### Install
 
-1. Download `CodeForge-Setup-<version>.exe` from the [latest release](https://github.com/Pikaswelt/CodeForge/releases/latest).
-2. Run the installer. CodeForge installs per user and needs no admin rights.
-3. Start CodeForge from the Start menu.
+Download the package for your system from the [latest release](https://github.com/Pikaswelt/CodeForge/releases/latest).
+
+**Windows:** run `CodeForge-Setup-<version>.exe`. CodeForge installs per user and needs no admin rights.
+
+**Linux (AppImage, any distribution):**
+
+```bash
+chmod +x CodeForge-<version>-x86_64.AppImage
+./CodeForge-<version>-x86_64.AppImage
+```
+
+The AppImage updates itself.
+
+**Debian / Ubuntu:**
+
+```bash
+sudo apt install ./CodeForge-<version>-amd64.deb
+```
+
+With the `.deb` package, CodeForge downloads updates and opens them in your system installer.
 
 ### Requirements
 
-- Windows 10 or 11 (x64)
+- Windows 10/11 (x64) or a 64-bit Linux desktop (x86_64)
 - For workspaces, at least one agent CLI on your `PATH`, for example:
   - [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`)
   - [Codex CLI](https://github.com/openai/codex) (`codex`)
   - Google Antigravity (`agy`)
 - For API chats, an API key from your provider. A local OpenAI-compatible server such as Ollama needs no key.
-- For voice input, a Windows language pack with speech recognition, for example German or English.
+- For voice input (Windows only), a Windows language pack with speech recognition, for example German or English.
 
 ### First steps
 
@@ -104,6 +121,7 @@ npm install
 npm run dev        # Vite dev server + Electron with hot reload
 npm run lint       # TypeScript type check
 npm run dist:win   # Build the Windows installer into release/
+npm run dist:linux # Build AppImage + .deb (run on Linux)
 ```
 
 ### Tech stack
@@ -134,6 +152,7 @@ src/
 1. Bump `version` in `package.json`.
 2. Run `npm run dist:win`.
 3. Create a GitHub release `v<version>` and attach `CodeForge-Setup-<version>.exe`, its `.blockmap` and `latest.yml`.
+4. The **Linux release** workflow builds the AppImage and `.deb` on GitHub Actions and attaches them, together with `latest-linux.yml`.
 
 Installed apps pick up the new version automatically.
 
