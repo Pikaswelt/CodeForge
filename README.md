@@ -1,229 +1,149 @@
-# ⚔️ CodeForge V2 (v2.5.3) ☆ コードフォージ
+<p align="center">
+  <img src="assets/codeforge.png" alt="CodeForge logo" width="112" />
+</p>
+
+<h1 align="center">CodeForge</h1>
 
 <p align="center">
-  <i>✨ 君'のコードを完全にする！— Make your code perfect, Senpai! ✨</i>
+  <strong>A desktop workspace for AI coding agents.</strong><br />
+  Run Claude Code, Codex and other CLI agents side by side, chat with any LLM API about your projects, and keep all of your work in one place.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Pikaswelt/CodeForge?style=flat-square&color=f59e0b" /></a>
+  <a href="https://github.com/Pikaswelt/CodeForge/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Pikaswelt/CodeForge/total?style=flat-square" /></a>
+  <a href="https://github.com/Pikaswelt/CodeForge/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Pikaswelt/CodeForge/ci.yml?branch=main&style=flat-square&label=CI" /></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><strong>Download for Windows</strong></a>
+  ·
+  <a href="#features">Features</a>
+  ·
+  <a href="#getting-started">Getting started</a>
+  ·
+  <a href="#development">Development</a>
 </p>
 
 ---
 
-Desktop & Mobile App für lokale KI-Coding-Agenten. Verbinde dich mit deinem PC, Laptop oder VPS und lasse KI-Agenten direkt in deinen Projekten arbeiten. **にゃー！**
+## Overview
 
-```text
-   ☆ React UI ☆
-  → secure Electron IPC bridge / Capacitor WebView
-  → Node child_process / HTTP API
-  → Antigravity CLI, Codex CLI, Claude Code, Cursor Agent, OpenCode, FreeBuff
-  → selected project folder ✨
-```
+CodeForge is an Electron app that turns your machine into a control center for AI-assisted development. Instead of juggling terminal windows, you start a **workspace** with up to four agent terminals in a grid, or open a **chat** with any Anthropic, OpenAI or OpenAI-compatible model that knows which project you are working on.
 
-## 🆕 Neu in CodeForge V2 (v2.5.3) ～☆
+Everything runs locally. Your projects, chats and API keys stay on your computer.
 
-- 🎮 **2D Game Studio Engine** – Integriertes Game Studio mit visueller Node-Logik, Web-Audio Synthesizer Engine, Physik-Simulator & Canvas Live-Preview
-- 🎙️ **Voice Dictation (Spracheingabe)** – Integrierte Spracheingabe im Terminal-Chat & Prompt-Input (`Alt+S` / `Ctrl+Shift+S`)
-- 🌐 **Custom Media Protocol & SSH Gateway** – Unterstützung für eigene Medien-Protokolle und SSH-Gateway-Remoteterminals
-- ⚡ **Connection Key System** – Einfach den generierten Base64-Key kopieren, in der App einfügen → **SOFORT VERBUNDEN!**
-- 🎨 **Glassmorphism & Custom Themes** – Dynamic Glass Themes (Apple Dark/Light, Neon Flow, Aurora Flow), Transparenz & Background Video Support
-- 🤖 **Auto-Pairing & Fallback** – Server startet automatisch im Kopplungsmodus, falls eine LAN-Verbindung gesucht wird
-- 🔐 **Höchste Sicherheit** – Token wird verschlüsselt im Connection-Key transportiert
-- 🔄 **GitHub Actions CI/CD** – Automatische Builds & Releases bei Push/Tag
+## Features
 
-## ⚡ Quick Start – In 10 Sekunden verbunden
+### Workspaces for CLI agents
+- Launch **1–4 terminals at once**, as tabs or in a **grid**.
+- Pick a **CLI harness** per workspace, for example Claude Code (`claude`), Codex (`codex`) or Antigravity (`agy`).
+- Define your own harnesses in the settings with a **name, start command and icon**.
+- Full-color terminals (`xterm-256color`, truecolor) powered by xterm.js and node-pty.
+- **Drag and drop** files or folders into a terminal to insert their paths.
+- Optional prompt prefix/suffix and **trigger-word notifications** when an agent needs attention.
 
-```bash
-# 1. Auf deinem Linux-PC / VPS / Windows:
-bash codeforge-connect.sh
-# (Auf Windows: powershell -File codeforge-connect-windows.ps1)
+### API chat
+- Chat directly with **Anthropic**, **OpenAI** or any **OpenAI-compatible** endpoint (Ollama, OpenRouter, LM Studio, …).
+- Save multiple **AI providers** with URL, API key and default model; load the model list with one click.
+- Attach a **project** to a chat. CodeForge sends its name, path and file list as context.
+- Chats are grouped by project in the sidebar.
 
-# 2. Den gedruckten Base64-Key kopieren (wird GROSS im Terminal angezeigt)
+### Voice input
+- Dictate prompts with the built-in Windows speech recognition, with no cloud service involved.
+- Works in API chats (microphone button) and in terminals: press <kbd>Alt</kbd> + <kbd>S</kbd> to toggle.
 
-# 3. In der CodeForge-App:
-#    Tippe auf »Verbinden« → Key einfügen → ✨ FERTIG!
-```
+### Library
+- A home for your projects, programs and mobile apps, with tags, search and one-click launch.
+- Customize colors, banner image or video, and banner text.
 
-### Für Debian VPS (Dauerbetrieb):
+### Themes
+- Create themes with your own colors, animated gradients and **background images or videos**.
+- **Background-only themes** swap the wallpaper and keep the rest of the look.
+- Glass effects, transparency and corner radius are adjustable.
 
-```bash
-# Ein Befehl, alles automatisch:
-sudo bash codeforge-connect-debian.sh
+### Automatic updates
+- CodeForge checks GitHub Releases on start and every six hours.
+- Updates download in the background and are verified with SHA-512.
+- Installation starts with one click, so running agents are never interrupted.
 
-# → Server läuft als systemd-Dienst
-# → Druckt den Connection Key direkt aus
-# → Key in der App einfügen → VERBUNDEN!
-```
+## Getting started
 
-## Requirements ～☆
+### Install
 
-- Node.js 20 oder neuer
-- Mindestens eine installierte CLI:
-  - `agy` – Google Antigravity ✨
-  - `codex` – OpenAI Codex 🧠
-  - `claude` – Anthropic Claude Code 💜
-  - `agent` / `cursor-agent` – Cursor Agent 🖱️
-  - `opencode` – OpenCode 📖
-  - `freebuff` – **FreeBuff-chan** (kostenlos! ただ！) 🎀
-- Optional: Git für Branch-Auswahl
+1. Download `CodeForge-Setup-<version>.exe` from the [latest release](https://github.com/Pikaswelt/CodeForge/releases/latest).
+2. Run the installer. CodeForge installs per user and needs no admin rights.
+3. Start CodeForge from the Start menu.
 
-## Entwicklung ～☆
+### Requirements
 
-```bash
-# Desktop App
-npm install
-npm run dev
+- Windows 10 or 11 (x64)
+- For workspaces, at least one agent CLI on your `PATH`, for example:
+  - [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`)
+  - [Codex CLI](https://github.com/openai/codex) (`codex`)
+  - Google Antigravity (`agy`)
+- For API chats, an API key from your provider. A local OpenAI-compatible server such as Ollama needs no key.
+- For voice input, a Windows language pack with speech recognition, for example German or English.
 
-# CLI (Anime-Style! 🌸)
-npx codeforge-cli --url http://server:8787 --token YOUR_TOKEN --interactive
-```
+### First steps
 
-## Build & Release ～☆
+The interface is currently in German. Labels in parentheses show the exact text in the app.
+
+1. If you want to use API chats, open **Settings → General → AI providers** (*Einstellungen → Allgemein → AI-Anbieter*) and add a provider.
+2. Go to **Home** and choose **Start workspace** (*Workspace starten*) or **Start chat** (*Chat starten*).
+3. Select a project folder, or start without one, and get to work.
+
+## Development
 
 ```bash
-npm run lint          # TypeScript-Check ✨
-npm run build         # Vite Build
-npm run dist:win      # Windows EXE (release/)
-npm run apk:build     # Android APK 📱
-npm run release:all   # Alles auf einmal (EXE + APK + CLI) ⚡
-```
-
-**Automatische Releases via GitHub Actions:** Bei jedem Push auf `main` oder Tag `v*` werden Windows EXE + Android APK automatisch gebaut und als Release veröffentlicht.
-
----
-
-## 📱 Tutorial: Mobile Verbindung in 3 Schritten
-
-### 📋 Voraussetzungen
-
-- Ein **Linux-PC** oder **Debian VPS** (11/12)
-- Die **CodeForge-App** auf deinem Handy ([Releases](https://github.com/Pikaswelt/CodeForge/releases))
-
----
-
-### 🚀 Schritt 1 – Server starten
-
-**Auf dem Linux-PC (im selben WLAN wie das Handy):**
-
-```bash
-bash codeforge-connect.sh
-```
-
-**Auf einem Debian-VPS (Remote-Server):**
-
-```bash
-ssh root@DEINE-SERVER-IP
-apt update && apt install -y git
 git clone https://github.com/Pikaswelt/CodeForge.git
 cd CodeForge
-sudo bash codeforge-connect-debian.sh
+npm install
+
+npm run dev        # Vite dev server + Electron with hot reload
+npm run lint       # TypeScript type check
+npm run dist:win   # Build the Windows installer into release/
 ```
 
-> ⏳ Die VPS-Installation dauert ca. 2–3 Minuten und installiert Node.js, KI-CLIs und richtet den systemd-Dienst ein.
+### Tech stack
 
----
+| Layer | Technology |
+| --- | --- |
+| Shell | Electron |
+| UI | React 19, Vite, Tailwind CSS 4, Motion |
+| Terminals | xterm.js, node-pty (ConPTY) |
+| Speech | Windows `System.Speech` via a PowerShell worker |
+| Packaging | electron-builder (NSIS) |
 
-### 🔢 Schritt 2 – Connection Key kopieren
+### Project structure
 
-Nach dem Start zeigt das Terminal den **Connection Key** in einer großen Box:
-
-```
-  ╔══════════════════════════════════════════════════════════╗
-  ║  📱 CONNECTION KEY FÜR DIE MOBILE APP:                  ║
-  ║  Kopiere diesen Key und füge ihn in der App ein:         ║
-  ║                                                          ║
-  ║  eyJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjEwMDo4Nzg3IiwidG9rZW4i...
-  ║                                                          ║
-  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║
-  ╚══════════════════════════════════════════════════════════╝
-```
-
----
-
-### 📱 Schritt 3 – In der App verbinden
-
-1. **CodeForge-App** auf dem Handy öffnen
-2. Auf **»Verbinden«** tippen (unten rechts)
-3. Den **Base64 Connection Key** in das Eingabefeld einfügen
-4. Auf **»Verbinden«** tippen
-
-✨ **FERTIG!** Die App ist jetzt verschlüsselt mit deinem Server verbunden und alle CodeForge-Funktionen können remote genutzt werden!
-
----
-
-### 🔧 Manuelle Verbindung (Alternative)
-
-Falls du die Verbindung manuell einrichten willst:
-
-1. In der App: **»Server-URL + Token (Manuell)«** wählen
-2. Eintragen:
-   - **Server-URL:** `http://DEINE-SERVER-IP:8787`
-   - **API-Token:** Dein generierter Token
-   - **Projektpfad:** `/root/codeforge-project`
-3. **Verbinden**
-
----
-
-### 📂 Schritt 4 (optional) – Projekt einrichten
-
-```bash
-# Neues Projekt klonen
-mkdir -p /root/mein-projekt
-cd /root/mein-projekt
-git clone https://github.com/dich/dein-repo.git .
+```text
+electron/
+  main.cjs       Main process: windows, IPC, PTY sessions, API chat, speech
+  preload.cjs    Secure bridge exposed as window.agentWorkspace
+  updater.cjs    GitHub Releases auto-updater
+src/
+  App.tsx        Layout, theme backdrop, modals
+  AppContext.tsx Application state and persistence
+  components/    Home, workspaces, API chat, library, settings, …
 ```
 
-In der App unter **Projekt** den Pfad `/root/mein-projekt` eintragen.
+### Releasing
 
----
+1. Bump `version` in `package.json`.
+2. Run `npm run dist:win`.
+3. Create a GitHub release `v<version>` and attach `CodeForge-Setup-<version>.exe`, its `.blockmap` and `latest.yml`.
 
-## 🔧 Nützliche Befehle
+Installed apps pick up the new version automatically.
 
-| Befehl | Zweck |
-|--------|-------|
-| `systemctl status codeforge-remote` | Server-Status prüfen |
-| `sudo journalctl -u codeforge-remote -f` | Live-Logs ansehen |
-| `sudo systemctl restart codeforge-remote` | Server neustarten (neuer Kopplungscode!) |
-| `curl http://localhost:8787/discover` | Verbindung lokal testen |
-| `curl -X POST http://localhost:8787/pair/start` | Manuell neuen Kopplungscode anfordern |
+## Privacy
 
----
+- CodeForge has no telemetry.
+- API keys, chats and settings are stored locally in the app's data folder.
+- Network requests go to the AI providers you configure and to GitHub for update checks.
+- If you enable the optional Spotify widget, it looks up album artwork on Deezer or iTunes.
 
-## 🔒 Sicherheit
+## Contributing
 
-- 🔑 **Token** wird automatisch generiert – niemals committen oder teilen
-- ⏱️ **Kopplungscode** nur 10 Minuten gültig
-- 🛡️ **Zugriffsmodus** pro Request: `read-only` / `workspace-write` / `full`
-- 🔥 Für Produktivbetrieb: **Caddy/Nginx + Let's Encrypt** als HTTPS-Reverse-Proxy
-- 🚫 Alternativ: Nur über **VPN/Tailscale** erreichbar machen (Port nicht in Firewall öffnen!)
-
-## 🆘 Troubleshooting
-
-| Problem | Lösung |
-|---------|--------|
-| App findet keinen Server | Firewall: `ufw allow 8787/tcp`, Handy & PC im selben WLAN? |
-| Falscher Code | Code abgelaufen? Server neustarten für neuen Code |
-| `EADDRINUSE` | Port belegt: `CODEFORGE_PORT=8788` im systemd-Service setzen |
-| Token verloren | In `/etc/systemd/system/codeforge-remote.service` nachschauen |
-| `node: command not found` | Setup-Skript erneut ausführen (installiert Node.js 22) |
-| KI-CLI fehlt | `npm install -g agy` oder `npm install -g freebuff` |
-
----
-
-## Provider ～☆
-
-| Provider | CLI | Beschreibung |
-|----------|-----|-------------|
-| ✨ Google Antigravity | `agy` | Gemini, Claude & GPT-OSS |
-| 🧠 OpenAI Codex | `codex` | Nicht-interaktiv im Projekt |
-| 💜 Anthropic Claude | `claude` | Claude Code |
-| 🖱️ Cursor Agent | `cursor-agent` | Cursor CLI |
-| 📖 OpenCode | `opencode` | OpenCode Run-Modus |
-| 🎀 **FreeBuff-chan** | `freebuff` | Kostenlos, kein API-Key nötig! にゃー！ |
-
-## Security 🛡️
-
-Der Renderer hat keinen direkten Node-Zugriff. Dateioperationen, Git, npm und Agent-Prozesse laufen ausschließlich über die eingeschränkte Preload-API. Zugriffsmodus pro Request: Read-Only, Workspace-Write oder Full.
-
----
-
-<p align="center">
-  <i>🌸 コードフォージ — 君のコードを完全にする！🌸</i><br>
-  <sub>Made with 💖 by the CodeForge team</sub>
-</p>
+Issues and pull requests are welcome. Please run `npm run lint` before opening a PR.

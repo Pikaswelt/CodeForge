@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      # Native modules (node-pty) and the Electron binary are not needed for type checking and the web build.
+      - run: npm ci --ignore-scripts
+      - run: npx tsc --noEmit
+      - run: npx vite build
