@@ -3,20 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X as XIcon, Wifi } from 'lucide-react';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
-import SettingsModal from './components/SettingsModal';
-import WelcomePopup from './components/WelcomePopup';
 import NewsPopup, { shouldShowNewsPopup, dismissNewsPopup } from './components/NewsPopup';
-import SpotifyWidget from './components/SpotifyWidget';
-import ActionsModal from './components/ActionsModal';
-import SetupModal from './components/SetupModal';
-import MobileConnectModal from './components/MobileConnectModal';
 import { AppProvider, useAppContext } from './AppContext';
+import { isVideoPath, toFileUrl } from './media';
+
+// Modals and widgets load on demand to keep startup fast.
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const WelcomePopup = lazy(() => import('./components/WelcomePopup'));
+const SpotifyWidget = lazy(() => import('./components/SpotifyWidget'));
+const SetupModal = lazy(() => import('./components/SetupModal'));
+const MobileConnectModal = lazy(() => import('./components/MobileConnectModal'));
 
 const WELCOME_POPUP_STORAGE_KEY = 'agentWorkspace.welcomePopupDismissed';
 
@@ -38,7 +40,6 @@ function AppLayout() {
     setMobileMode,
   } = useAppContext();
   const [showSettings, setShowSettings] = useState(false);
-  const [showActions, setShowActions] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showMobileConnect, setShowMobileConnect] = useState(false);
   const [showWelcomePopup, setShowWelcomePopup] = useState(() => {
@@ -61,8 +62,14 @@ function AppLayout() {
       setShowNewsPopup(true);
     }
   }, [hasSetupCompleted]);
-  const customTheme = customThemes.find((item) => item.id === theme);
-  const cssTheme = customTheme ? 'custom' : theme;
+  const selectedCustomTheme = customThemes.find((item) => item.id === theme);
+  // Media-only themes keep the look of their base theme and only swap the background.
+  const baseThemeId = selectedCustomTheme?.mediaOnly ? selectedCustomTheme.baseTheme || 'modern-dark' : theme;
+  const customTheme = selectedCustomTheme?.mediaOnly
+    ? customThemes.find((item) => item.id === baseThemeId && !item.mediaOnly)
+    : selectedCustomTheme;
+  const backdropTheme = selectedCustomTheme?.mediaOnly ? selectedCustomTheme : customTheme;
+  const cssTheme = customTheme ? 'custom' : baseThemeId;
 
   const closeWelcomePopup = () => {
     setShowWelcomePopup(false);
@@ -92,7 +99,7 @@ function AppLayout() {
     'neon-flow': 'bg-neon-flow',
     'glass-apple-dark': 'bg-glass-apple-dark',
     'glass-apple-light': 'bg-glass-apple-light'
-  }[theme] || 'bg-gradient-to-br from-[#1c181a] via-[#111111] to-[#0a0a0a]';
+  }[baseThemeId] || 'bg-gradient-to-br from-[#1c181a] via-[#111111] to-[#0a0a0a]';
 
   const textClass = {
     'modern-dark': 'text-zinc-300',
@@ -113,9 +120,9 @@ function AppLayout() {
     'neon-flow': 'text-fuchsia-50',
     'glass-apple-dark': 'text-zinc-200',
     'glass-apple-light': 'text-zinc-800'
-  }[theme] || 'text-zinc-300';
+  }[baseThemeId] || 'text-zinc-300';
 
-  const isGlassTheme = theme.startsWith('glass-apple-');
+  const isGlassTheme = baseThemeId.startsWith('glass-apple-');
   const hasTransparency = sidebarTransparency > 0 || surfaceTransparency > 0 || isGlassTheme;
 
   const shellStyle = {
@@ -173,9 +180,9 @@ function AppLayout() {
       className={`relative h-screen w-screen ${customTheme ? '' : bgClass} ${textClass} font-sans overflow-hidden transition-colors duration-300`}
       style={shellStyle}
     >
-      {customTheme && <ThemeBackdrop theme={customTheme} />}
+      {backdropTheme && <ThemeBackdrop theme={backdropTheme} />}
       <div className="relative z-10 flex h-full w-full flex-col">
-        <TopBar onSettingsClick={() => setShowSettings(true)} onActionsClick={() => setShowActions(true)} />
+        <TopBar onSettingsClick={() => setShowSettings(true)} />
         <div className="flex flex-1 overflow-hidden relative">
           {/* Mobile Mode: Overlay sidebar toggle button */}
           {mobileMode && (
@@ -204,11 +211,12 @@ function AppLayout() {
               />
             )}
             <div className={`relative z-40 h-full ${isMobileMode ? 'max-w-[300px] shadow-2xl' : ''}`}>
-              <Sidebar onSettingsClick={() => setShowSettings(true)} onActionsClick={() => setShowActions(true)} />
+              <Sidebar onSettingsClick={() => setShowSettings(true)} />
             </div>
           </div>
           <MainArea />
         </div>
+        <Suspense fallback={null}>
         <AnimatePresence>
           {hasSetupCompleted && showNewsPopup && (
             <NewsPopup onClose={closeNewsPopup} />
@@ -226,9 +234,6 @@ function AppLayout() {
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
         </AnimatePresence>
         <AnimatePresence>
-          {showActions && <ActionsModal onClose={() => setShowActions(false)} />}
-        </AnimatePresence>
-        <AnimatePresence>
           {!hasSetupCompleted && <SetupModal />}
         </AnimatePresence>
 
@@ -236,6 +241,7 @@ function AppLayout() {
         <AnimatePresence>
           {showMobileConnect && <MobileConnectModal onClose={() => setShowMobileConnect(false)} />}
         </AnimatePresence>
+        </Suspense>
 
         {/* Mobile Mode: Show connect button when not connected */}
         {mobileMode && !mobileConnectionConfig?.connected && (
@@ -283,24 +289,20 @@ function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppC
 
     playVideo();
 
-    const interval = setInterval(() => {
-      if (videoRef.current && videoRef.current.paused) {
-        videoRef.current.play().catch(() => {});
-      }
-    }, 1000);
-
+    const onVisibility = () => {
+      if (!document.hidden) playVideo();
+    };
     window.addEventListener('focus', playVideo);
-    window.addEventListener('click', playVideo);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      clearInterval(interval);
       window.removeEventListener('focus', playVideo);
-      window.removeEventListener('click', playVideo);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [isVideo, mediaPath]);
 
   return (
     <div className="theme-backdrop" aria-hidden="true">
-      <div className={`theme-custom-gradient ${theme.animatedGradient ? 'theme-custom-gradient-animated' : ''}`} />
+      {!theme.mediaOnly && <div className={`theme-custom-gradient ${theme.animatedGradient ? 'theme-custom-gradient-animated' : ''}`} />}
       {mediaPath && isVideo && (
         <video
           ref={videoRef}
@@ -317,54 +319,22 @@ function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppC
           onCanPlay={(e) => {
             e.currentTarget.play().catch(() => {});
           }}
+          onEnded={(e) => {
+            e.currentTarget.currentTime = 0;
+            e.currentTarget.play().catch(() => {});
+          }}
         />
       )}
       {mediaPath && !isVideo && (
-        <div
+        <img
           className="theme-media-backdrop"
-          style={{ backgroundImage: `url("${toFileUrl(mediaPath)}")` }}
+          src={toFileUrl(mediaPath)}
+          alt=""
         />
       )}
       {mediaPath && <div className="theme-media-scrim" />}
     </div>
   );
-}
-
-function isVideoPath(filePath: string) {
-  if (!filePath) return false;
-  if (filePath.startsWith('data:video/')) return true;
-  if (filePath.startsWith('blob:')) return true;
-  return /\.(mp4|webm|mov|m4v|ogg|ogv|avi|mkv)$/i.test(filePath);
-}
-
-function toFileUrl(filePath: string) {
-  // Handle data: URLs (images read as data URL on mobile)
-  if (filePath.startsWith('data:')) {
-    return filePath;
-  }
-  // Handle blob: URLs (videos created via URL.createObjectURL)
-  if (filePath.startsWith('blob:')) {
-    return filePath;
-  }
-  if ((window as any).agentWorkspace?.isWeb) {
-    let baseUrl = '';
-    try {
-      const storedConfig = localStorage.getItem('mobileConnectionConfig');
-      if (storedConfig) {
-        const config = JSON.parse(storedConfig);
-        if (config.connected && config.type === 'vps' && config.vpsUrl) {
-          baseUrl = config.vpsUrl;
-        }
-      }
-    } catch (e) {}
-    return `${baseUrl}/media?path=${encodeURIComponent(filePath)}`;
-  }
-  // In Capacitor Android, file:// URLs with content:// or file:/// work
-  if (typeof (window as any).Capacitor !== 'undefined' || filePath.startsWith('content://')) {
-    return filePath;
-  }
-  const normalized = filePath.replace(/\\/g, '/');
-  return `codeforge-media:///${normalized}`;
 }
 
 function IntroScreen({ onComplete }: { onComplete: () => void }) {

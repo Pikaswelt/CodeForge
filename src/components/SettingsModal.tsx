@@ -1,9 +1,12 @@
-import { CheckCircle2, Download, Edit2, FolderOpen, Gauge, Image, KeyRound, Loader2, MessageSquare, Music2, Network, Palette, RefreshCw, Settings, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
+import { CheckCircle2, Download, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, RefreshCw, Settings, Smartphone, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { RECOMMENDED_SYSTEM_PROMPT, useAppContext, type Theme } from '../AppContext';
+import { DEFAULT_LIBRARY_STYLE, useAppContext } from '../AppContext';
 import TutorialModal from './TutorialModal';
-import type { McpServerInfo, ProviderId, ReasoningEffort, ResponseDisplayMode, WorkDisplayMode } from '../types';
+import { HARNESS_ICONS, harnessIcon } from '../harnessIcons';
+import { isVideoPath, toFileUrl } from '../media';
+import { ApiProvidersSettings } from './ApiChat';
+import type { CliHarness, ProviderId } from '../types';
 
 const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
   { id: 'antigravity', label: 'Google Antigravity', command: 'agy' },
@@ -12,49 +15,6 @@ const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
   { id: 'cursor', label: 'Cursor Agent', command: 'agent / cursor-agent' },
   { id: 'opencode', label: 'OpenCode', command: 'opencode' },
   { id: 'freebuff', label: 'FreeBuff', command: 'freebuff' },
-];
-
-const THEMES: { id: Theme; label: string; mood: string; colors: string[] }[] = [
-  { id: 'modern-dark', label: 'Modern Dark', mood: 'Ruhig und kompakt', colors: ['#1c181a', '#111111', '#f2c96d'] },
-  { id: 'classic-light', label: 'Classic Light', mood: 'Hell und sachlich', colors: ['#f5f2ed', '#d1ccc0', '#18181b'] },
-  { id: 'glass-apple-dark', label: 'Apple Glass (Dunkel)', mood: 'Mac-Stil Milchglas Dunkel', colors: ['#0f0717', '#191923', '#a855f7'] },
-  { id: 'glass-apple-light', label: 'Apple Glass (Hell)', mood: 'Mac-Stil Milchglas Hell', colors: ['#f3f4f6', '#ffffff', '#0ea5e9'] },
-  { id: 'deep-galactic', label: 'Deep Galactic', mood: 'Tief, blau, fokussiert', colors: ['#0e121d', '#05060a', '#64d2ff'] },
-  { id: 'muted-earth', label: 'Muted Earth', mood: 'Warm und weich', colors: ['#e5e1d8', '#c4c0b4', '#6f5f46'] },
-  { id: 'neon-cyber', label: 'Neon Cyber', mood: 'Kontrastreich', colors: ['#1a1a1a', '#00e5ff', '#ff3df2'] },
-  { id: 'midnight-ocean', label: 'Midnight Ocean', mood: 'Dunkelblau', colors: ['#071826', '#0b2a3f', '#67e8f9'] },
-  { id: 'forest-terminal', label: 'Forest Terminal', mood: 'Gruen und ruhig', colors: ['#07130d', '#143322', '#7ddc9f'] },
-  { id: 'solarized-dawn', label: 'Solarized Dawn', mood: 'Sanfter Morgen', colors: ['#fdf6e3', '#eee8d5', '#268bd2'] },
-  { id: 'rose-quartz', label: 'Rose Quartz', mood: 'Hell, warm, freundlich', colors: ['#fff1f2', '#fbcfe8', '#be185d'] },
-  { id: 'mono-slate', label: 'Mono Slate', mood: 'Neutral und dicht', colors: ['#0f172a', '#334155', '#e2e8f0'] },
-  { id: 'amber-console', label: 'Amber Console', mood: 'Terminal-Waerme', colors: ['#160f06', '#3b2608', '#f59e0b'] },
-  { id: 'arctic-blue', label: 'Arctic Blue', mood: 'Klar und hell', colors: ['#eff6ff', '#dbeafe', '#2563eb'] },
-  { id: 'violet-noir', label: 'Violet Noir', mood: 'Elegant dunkel', colors: ['#10051b', '#24113f', '#c084fc'] },
-  { id: 'high-contrast', label: 'High Contrast', mood: 'Maximal lesbar', colors: ['#000000', '#ffffff', '#22c55e'] },
-  { id: 'aurora-flow', label: 'Aurora Flow', mood: 'Animierter Verlauf', colors: ['#052e2b', '#115e59', '#a7f3d0'] },
-  { id: 'neon-flow', label: 'Neon Flow', mood: 'Animierter Verlauf', colors: ['#09090b', '#7c3aed', '#22d3ee'] },
-];
-
-const REASONING_OPTIONS: { id: ReasoningEffort; label: string; description: string }[] = [
-  { id: 'low', label: 'Niedrig', description: 'Schneller fuer kleine Aenderungen' },
-  { id: 'medium', label: 'Mittel', description: 'Ausgewogen fuer normale Coding-Aufgaben' },
-  { id: 'high', label: 'Hoch', description: 'Gruendlicher fuer komplexe Aufgaben' },
-];
-
-const WORK_DISPLAY_OPTIONS: { id: WorkDisplayMode; label: string; description: string }[] = [
-  { id: 'codeforge', label: 'Aktuell', description: 'Die bisherige CodeForge-Laufspur mit kurzen Statusmeldungen.' },
-  { id: 'raw-terminal', label: 'Raw Terminal', description: 'Live-Ausgabe fast unverarbeitet als Terminal-Stream.' },
-  { id: 'compact', label: 'Kompakt', description: 'Kleine Statuszeile mit Phase, Zeit und Aktivitaet.' },
-  { id: 'timeline', label: 'Timeline', description: 'Schritte, Befehle und erkannte Dateien als Verlauf.' },
-  { id: 'focus', label: 'Fokus', description: 'Grosse Arbeitskarte mit Phase, Modell und Kennzahlen.' },
-];
-
-const RESPONSE_DISPLAY_OPTIONS: { id: ResponseDisplayMode; label: string; description: string }[] = [
-  { id: 'bullets', label: 'Punktuell', description: 'Aktuelle kompakte Antwort mit Abschnitten und Stichpunkten.' },
-  { id: 'plain', label: 'Fliesstext', description: 'Kurze natuerliche Antwort mit weniger Listen.' },
-  { id: 'detailed', label: 'Ausfuehrlich', description: 'Mehr Kontext, Aenderungen und Pruefung in getrennten Bloecken.' },
-  { id: 'checklist', label: 'Checkliste', description: 'Antwort als abhakbare Schritte und Ergebnisse.' },
-  { id: 'technical', label: 'Technisch', description: 'Praezise mit Pfaden, Befehlen und Implementierungsdetails.' },
 ];
 
 type UpdateStatus = {
@@ -72,28 +32,20 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const {
     provider,
     setProvider,
-    reasoningEffort,
-    setReasoningEffort,
-    apiKeys,
-    setApiKey,
-    externalServer,
-    setExternalServer,
-    testExternalServer,
-    systemPrompt,
-    setSystemPrompt,
-    useRecommendedSystemPrompt,
-    generateSystemPrompt,
     theme,
     setTheme,
     themeByProvider,
     customThemes,
     themeBackgroundBehindComposer,
     libraryBannerBackgroundEnabled,
+    libraryStyle,
+    chats,
+    clearAllChats,
+    setLibraryStyle,
     mobileMode,
     setMobileMode,
-    workDisplayMode,
-    responseDisplayMode,
     spotifyWidgetEnabled,
+    discordRpcEnabled,
     discordIdleMessage,
     sidebarTransparency,
     surfaceTransparency,
@@ -108,9 +60,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     selectThemeBackground,
     setThemeBackgroundBehindComposer,
     setLibraryBannerBackgroundEnabled,
-    setWorkDisplayMode,
-    setResponseDisplayMode,
     setSpotifyWidgetEnabled,
+    setDiscordRpcEnabled,
     setDiscordIdleMessage,
     setSidebarTransparency,
     setSurfaceTransparency,
@@ -125,32 +76,20 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     selectedProject,
     addProject,
     usage,
-    setTokenLimit,
-    resetUsage,
     refreshProviderUsage,
     setHasSetupCompleted,
     terminalStartPath,
     setTerminalStartPath,
-    terminalStartCommand,
-    setTerminalStartCommand,
+    cliHarnesses,
+    setCliHarnesses,
     terminalPrefix,
     setTerminalPrefix,
     terminalSuffix,
     setTerminalSuffix,
     terminalTriggerWords,
     setTerminalTriggerWords,
-    agyStartCommand,
-    setAgyStartCommand,
-    agyWaitTimeMs,
-    setAgyWaitTimeMs,
-    agyPrefix,
-    setAgyPrefix,
-    agySuffix,
-    setAgySuffix,
   } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'general' | 'ai' | 'appearance' | 'network'>('general');
-  const [generatingPrompt, setGeneratingPrompt] = useState(false);
-  const [promptError, setPromptError] = useState('');
+  const [activeTab, setActiveTab] = useState<'general' | 'appearance'>('general');
   const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null);
   const [statusNotice, setStatusNotice] = useState('');
   const [customName, setCustomName] = useState('Mein Theme');
@@ -160,12 +99,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [customAccent, setCustomAccent] = useState('#f59e0b');
   const [customMedia, setCustomMedia] = useState('');
   const [customAnimatedGradient, setCustomAnimatedGradient] = useState(true);
+  const [customMediaOnly, setCustomMediaOnly] = useState(false);
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
-  const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
-  const [mcpLoading, setMcpLoading] = useState(false);
-  const [mcpNotice, setMcpNotice] = useState('');
-  const [externalTesting, setExternalTesting] = useState(false);
-  const [externalNotice, setExternalNotice] = useState('');
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     status: 'idle',
     currentVersion: '',
@@ -192,36 +127,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       unsubscribe?.();
     };
   }, []);
-
-  const refreshMcpServers = async () => {
-    setMcpLoading(true);
-    setMcpNotice('');
-    try {
-      const servers = (await window.agentWorkspace?.getMcpServers()) || [];
-      setMcpServers(servers);
-      setMcpNotice(servers.length ? `${servers.length} MCP-Server gefunden.` : 'Keine MCP-Server-Konfiguration gefunden.');
-    } catch (error) {
-      setMcpNotice(error instanceof Error ? error.message : 'MCP-Server konnten nicht abgerufen werden.');
-    } finally {
-      setMcpLoading(false);
-    }
-  };
-
-  const updateExternalServer = (patch: Partial<typeof externalServer>) => {
-    setExternalServer({ ...externalServer, ...patch });
-  };
-
-  const runExternalServerTest = async () => {
-    setExternalTesting(true);
-    setExternalNotice('');
-    try {
-      setExternalNotice(await testExternalServer());
-    } catch (error) {
-      setExternalNotice(error instanceof Error ? error.message : 'Externer Server konnte nicht getestet werden.');
-    } finally {
-      setExternalTesting(false);
-    }
-  };
 
   const runUpdateCheck = async () => {
     setUpdateBusy(true);
@@ -253,11 +158,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setCustomAccent(selected.accent);
     setCustomMedia(selected.backgroundMedia || selected.backgroundImage || '');
     setCustomAnimatedGradient(Boolean(selected.animatedGradient));
+    setCustomMediaOnly(Boolean(selected.mediaOnly));
   };
 
   const saveCustomTheme = () => {
     if (!customName.trim()) return;
+    if (customMediaOnly && !customMedia) return;
+    const activeCustom = customThemes.find((item) => item.id === theme);
+    const currentBase = activeCustom?.mediaOnly ? activeCustom.baseTheme || 'modern-dark' : theme;
+    const editing = editingThemeId ? customThemes.find((item) => item.id === editingThemeId) : undefined;
     const input = {
+      mediaOnly: customMediaOnly || undefined,
+      baseTheme: customMediaOnly ? (editing?.mediaOnly && editing.baseTheme) || currentBase : undefined,
       name: customName.trim(),
       background: customBackground,
       surface: customSurface,
@@ -307,9 +219,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className="flex border-b border-white/5 bg-[#120f12] px-6 gap-4 shrink-0 overflow-x-auto custom-scrollbar">
           {[
             { id: 'general', label: 'Allgemein', icon: Settings },
-            { id: 'ai', label: 'KI-Optionen', icon: Sparkles },
             { id: 'appearance', label: 'Aussehen', icon: Palette },
-            { id: 'network', label: 'Verbindung', icon: Network }
           ].map((t) => {
             const active = activeTab === t.id;
             return (
@@ -347,6 +257,37 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               exit="exit"
               className="space-y-7"
             >
+              <section>
+                <div className="section-label flex items-center gap-2">
+                  <KeyRound className="w-3.5 h-3.5" />
+                  AI-Anbieter
+                </div>
+                <p className="text-[11px] leading-4 text-zinc-600 mt-2">
+                  Hier hinterlegte Anbieter kannst du auf Home unter "Chat starten" auswaehlen. API-Keys werden lokal auf diesem PC gespeichert.
+                </p>
+                <ApiProvidersSettings />
+              </section>
+
+              <section>
+                <div className="section-label flex items-center gap-2">
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Chats
+                </div>
+                <button
+                  onClick={() => {
+                    if (!chats.length) return;
+                    if (window.confirm(`Alle ${chats.length} Chats und Workspaces loeschen? Das kann nicht rueckgaengig gemacht werden.`)) {
+                      clearAllChats();
+                    }
+                  }}
+                  disabled={!chats.length}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300 hover:bg-red-500/20 disabled:opacity-40"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Alle Chats loeschen ({chats.length})
+                </button>
+              </section>
+
               {!mobileMode && (
               <section>
                 <div className="section-label flex items-center justify-between">
@@ -475,18 +416,68 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
-                  Terminal-Startbefehl
+                  CLI-Harnesses
                 </div>
-                <input
-                  type="text"
-                  value={terminalStartCommand}
-                  onChange={(event) => setTerminalStartCommand(event.target.value)}
-                  className="input w-full mt-3"
-                  placeholder="z. B. npm run dev"
-                  autoComplete="off"
-                />
+                <div className="space-y-2 mt-3">
+                  {cliHarnesses.map((harness) => {
+                    const update = (patch: Partial<CliHarness>) =>
+                      setCliHarnesses((current) => current.map((item) => (item.id === harness.id ? { ...item, ...patch } : item)));
+                    return (
+                      <div key={harness.id} className="flex items-center gap-2">
+                        <select
+                          value={harness.icon}
+                          onChange={(event) => update({ icon: event.target.value })}
+                          className="input !w-[110px] shrink-0"
+                          title="Icon"
+                        >
+                          {Object.keys(HARNESS_ICONS).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                        {(() => {
+                          const Icon = harnessIcon(harness.icon);
+                          return <Icon className="w-4 h-4 shrink-0 text-zinc-400" />;
+                        })()}
+                        <input
+                          type="text"
+                          value={harness.name}
+                          onChange={(event) => update({ name: event.target.value })}
+                          className="input flex-1 min-w-0"
+                          placeholder="Name"
+                          autoComplete="off"
+                        />
+                        <input
+                          type="text"
+                          value={harness.command}
+                          onChange={(event) => update({ command: event.target.value })}
+                          className="input flex-1 min-w-0 font-mono"
+                          placeholder="Start-Command, z. B. claude"
+                          autoComplete="off"
+                        />
+                        <button
+                          onClick={() => setCliHarnesses((current) => current.filter((item) => item.id !== harness.id))}
+                          className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10"
+                          title="Entfernen"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button
+                    onClick={() =>
+                      setCliHarnesses((current) => [
+                        ...current,
+                        { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: 'Neuer Harness', command: '', icon: 'Terminal' },
+                      ])
+                    }
+                    className="text-xs text-orange-300 hover:text-orange-200"
+                  >
+                    + Harness hinzufuegen
+                  </button>
+                </div>
                 <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Dieser Befehl wird beim Starten eines Terminals automatisch eingegeben, wenn die Option im Terminal-Tab aktiv ist.
+                  Diese Harnesses kannst du auf Home unter "Workspace starten" auswaehlen. Der Start-Command wird in jedem Terminal automatisch ausgefuehrt.
                 </p>
               </section>
               )}
@@ -614,29 +605,23 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   <Smartphone className="w-3.5 h-3.5" />
                   Mobile Modus
                 </div>
-                <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
-                  <div>
-                    <div className="text-sm text-zinc-200">Mobile Modus aktivieren</div>
-                    <div className="mt-0.5 text-[10px] text-zinc-600">
-                      Optimiert die Oberflaeche fuer Smartphones. Verbinde dich mit einem PC oder VPS als KI-Server. CLI-Status und Terminal werden ausgeblendet.
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
+                <div className="mt-3 space-y-3">
+                  <SettingToggle
+                    label="Mobile Modus aktivieren"
+                    description="Optimiert die Oberflaeche fuer Smartphones. Verbinde dich mit einem PC oder VPS als KI-Server. CLI-Status und Terminal werden ausgeblendet."
                     checked={mobileMode}
-                    onChange={(event) => setMobileMode(event.target.checked)}
-                    className="h-4 w-4 accent-amber-300"
+                    onChange={setMobileMode}
                   />
-                </label>
-                {mobileMode && (
-                  <button
-                    onClick={() => setShowTutorial(true)}
-                    className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-2.5 text-sm text-amber-200 hover:bg-amber-400/10 transition-colors"
-                  >
-                    <BookOpen className="w-4 h-4" />
-                    Verbindungsanleitung oeffnen
-                  </button>
-                )}
+                  {mobileMode && (
+                    <button
+                      onClick={() => setShowTutorial(true)}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-2.5 text-sm text-amber-200 hover:bg-amber-400/10 transition-colors"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      Verbindungsanleitung oeffnen
+                    </button>
+                  )}
+                </div>
               </section>
 
               <section>
@@ -644,37 +629,55 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   <Music2 className="w-3.5 h-3.5" />
                   Spotify-Widget
                 </div>
-                <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
-                  <div>
-                    <div className="text-sm text-zinc-200">Mini-Widget anzeigen</div>
-                    <div className="mt-0.5 text-[10px] text-zinc-600">
-                      Zeigt aktuellen Windows/Spotify-Song als frei platzierbares Widget.
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
+                <div className="mt-3">
+                  <SettingToggle
+                    label="Mini-Widget anzeigen"
+                    description="Zeigt aktuellen Windows/Spotify-Song als frei platzierbares Widget."
                     checked={spotifyWidgetEnabled}
-                    onChange={(event) => setSpotifyWidgetEnabled(event.target.checked)}
-                    className="h-4 w-4 accent-amber-300"
+                    onChange={setSpotifyWidgetEnabled}
                   />
-                </label>
+                </div>
               </section>
 
               <section>
-                <div className="section-label flex items-center gap-2">
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  Discord-Status
+                <div className="section-label flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Discord Rich Presence
+                  </div>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                      discordRpcEnabled
+                        ? 'bg-amber-400/15 text-amber-300 border border-amber-400/30'
+                        : 'bg-white/5 text-zinc-500 border border-white/10'
+                    }`}
+                  >
+                    {discordRpcEnabled ? 'Aktiviert' : 'Deaktiviert'}
+                  </span>
                 </div>
-                <input
-                  value={discordIdleMessage}
-                  onChange={(event) => setDiscordIdleMessage(event.target.value)}
-                  className="input mt-3 w-full"
-                  maxLength={128}
-                  placeholder="Bereit"
-                />
-                <p className="mt-2 text-[11px] leading-4 text-zinc-600">
-                  Dieser Text ersetzt Bereit, solange kein Agent laeuft.
-                </p>
+                <div className="mt-3 space-y-3">
+                  <SettingToggle
+                    label="Discord-Status aktivieren"
+                    description="Zeigt deinen aktuellen CodeForge-Status, gewähltes KI-Modell und aktiven Agenten in Discord an."
+                    checked={discordRpcEnabled}
+                    onChange={setDiscordRpcEnabled}
+                  />
+                  {discordRpcEnabled && (
+                    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 space-y-2">
+                      <div className="text-xs text-zinc-300 font-medium">Benutzerdefinierter Status-Text (Bereit)</div>
+                      <input
+                        value={discordIdleMessage}
+                        onChange={(event) => setDiscordIdleMessage(event.target.value)}
+                        className="input w-full"
+                        maxLength={128}
+                        placeholder="Bereit"
+                      />
+                      <p className="text-[11px] leading-4 text-zinc-500">
+                        Dieser Text ersetzt &quot;Bereit&quot;, solange kein Agent laeuft.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </section>
 
               <div className="pt-4 border-t border-white/5">
@@ -691,149 +694,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             </motion.div>
           )}
 
-          {activeTab === 'ai' && (
-            <motion.div
-              key="ai"
-              variants={tabContentVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="space-y-7"
-            >
-              <section>
-                <div className="section-label flex items-center justify-between">
-                  System-Prompt
-                  <div className="flex gap-3">
-                    <button
-                      onClick={useRecommendedSystemPrompt}
-                      className="text-[11px] text-amber-300 hover:text-amber-200 normal-case tracking-normal"
-                      title={RECOMMENDED_SYSTEM_PROMPT}
-                    >
-                      Empfohlen nutzen
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setPromptError('');
-                        setGeneratingPrompt(true);
-                        try {
-                          await generateSystemPrompt();
-                        } catch (error) {
-                          setPromptError(error instanceof Error ? error.message : 'Generierung fehlgeschlagen.');
-                        } finally {
-                          setGeneratingPrompt(false);
-                        }
-                      }}
-                      disabled={!selectedProject || generatingPrompt}
-                      className="inline-flex items-center gap-1 text-[11px] text-zinc-300 hover:text-white disabled:text-zinc-700 normal-case tracking-normal"
-                    >
-                      {generatingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                      Mit AI generieren
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={systemPrompt}
-                  onChange={(event) => setSystemPrompt(event.target.value)}
-                  className="input w-full mt-3 min-h-32 resize-none"
-                  placeholder="Lege fest, wie der Agent grundsaetzlich arbeiten soll."
-                />
-                {promptError && <div className="text-[11px] text-red-400 mt-2">{promptError}</div>}
-              </section>
-
-              <section>
-                <div className="section-label flex items-center gap-2">
-                  <KeyRound className="w-3.5 h-3.5" />
-                  API-Key
-                </div>
-                <input
-                  type="password"
-                  value={apiKeys[provider] || ''}
-                  onChange={(event) => setApiKey(provider, event.target.value)}
-                  className="input w-full mt-3"
-                  placeholder={`${PROVIDERS.find((item) => item.id === provider)?.label} API-Key`}
-                  autoComplete="off"
-                />
-                <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Wird lokal auf deinem PC gespeichert. Falls du ein externes Server-Gateway nutzt, kannst du den Key leer lassen.
-                </p>
-              </section>
-
-              <section>
-                <div className="section-label">Intelligenz</div>
-                <div className="mt-3 grid gap-2">
-                  {REASONING_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setReasoningEffort(option.id)}
-                      className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                        reasoningEffort === option.id
-                          ? 'border-white/25 bg-white/10 text-white'
-                          : 'border-white/5 bg-white/[0.02] text-zinc-500 hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium">{option.label}</span>
-                        {reasoningEffort === option.id && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
-                      </div>
-                      <div className="mt-1 text-[10px] leading-4 text-zinc-600">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <div className="section-label flex items-center gap-2">
-                  <Terminal className="w-3.5 h-3.5" />
-                  Arbeitskarte (Laufspur)
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {WORK_DISPLAY_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setWorkDisplayMode(option.id)}
-                      className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                        workDisplayMode === option.id
-                          ? 'border-white/25 bg-white/10 text-white'
-                          : 'border-white/5 bg-white/[0.02] text-zinc-500 hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium">{option.label}</span>
-                        {workDisplayMode === option.id && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
-                      </div>
-                      <div className="mt-1 text-[10px] leading-4 text-zinc-600">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <div className="section-label flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Antwort-Art
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {RESPONSE_DISPLAY_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setResponseDisplayMode(option.id)}
-                      className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                        responseDisplayMode === option.id
-                          ? 'border-white/25 bg-white/10 text-white'
-                          : 'border-white/5 bg-white/[0.02] text-zinc-500 hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium">{option.label}</span>
-                        {responseDisplayMode === option.id && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
-                      </div>
-                      <div className="mt-1 text-[10px] leading-4 text-zinc-600">{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </motion.div>
-          )}
 
           {activeTab === 'appearance' && (
             <motion.div
@@ -930,18 +790,20 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     className="h-4 w-4 accent-amber-300"
                   />
                 </label>
+                {customThemes.length === 0 && (
+                  <p className="mt-3 text-[11px] text-zinc-600">Noch keine Themes. Erstelle unten dein erstes Theme.</p>
+                )}
                 <div className="grid grid-cols-2 gap-3 mt-3">
-                  {[...THEMES, ...customThemes.map((item) => ({
+                  {[...customThemes.map((item) => ({
                     id: item.id,
                     label: item.name,
                     mood: item.backgroundMedia || item.backgroundImage
-                      ? isVideoPath(item.backgroundMedia || item.backgroundImage || '')
-                        ? 'Eigenes Video'
-                        : 'Eigenes Bild'
+                      ? `${isVideoPath(item.backgroundMedia || item.backgroundImage || '') ? 'Video' : 'Bild'}${item.mediaOnly ? ' (nur Hintergrund)' : ''}`
                       : item.animatedGradient
                         ? 'Animierter Verlauf'
                         : 'Eigenes Theme',
-                    colors: [item.background, item.surface, item.accent],
+                    colors: item.mediaOnly ? [] : [item.background, item.surface, item.accent],
+                    media: item.backgroundMedia || item.backgroundImage || '',
                     custom: true,
                   }))].map((item) => (
                     <button
@@ -951,6 +813,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         theme === item.id ? 'bg-white/10 border-white/25 text-white' : 'border-white/5 text-zinc-500 hover:bg-white/5'
                       }`}
                     >
+                      {'media' in item && item.media && <ThemeCover media={String(item.media)} />}
                       <div className="flex items-center gap-1.5">
                         {item.colors.map((color) => (
                           <span
@@ -1007,6 +870,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       </button>
                     )}
                   </div>
+                  <label className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/15 px-3 py-2">
+                    <span>
+                      <span className="block text-xs text-zinc-300">Nur Hintergrund (Bild/Video)</span>
+                      <span className="block text-[10px] text-zinc-600">Aendert nichts ausser dem Hintergrund. Farben bleiben vom aktuellen Theme.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={customMediaOnly}
+                      onChange={(event) => setCustomMediaOnly(event.target.checked)}
+                      className="h-4 w-4 accent-amber-300"
+                    />
+                  </label>
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     <input
                       value={customName}
@@ -1014,10 +889,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       className="input col-span-2 w-full"
                       placeholder="Theme-Name"
                     />
-                    <ThemeColor label="Hintergrund" value={customBackground} onChange={setCustomBackground} />
-                    <ThemeColor label="Flaechen" value={customSurface} onChange={setCustomSurface} />
-                    <ThemeColor label="Text" value={customText} onChange={setCustomText} />
-                    <ThemeColor label="Akzent" value={customAccent} onChange={setCustomAccent} />
+                    {!customMediaOnly && (
+                      <>
+                        <ThemeColor label="Hintergrund" value={customBackground} onChange={setCustomBackground} />
+                        <ThemeColor label="Flaechen" value={customSurface} onChange={setCustomSurface} />
+                        <ThemeColor label="Text" value={customText} onChange={setCustomText} />
+                        <ThemeColor label="Akzent" value={customAccent} onChange={setCustomAccent} />
+                      </>
+                    )}
                   </div>
                   <div className="mt-3 flex items-center gap-2">
                     <button
@@ -1040,6 +919,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       </button>
                     )}
                   </div>
+                  {customMedia && <ThemeCover media={customMedia} />}
+                  {!customMediaOnly && (
                   <label className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/15 px-3 py-2">
                     <span className="text-xs text-zinc-300">Animierten Farbverlauf aktivieren</span>
                     <input
@@ -1049,9 +930,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       className="h-4 w-4 accent-amber-300"
                     />
                   </label>
+                  )}
                   <button
                     onClick={saveCustomTheme}
-                    className="primary-button mt-4 w-full"
+                    disabled={customMediaOnly && !customMedia}
+                    className="primary-button mt-4 w-full disabled:opacity-50"
                   >
                     {editingThemeId ? 'Theme speichern und fuer Anbieter nutzen' : 'Theme erstellen und fuer Anbieter nutzen'}
                   </button>
@@ -1061,7 +944,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Image className="w-3.5 h-3.5" />
-                  Library-Banner
+                  Library anpassen
                 </div>
                 <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
                   <div>
@@ -1077,280 +960,82 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     className="h-4 w-4 accent-amber-300"
                   />
                 </label>
-              </section>
-            </motion.div>
-          )}
-
-          {activeTab === 'network' && (
-            <motion.div
-              key="network"
-              variants={tabContentVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="space-y-7"
-            >
-              <section>
-                <div className="section-label flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Network className="w-3.5 h-3.5" />
-                    Externer Coding-Server (SSH)
-                  </span>
-                  <button
-                    onClick={runExternalServerTest}
-                    disabled={externalTesting}
-                    className="flex items-center gap-1 normal-case tracking-normal hover:text-white disabled:text-zinc-700"
-                  >
-                    {externalTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                    Verbindung testen
-                  </button>
-                </div>
-                <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-4">
-                  <label className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm text-zinc-200">Gateway-Verbindung verwenden</div>
-                      <div className="text-[10px] text-zinc-600">Leitet alle Agent-Befehle ueber SSH auf einen Remote-Host um.</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={externalServer.enabled}
-                      onChange={(event) => updateExternalServer({ enabled: event.target.checked })}
-                      className="h-4 w-4 accent-amber-300"
-                    />
-                  </label>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2">
-                      <div className="text-[10px] uppercase text-zinc-600">SSH Host</div>
-                      <input
-                        value={externalServer.host}
-                        onChange={(event) => updateExternalServer({ host: event.target.value })}
-                        className="input mt-1 w-full"
-                        placeholder="z.B. my-server.com"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase text-zinc-600">Port</div>
-                      <input
-                        type="number"
-                        value={externalServer.port || 22}
-                        onChange={(event) => updateExternalServer({ port: Number(event.target.value) })}
-                        className="input mt-1 w-full"
-                        placeholder="22"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <div className="text-[10px] uppercase text-zinc-600">Benutzername</div>
-                      <input
-                        value={externalServer.user}
-                        onChange={(event) => updateExternalServer({ user: event.target.value })}
-                        className="input mt-1 w-full"
-                        placeholder="root"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase text-zinc-600">Projektpfad auf Server</div>
-                      <input
-                        value={externalServer.remoteProjectPath}
-                        onChange={(event) => updateExternalServer({ remoteProjectPath: event.target.value })}
-                        className="input mt-1 w-full"
-                        placeholder="~/my-project"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-zinc-600">Identitaetsdatei (Key, optional)</div>
-                    <div className="flex gap-2 mt-1">
-                      <input
-                        value={externalServer.identityFile || ''}
-                        onChange={(event) => updateExternalServer({ identityFile: event.target.value })}
-                        className="input flex-1 min-w-0"
-                        placeholder="z.B. C:\Users\name\.ssh\id_rsa"
-                      />
+                <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        const mediaPath = await selectThemeBackground();
+                        if (mediaPath) setLibraryStyle((current) => ({ ...current, bannerMedia: mediaPath }));
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5"
+                    >
+                      {isVideoPath(libraryStyle.bannerMedia) ? <Video className="w-4 h-4" /> : <Image className="w-4 h-4" />}
+                      Banner-Bild/-Video waehlen
+                    </button>
+                    {libraryStyle.bannerMedia && (
                       <button
-                        onClick={async () => {
-                          const path = await window.agentWorkspace?.selectLocalFile({ title: 'SSH-Key auswaehlen' });
-                          if (path) updateExternalServer({ identityFile: path });
-                        }}
-                        className="px-3 rounded-lg border border-white/10 text-xs text-zinc-300 hover:bg-white/5"
+                        onClick={() => setLibraryStyle((current) => ({ ...current, bannerMedia: '' }))}
+                        className="min-w-0 truncate text-xs text-zinc-500 hover:text-red-300"
+                        title={libraryStyle.bannerMedia}
                       >
-                        Waehlen
+                        {libraryStyle.bannerMedia.split(/[\\/]/).at(-1)} entfernen
                       </button>
-                    </div>
+                    )}
                   </div>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(externalServer.acceptNewHostKey)}
-                      onChange={(event) => updateExternalServer({ acceptNewHostKey: event.target.checked })}
-                      className="h-4 w-4 accent-amber-300"
+                  {libraryStyle.bannerMedia && <ThemeCover media={libraryStyle.bannerMedia} />}
+                  <ThemeSlider
+                    label="Banner-Aufhellung"
+                    value={libraryStyle.bannerOverlay}
+                    onChange={(value) => setLibraryStyle((current) => ({ ...current, bannerOverlay: value }))}
+                    max={100}
+                    unit="%"
+                    description="Wie stark das Banner hinter dem Text aufgehellt wird. 0 = Bild/Video voll sichtbar."
+                  />
+                  <input
+                    value={libraryStyle.bannerTitle}
+                    onChange={(event) => setLibraryStyle((current) => ({ ...current, bannerTitle: event.target.value }))}
+                    className="input w-full"
+                    placeholder="Banner-Titel (leer = Standard)"
+                  />
+                  <input
+                    value={libraryStyle.bannerText}
+                    onChange={(event) => setLibraryStyle((current) => ({ ...current, bannerText: event.target.value }))}
+                    className="input w-full"
+                    placeholder="Banner-Text (leer = Standard)"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <ThemeColor
+                      label="Seiten-Hintergrund"
+                      value={libraryStyle.pageBackground || '#f7f8fb'}
+                      onChange={(value) => setLibraryStyle((current) => ({ ...current, pageBackground: value }))}
                     />
-                    <span className="text-xs text-zinc-300">Unbekannte Hostkeys automatisch akzeptieren</span>
-                  </label>
-                  {externalNotice && <div className="text-[11px] leading-4 text-zinc-400 font-mono bg-black/30 p-2.5 rounded-lg border border-white/5">{externalNotice}</div>}
-                </div>
-              </section>
-
-              {!mobileMode && (
-              <section>
-                <div className="section-label flex items-center gap-2">
-                   <Gauge className="w-3.5 h-3.5" />
-                   Antigravity Terminal-Nutzung
-                 </div>
-                 <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-4">
-                   <div className="text-sm text-zinc-200">Token-Limit (lokaler Zaehler)</div>
-                   <div className="grid grid-cols-[1fr_auto] gap-3 mt-3">
-                     <input
-                       type="number"
-                       min={0}
-                       value={usage.tokenLimit || ''}
-                       onChange={(event) => setTokenLimit(Number(event.target.value))}
-                       className="input w-full"
-                       placeholder="Token-Limit, z.B. 200000"
-                     />
-                     <button onClick={resetUsage} className="px-3 rounded-lg border border-white/10 text-xs text-zinc-400 hover:text-red-300 hover:bg-white/5">
-                       Reset
-                     </button>
-                   </div>
-                   <div className="mt-2 text-[11px] text-zinc-600">
-                     Verbraucht: {usage.totalTokens.toLocaleString('de-DE')} Tokens
-                     {usage.tokenLimit ? ` - Verbleibend: ${Math.max(0, usage.tokenLimit - usage.totalTokens).toLocaleString('de-DE')}` : ''}
-                   </div>
-                 </div>
-               </section>
-               )}
-
-               {!mobileMode && (
-               <section>
-                 <div className="section-label flex items-center gap-2">
-                   <Terminal className="w-3.5 h-3.5 animate-pulse text-amber-400" />
-                   Google Antigravity (agy) Einstellungen
-                 </div>
-                 <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-4">
-                   <div>
-                     <label className="text-xs text-zinc-300 block mb-1.5">Start Command für agy</label>
-                     <input
-                       type="text"
-                       value={agyStartCommand}
-                       onChange={(event) => setAgyStartCommand(event.target.value)}
-                       className="input w-full"
-                       placeholder="z. B. agy"
-                       autoComplete="off"
-                     />
-                     <p className="text-[10px] text-zinc-600 mt-1">
-                       Der Befehl, um die Antigravity CLI im Hintergrund-Terminal zu starten (Standard: agy).
-                     </p>
-                   </div>
-                   
-                   <div>
-                     <label className="text-xs text-zinc-300 block mb-1.5">Wartezeit bis prompt Eingabe (ms)</label>
-                     <input
-                       type="number"
-                       min={0}
-                       value={agyWaitTimeMs}
-                       onChange={(event) => setAgyWaitTimeMs(Number(event.target.value))}
-                       className="input w-full"
-                       placeholder="z. B. 3000"
-                     />
-                     <p className="text-[10px] text-zinc-600 mt-1">
-                       Wartezeit in Millisekunden, bis sich die CLI angemeldet hat und bereit für die Prompt-Eingabe ist (Standard: 3000).
-                     </p>
-                   </div>
-
-                   <div className="grid grid-cols-2 gap-3">
-                     <div>
-                       <label className="text-xs text-zinc-300 block mb-1.5">Präfix (Davor schreiben)</label>
-                       <input
-                         type="text"
-                         value={agyPrefix}
-                         onChange={(event) => setAgyPrefix(event.target.value)}
-                         className="input w-full"
-                         placeholder="z. B. /fix "
-                         autoComplete="off"
-                       />
-                       <p className="text-[10px] text-zinc-600 mt-1">
-                         Text, der automatisch vor deinen Prompt gesetzt wird.
-                       </p>
-                     </div>
-
-                     <div>
-                       <label className="text-xs text-zinc-300 block mb-1.5">Suffix (Danach schreiben)</label>
-                       <input
-                         type="text"
-                         value={agySuffix}
-                         onChange={(event) => setAgySuffix(event.target.value)}
-                         className="input w-full"
-                         placeholder="z. B. \n"
-                         autoComplete="off"
-                       />
-                       <p className="text-[10px] text-zinc-600 mt-1">
-                         Text, der automatisch nach deinen Prompt gesetzt wird.
-                       </p>
-                     </div>
-                   </div>
-                 </div>
-               </section>
-               )}
-
-              <section>
-                <div className="section-label flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Network className="w-3.5 h-3.5" />
-                    Verbundene MCP-Server
-                  </span>
+                    <ThemeColor
+                      label="Karten & Banner"
+                      value={libraryStyle.cardBackground || '#ffffff'}
+                      onChange={(value) => setLibraryStyle((current) => ({ ...current, cardBackground: value }))}
+                    />
+                    <ThemeColor
+                      label="Text"
+                      value={libraryStyle.textColor || '#111827'}
+                      onChange={(value) => setLibraryStyle((current) => ({ ...current, textColor: value }))}
+                    />
+                    <ThemeColor
+                      label="Akzent & Buttons"
+                      value={libraryStyle.accentColor || '#111827'}
+                      onChange={(value) => setLibraryStyle((current) => ({ ...current, accentColor: value }))}
+                    />
+                  </div>
                   <button
-                    onClick={refreshMcpServers}
-                    disabled={mcpLoading}
-                    className="flex items-center gap-1 normal-case tracking-normal hover:text-white disabled:text-zinc-700"
+                    onClick={() => setLibraryStyle(DEFAULT_LIBRARY_STYLE)}
+                    className="text-[11px] text-zinc-500 hover:text-white"
                   >
-                    {mcpLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                    Abrufen
+                    Library auf Standard zuruecksetzen
                   </button>
                 </div>
-                <div className="mt-3 space-y-2">
-                  {mcpServers.map((server) => (
-                    <div key={server.id} className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <div className="truncate text-sm font-medium text-zinc-200">{server.name}</div>
-                            <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-zinc-500">
-                              {server.transport}
-                            </span>
-                          </div>
-                          <div className="mt-1 truncate text-[10px] text-zinc-600" title={server.sourcePath}>
-                            {server.source} - {server.sourcePath}
-                          </div>
-                          <div className="mt-2 truncate font-mono text-[10px] text-zinc-500" title={[server.command, ...(server.args || [])].filter(Boolean).join(' ') || server.url || ''}>
-                            {[server.command, ...(server.args || [])].filter(Boolean).join(' ') || server.url || 'Keine Startdetails'}
-                          </div>
-                        </div>
-                        <div className={`shrink-0 text-[10px] ${
-                          server.status === 'configured'
-                            ? 'text-emerald-400'
-                            : server.status === 'missing-command'
-                              ? 'text-red-400'
-                              : 'text-zinc-500'
-                        }`}>
-                          {server.status === 'configured' ? 'Konfiguriert' : server.status === 'missing-command' ? 'Fehlt' : 'Unbekannt'}
-                        </div>
-                      </div>
-                      {server.details && (
-                        <div className="mt-2 text-[10px] text-zinc-600">{server.details}</div>
-                      )}
-                    </div>
-                  ))}
-                  {mcpServers.length === 0 && (
-                    <div className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-sm text-zinc-600">
-                      {mcpLoading ? 'MCP-Konfiguration wird abgefragt...' : 'Keine MCP-Server-Verbindung konfiguriert.'}
-                    </div>
-                  )}
-                </div>
-                {mcpNotice && <div className="mt-3 text-xs text-zinc-400">{mcpNotice}</div>}
               </section>
             </motion.div>
           )}
+
           </AnimatePresence>
         </div>
       </motion.div>
@@ -1361,11 +1046,29 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function isVideoPath(filePath: string) {
-  if (!filePath) return false;
-  if (filePath.startsWith('data:video/')) return true;
-  if (filePath.startsWith('blob:')) return true;
-  return /\.(mp4|webm|mov|m4v|ogg|ogv|avi|mkv)$/i.test(filePath);
+// Still cover for a theme: images as-is, videos show their first frame (never autoplay).
+function ThemeCover({ media }: { media: string }) {
+  const url = toFileUrl(media);
+  return (
+    <div className="mb-3 aspect-video w-full overflow-hidden rounded-lg border border-white/10 bg-black/40">
+      {isVideoPath(media) ? (
+        <video
+          src={url}
+          muted
+          playsInline
+          preload="auto"
+          onLoadedData={(event) => {
+            // Seek a little so Chromium decodes and paints a real frame.
+            const video = event.currentTarget;
+            video.currentTime = Math.min(0.1, (video.duration || 1) / 2);
+          }}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      )}
+    </div>
+  );
 }
 
 function ThemeSlider({
@@ -1433,5 +1136,47 @@ function ThemeColor({
         />
       </div>
     </label>
+  );
+}
+
+function SettingToggle({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange(value: boolean): void;
+}) {
+  return (
+    <div
+      onClick={() => onChange(!checked)}
+      className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3.5 py-3 cursor-pointer select-none transition-all hover:bg-white/[0.05] hover:border-white/20"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-zinc-200">{label}</div>
+        {description && <div className="mt-0.5 text-[10px] text-zinc-500 leading-snug">{description}</div>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={(e) => {
+          e.stopPropagation();
+          onChange(!checked);
+        }}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+          checked ? 'bg-amber-400' : 'bg-white/15'
+        }`}
+      >
+        <span
+          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+            checked ? 'translate-x-5' : 'translate-x-0'
+          }`}
+        />
+      </button>
+    </div>
   );
 }

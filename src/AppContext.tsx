@@ -11,9 +11,12 @@ import {
 import type {
   AccessMode,
   AgentRunStats,
+  ApiChatConfig,
+  ApiProviderConfig,
   ApiKeys,
   Automation,
   Chat,
+  CliHarness,
   CliStatus,
   CodexPluginInfo,
   ExternalServerConfig,
@@ -46,8 +49,31 @@ export type CustomTheme = {
   backgroundImage?: string;
   backgroundMedia?: string;
   animatedGradient?: boolean;
+  mediaOnly?: boolean;
+  baseTheme?: string;
 };
-export type MainView = 'library' | 'chat' | 'plugins' | 'workspace' | 'usage' | 'studio';
+// Empty strings mean "use the built-in library look".
+export type LibraryStyle = {
+  pageBackground: string;
+  cardBackground: string;
+  textColor: string;
+  accentColor: string;
+  bannerMedia: string;
+  bannerOverlay: number;
+  bannerTitle: string;
+  bannerText: string;
+};
+export const DEFAULT_LIBRARY_STYLE: LibraryStyle = {
+  pageBackground: '',
+  cardBackground: '',
+  textColor: '',
+  accentColor: '',
+  bannerMedia: '',
+  bannerOverlay: 100,
+  bannerTitle: '',
+  bannerText: '',
+};
+export type MainView = 'library' | 'chat' | 'workspace';
 
 export type ProviderModel = {
   id: string;
@@ -166,6 +192,7 @@ interface AppContextType {
   libraryApps: HomeApp[];
   libraryTags: string[];
   libraryBannerBackgroundEnabled: boolean;
+  libraryStyle: LibraryStyle;
   homeTabs: HomeAppTab[];
   activeHomeTabId: string | null;
   activeHomeTab: HomeAppTab | null;
@@ -203,6 +230,7 @@ interface AppContextType {
   devicePopupEnabled: boolean;
   spotifyStartUri: string;
   spotifyWidgetEnabled: boolean;
+  discordRpcEnabled: boolean;
   discordIdleMessage: string;
   terminalStartPath: string;
   setTerminalStartPath: React.Dispatch<React.SetStateAction<string>>;
@@ -210,6 +238,8 @@ interface AppContextType {
   setTerminalStartCommandEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   terminalStartCommand: string;
   setTerminalStartCommand: React.Dispatch<React.SetStateAction<string>>;
+  cliHarnesses: CliHarness[];
+  setCliHarnesses: React.Dispatch<React.SetStateAction<CliHarness[]>>;
   terminalPrefixSuffixEnabled: boolean;
   setTerminalPrefixSuffixEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   terminalPrefix: string;
@@ -226,6 +256,10 @@ interface AppContextType {
   setAgyPrefix: React.Dispatch<React.SetStateAction<string>>;
   agySuffix: string;
   setAgySuffix: React.Dispatch<React.SetStateAction<string>>;
+  platformStartCommands: Record<string, string>;
+  setPlatformStartCommands: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  platformWaitTimes: Record<string, number>;
+  setPlatformWaitTimes: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   mainView: MainView;
   hasSetupCompleted: boolean;
   isSending: boolean;
@@ -275,6 +309,7 @@ interface AppContextType {
   setDevicePopupEnabled(value: boolean): void;
   setSpotifyStartUri(value: string): void;
   setSpotifyWidgetEnabled(value: boolean): void;
+  setDiscordRpcEnabled(value: boolean): void;
   setDiscordIdleMessage(value: string): void;
   addHomeApp(input?: Partial<HomeApp>): Promise<void>;
   updateHomeApp(id: string, patch: Partial<HomeApp>): void;
@@ -289,6 +324,7 @@ interface AppContextType {
   createLibraryTag(name: string): void;
   deleteLibraryTag(name: string): void;
   setLibraryBannerBackgroundEnabled(value: boolean): void;
+  setLibraryStyle: React.Dispatch<React.SetStateAction<LibraryStyle>>;
   launchHomeApp(app: HomeApp): Promise<void>;
   launchLibraryApp(app: HomeApp): Promise<void>;
   selectHomeTab(id: string): void;
@@ -328,7 +364,15 @@ interface AppContextType {
   setLyzDevPluginEnabled(value: boolean): void;
   startLyzDevChat(): Promise<void>;
   startTerminalChat(): Promise<void>;
-  startUnrealTerminalChat(): Promise<void>;
+  startWorkspace(input: { harnessId: string; grid: boolean; count: number }): Promise<void>;
+  apiProviders: ApiProviderConfig[];
+  setApiProviders: React.Dispatch<React.SetStateAction<ApiProviderConfig[]>>;
+  apiChatConfig: ApiChatConfig;
+  setApiChatConfig: React.Dispatch<React.SetStateAction<ApiChatConfig>>;
+  apiPending: Record<string, boolean>;
+  startApiChat(projectId: string | null): Promise<void>;
+  sendApiMessage(chatId: string, text: string): Promise<void>;
+  clearAllChats(): void;
   originalPluginEnabled: boolean;
   setOriginalPluginEnabled(value: boolean): void;
   sendAgentInput(text: string): Promise<boolean>;
@@ -350,7 +394,10 @@ function readStorage<T>(key: string, fallback: T): T {
   try {
     const currentKey = `${STORAGE_PREFIX}.${key}`;
     const value = localStorage.getItem(currentKey);
-    return value ? (JSON.parse(value) as T) : fallback;
+    if (!value) return fallback;
+    const parsed = JSON.parse(value);
+    if (typeof parsed !== typeof fallback && fallback !== null) return fallback;
+    return parsed as T;
   } catch {
     return fallback;
   }
@@ -544,6 +591,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [folders, setFolders] = useState<ProjectFolder[]>(() => readStorage('folders', []));
   const [libraryProjects, setLibraryProjects] = useState<ProjectFolder[]>(() => readStorage('libraryProjects', []));
   const [chats, setChats] = useState<Chat[]>(() => readStorage('chats', []));
+  const [apiProviders, setApiProviders] = useState<ApiProviderConfig[]>(() => {
+    const stored = readStorage<ApiProviderConfig[] | null>('apiProviders', null);
+    if (stored) return stored;
+    // Migrate the single connection from the first API-chat version.
+    const legacy = readStorage<Partial<ApiProviderConfig> & { apiKey?: string }>('apiChatConfig', {});
+    if (legacy.provider && (legacy.apiKey || legacy.baseUrl)) {
+      return [{
+        id: newId(),
+        name: legacy.provider === 'anthropic' ? 'Anthropic' : legacy.provider === 'openai' ? 'OpenAI' : 'OpenAI-kompatibel',
+        provider: legacy.provider,
+        baseUrl: legacy.baseUrl || '',
+        apiKey: legacy.apiKey || '',
+        model: legacy.model || '',
+      }];
+    }
+    return [];
+  });
+  const [apiChatConfig, setApiChatConfig] = useState<ApiChatConfig>(() => {
+    const stored = readStorage<Partial<ApiChatConfig>>('apiChatConfig', {});
+    return {
+      providerId: stored.providerId || '',
+      model: stored.model || '',
+      systemPrompt: stored.systemPrompt || '',
+      includeProjectFiles: stored.includeProjectFiles ?? true,
+    };
+  });
+  const [apiPending, setApiPending] = useState<Record<string, boolean>>({});
+  useEffect(() => writeStorage('apiProviders', apiProviders), [apiProviders]);
+  useEffect(() => writeStorage('apiChatConfig', apiChatConfig), [apiChatConfig]);
   const [automations, setAutomations] = useState<Automation[]>(() =>
     readStorage('automations', []),
   );
@@ -557,6 +633,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [libraryBannerBackgroundEnabled, setLibraryBannerBackgroundEnabledState] = useState(() =>
     readStorage('libraryBannerBackgroundEnabled', true),
   );
+  const [libraryStyle, setLibraryStyle] = useState<LibraryStyle>(() => ({
+    ...DEFAULT_LIBRARY_STYLE,
+    ...readStorage<Partial<LibraryStyle>>('libraryStyle', {}),
+  }));
   const [homeTabs, setHomeTabs] = useState<HomeAppTab[]>([]);
   const [activeHomeTabId, setActiveHomeTabId] = useState<string | null>(null);
   const [plugins, setPlugins] = useState<string[]>(() => readStorage('plugins', []));
@@ -660,6 +740,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [spotifyWidgetEnabled, setSpotifyWidgetEnabledState] = useState(() =>
     readStorage('spotifyWidgetEnabled', false),
   );
+  const [discordRpcEnabled, setDiscordRpcEnabledState] = useState(() =>
+    readStorage('discordRpcEnabled', true),
+  );
   const [discordIdleMessage, setDiscordIdleMessageState] = useState(() =>
     readStorage('discordIdleMessage', 'Bereit'),
   );
@@ -671,6 +754,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [terminalStartCommand, setTerminalStartCommand] = useState(() =>
     readStorage('terminalStartCommand', ''),
+  );
+  const [cliHarnesses, setCliHarnesses] = useState<CliHarness[]>(() =>
+    readStorage('cliHarnesses', [
+      { id: 'claude', name: 'Claude Code', command: 'claude', icon: 'Sparkles' },
+      { id: 'codex', name: 'Codex CLI', command: 'codex', icon: 'Code2' },
+      { id: 'antigravity', name: 'Antigravity CLI', command: 'agy', icon: 'Rocket' },
+      { id: 'shell', name: 'Leeres Terminal', command: '', icon: 'Terminal' },
+    ]),
   );
   const [terminalPrefixSuffixEnabled, setTerminalPrefixSuffixEnabled] = useState(() =>
     readStorage('terminalPrefixSuffixEnabled', false),
@@ -695,6 +786,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [agySuffix, setAgySuffix] = useState(() =>
     readStorage('agySuffix', ''),
+  );
+  const [platformStartCommands, setPlatformStartCommands] = useState<Record<string, string>>(() =>
+    readStorage('platformStartCommands', {
+      antigravity: 'agy',
+      anthropic: 'claude',
+      openai: 'codex',
+      cursor: 'cursor',
+      opencode: 'opencode',
+      freebuff: 'freebuff'
+    })
+  );
+  const [platformWaitTimes, setPlatformWaitTimes] = useState<Record<string, number>>(() =>
+    readStorage('platformWaitTimes', {
+      antigravity: 3000,
+      anthropic: 5000,
+      openai: 5000,
+      cursor: 5000,
+      opencode: 5000,
+      freebuff: 5000
+    })
   );
   const [mainView, setMainView] = useState<MainView>('chat');
   const [hasSetupCompleted, setHasSetupCompletedState] = useState(
@@ -723,7 +834,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => writeStorage('folders', folders), [folders]);
   useEffect(() => writeStorage('libraryProjects', libraryProjects), [libraryProjects]);
-  useEffect(() => writeStorage('chats', chats), [chats]);
+  useEffect(() => writeStorage('chats', chats.filter(c => c.mode !== 'terminal')), [chats]);
   useEffect(
     () => writeStorage('automations', automations),
     [automations],
@@ -735,6 +846,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => writeStorage('libraryBannerBackgroundEnabled', libraryBannerBackgroundEnabled),
     [libraryBannerBackgroundEnabled],
   );
+  useEffect(() => writeStorage('libraryStyle', libraryStyle), [libraryStyle]);
   useEffect(() => writeStorage('plugins', plugins), [plugins]);
   useEffect(() => writeStorage('lyzDevPluginEnabled', lyzDevPluginEnabled), [lyzDevPluginEnabled]);
   useEffect(() => writeStorage('originalPluginEnabled', originalPluginEnabled), [originalPluginEnabled]);
@@ -761,10 +873,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('devicePopupEnabled', devicePopupEnabled), [devicePopupEnabled]);
   useEffect(() => writeStorage('spotifyStartUri', spotifyStartUri), [spotifyStartUri]);
   useEffect(() => writeStorage('spotifyWidgetEnabled', spotifyWidgetEnabled), [spotifyWidgetEnabled]);
+  useEffect(() => writeStorage('discordRpcEnabled', discordRpcEnabled), [discordRpcEnabled]);
   useEffect(() => writeStorage('discordIdleMessage', discordIdleMessage), [discordIdleMessage]);
   useEffect(() => writeStorage('terminalStartPath', terminalStartPath), [terminalStartPath]);
   useEffect(() => writeStorage('terminalStartCommandEnabled', terminalStartCommandEnabled), [terminalStartCommandEnabled]);
   useEffect(() => writeStorage('terminalStartCommand', terminalStartCommand), [terminalStartCommand]);
+  useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
   useEffect(() => writeStorage('terminalPrefixSuffixEnabled', terminalPrefixSuffixEnabled), [terminalPrefixSuffixEnabled]);
   useEffect(() => writeStorage('terminalPrefix', terminalPrefix), [terminalPrefix]);
   useEffect(() => writeStorage('terminalSuffix', terminalSuffix), [terminalSuffix]);
@@ -773,6 +887,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('agyWaitTimeMs', agyWaitTimeMs), [agyWaitTimeMs]);
   useEffect(() => writeStorage('agyPrefix', agyPrefix), [agyPrefix]);
   useEffect(() => writeStorage('agySuffix', agySuffix), [agySuffix]);
+  useEffect(() => writeStorage('platformStartCommands', platformStartCommands), [platformStartCommands]);
+  useEffect(() => writeStorage('platformWaitTimes', platformWaitTimes), [platformWaitTimes]);
   useEffect(
     () => writeStorage('selectedFolder', selectedFolderId),
     [selectedFolderId],
@@ -833,6 +949,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (state.agyWaitTimeMs !== undefined) { setAgyWaitTimeMs(state.agyWaitTimeMs); }
     if (state.agyPrefix !== undefined) { setAgyPrefix(state.agyPrefix); }
     if (state.agySuffix !== undefined) { setAgySuffix(state.agySuffix); }
+    if (state.platformStartCommands !== undefined) { setPlatformStartCommands(state.platformStartCommands); }
+    if (state.platformWaitTimes !== undefined) { setPlatformWaitTimes(state.platformWaitTimes); }
     
     setTimeout(() => {
       isSyncingRef.current = false;
@@ -957,7 +1075,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     agyStartCommand,
     agyWaitTimeMs,
     agyPrefix,
-    agySuffix
+    agySuffix,
+    platformStartCommands,
+    platformWaitTimes
   ]);
 
   const startSyncServer = async () => {
@@ -1189,13 +1309,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void window.agentWorkspace?.updateDiscordPresence({
+      enabled: discordRpcEnabled,
       details: isAnySending ? 'Agent arbeitet' : discordIdleMessage.trim() || 'Bereit',
       projectName: selectedProject?.title || 'Ohne Projekt',
       provider,
       model: aiModel,
       isRunning: isAnySending,
     });
-  }, [selectedProject?.title, provider, aiModel, isAnySending, discordIdleMessage]);
+  }, [selectedProject?.title, provider, aiModel, isAnySending, discordIdleMessage, discordRpcEnabled]);
 
   useEffect(() => {
     if (!window.agentWorkspace?.onAgentOutput) return;
@@ -1525,6 +1646,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setSpotifyWidgetEnabled = (value: boolean) => {
     setSpotifyWidgetEnabledState(value);
     writeStorage('spotifyWidgetEnabled', value);
+  };
+
+  const setDiscordRpcEnabled = (value: boolean) => {
+    setDiscordRpcEnabledState(value);
+    writeStorage('discordRpcEnabled', value);
+    void window.agentWorkspace?.updateDiscordPresence({
+      enabled: value,
+      details: isAnySending ? 'Agent arbeitet' : discordIdleMessage.trim() || 'Bereit',
+      projectName: selectedProject?.title || 'Ohne Projekt',
+      provider,
+      model: aiModel,
+      isRunning: isAnySending,
+    });
   };
 
   const setDiscordIdleMessage = (value: string) => {
@@ -1902,6 +2036,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const ensureRunnableProject = async (): Promise<ProjectFolder> => {
     if (selectedProject) return selectedProject;
+    return ensureScratchProject();
+  };
+
+  const ensureScratchProject = async (): Promise<ProjectFolder> => {
     if (!window.agentWorkspace) {
       const defaultPath = mobileConnectionConfig?.vpsProjectPath || '/root/codeforge-project';
       const scratch = {
@@ -2011,26 +2149,138 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectChat(chat.id);
   };
 
-  const startUnrealTerminalChat = async () => {
+  const startWorkspace = async ({ harnessId, grid, count }: { harnessId: string; grid: boolean; count: number }) => {
     const projectForRun = await ensureRunnableProject();
+    const harness = cliHarnesses.find((item) => item.id === harnessId) || cliHarnesses[0];
+    const size = Math.max(1, Math.min(4, Math.round(count) || 1));
+    const chatId = newId();
+    const label = harness?.name || 'Terminal';
     const chat: Chat = {
-      id: newId(),
-      title: 'Unreal MCP Terminal',
+      id: chatId,
+      title: `${label} Workspace`,
       updatedAt: Date.now(),
       folderId: projectForRun.id,
       mode: 'terminal',
-      isUnreal: true,
-      messages: [
-        {
-          id: newId(),
-          text: 'Unreal Engine MCP Terminal-Sitzung gestartet. Gib deine Prompts ein.',
-          sender: 'system',
-          timestamp: Date.now(),
-        },
-      ],
+      harness: harness ? { name: harness.name, command: harness.command, icon: harness.icon } : undefined,
+      terminalTabs: Array.from({ length: size }, (_, index) => ({
+        id: index === 0 ? chatId : newId(),
+        title: `${label} ${index + 1}`,
+        shellType: 'cmd' as const,
+      })),
+      activeTerminalTabId: chatId,
+      terminalLayout: grid && size > 1 ? 'grid' : 'single',
+      terminalGridSize: size,
+      messages: [],
     };
     setChats((current) => [chat, ...current]);
     selectChat(chat.id);
+  };
+
+  const startApiChat = async (projectId: string | null) => {
+    const providerConfig = apiProviders.find((item) => item.id === apiChatConfig.providerId);
+    if (!providerConfig) throw new Error('Bitte einen AI-Anbieter auswaehlen oder in den Einstellungen anlegen.');
+    const model = (apiChatConfig.model || providerConfig.model).trim();
+    if (!model) throw new Error('Bitte ein Modell angeben.');
+    if (providerConfig.provider !== 'openai-compatible' && !providerConfig.apiKey.trim()) {
+      throw new Error(`Fuer "${providerConfig.name}" ist kein API-Key hinterlegt (Einstellungen > KI).`);
+    }
+    const chosen = projectId ? folders.find((folder) => folder.id === projectId) : undefined;
+    const projectForRun = chosen || (await ensureScratchProject());
+    const chat: Chat = {
+      id: newId(),
+      title: `Chat · ${projectForRun.title}`,
+      updatedAt: Date.now(),
+      folderId: projectForRun.id,
+      mode: 'api',
+      api: { providerId: providerConfig.id, provider: providerConfig.provider, baseUrl: providerConfig.baseUrl, model },
+      messages: [],
+    };
+    setChats((current) => [chat, ...current]);
+    selectChat(chat.id);
+  };
+
+  const sendApiMessage = async (chatId: string, text: string) => {
+    const chat = chats.find((item) => item.id === chatId);
+    if (!chat?.api || !text.trim() || apiPending[chatId]) return;
+    if (!window.agentWorkspace?.apiChatSend) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    const userMessage: Message = { id: newId(), text: text.trim(), sender: 'user', timestamp: Date.now() };
+    const history = [...chat.messages, userMessage];
+    const isFirstMessage = !chat.messages.some((message) => message.sender === 'user');
+    setChats((current) =>
+      current.map((item) =>
+        item.id === chatId
+          ? {
+              ...item,
+              title: isFirstMessage ? (userMessage.text.length > 42 ? `${userMessage.text.slice(0, 42)}...` : userMessage.text) : item.title,
+              updatedAt: Date.now(),
+              messages: history,
+            }
+          : item,
+      ),
+    );
+    setApiPending((current) => ({ ...current, [chatId]: true }));
+    const startedAt = Date.now();
+    try {
+      const project = folders.find((folder) => folder.id === chat.folderId);
+      let system = apiChatConfig.systemPrompt.trim();
+      if (project) {
+        system += `${system ? '\n\n' : ''}Der Nutzer arbeitet im Projekt "${project.title}" (${project.path}).`;
+        if (apiChatConfig.includeProjectFiles) {
+          const files = await window.agentWorkspace.apiChatProjectFiles(project.path);
+          if (files.length) system += `\nDateien im Projekt (Auszug):\n${files.join('\n')}`;
+        }
+      }
+      // Use the provider's current settings so key/URL changes apply to existing chats.
+      const providerConfig = apiProviders.find((item) => item.id === chat.api?.providerId);
+      if (!providerConfig) throw new Error('Der AI-Anbieter dieses Chats wurde in den Einstellungen geloescht.');
+      const result = await window.agentWorkspace.apiChatSend({
+        provider: providerConfig.provider,
+        baseUrl: providerConfig.baseUrl,
+        apiKey: providerConfig.apiKey,
+        model: chat.api.model,
+        system,
+        messages: history
+          .filter((message) => message.sender !== 'system' && !message.isError)
+          .map((message) => ({ role: message.sender === 'user' ? 'user' : 'assistant', content: message.text })),
+      });
+      const reply: Message = {
+        id: newId(),
+        text: result.text || '(Leere Antwort)',
+        sender: 'ai',
+        timestamp: Date.now(),
+        runDurationMs: Date.now() - startedAt,
+        tokenUsage: result.tokens || undefined,
+      };
+      setChats((current) =>
+        current.map((item) => (item.id === chatId ? { ...item, updatedAt: Date.now(), messages: [...item.messages, reply] } : item)),
+      );
+    } catch (error) {
+      const reply: Message = {
+        id: newId(),
+        text: error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : 'API-Aufruf fehlgeschlagen.',
+        sender: 'system',
+        timestamp: Date.now(),
+        isError: true,
+      };
+      setChats((current) =>
+        current.map((item) => (item.id === chatId ? { ...item, messages: [...item.messages, reply] } : item)),
+      );
+    } finally {
+      setApiPending((current) => {
+        const { [chatId]: _done, ...rest } = current;
+        return rest;
+      });
+    }
+  };
+
+  const clearAllChats = () => {
+    for (const chatId of Object.keys(activeShellSessions.current)) {
+      activeShellSessions.current[chatId]?.unsubscribe();
+      window.agentWorkspace?.killShellSession(chatId);
+      delete activeShellSessions.current[chatId];
+    }
+    setChats([]);
+    selectChat(null);
   };
 
   const sendMessage = async (
@@ -2211,7 +2461,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           
           window.agentWorkspace.createShellSession({ chatId: targetId, cwd: projectForRun.path, shellType: 'cmd' }).then(() => {
             setTimeout(() => {
-              const startCmd = nextChat.isUnreal ? 'start /B npx -y @runreal/unreal-mcp & agy' : agyStartCommand;
+              const startCmd = platformStartCommands[runProvider] || agyStartCommand;
               window.agentWorkspace.writeToShellSession({ chatId: targetId, text: startCmd + '\r' });
               setTimeout(() => {
                 const session = activeShellSessions.current[targetId];
@@ -2220,7 +2470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 }
                 const finalPrompt = (agyPrefix || '') + text + (agySuffix || '') + '\r';
                 window.agentWorkspace.writeToShellSession({ chatId: targetId, text: finalPrompt });
-              }, agyWaitTimeMs);
+              }, platformWaitTimes[runProvider] || agyWaitTimeMs);
             }, 1000);
           });
         }
@@ -2639,6 +2889,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       libraryApps,
       libraryTags,
       libraryBannerBackgroundEnabled,
+      libraryStyle,
       homeTabs,
       activeHomeTabId,
       activeHomeTab,
@@ -2673,6 +2924,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       devicePopupEnabled,
       spotifyStartUri,
       spotifyWidgetEnabled,
+      discordRpcEnabled,
       discordIdleMessage,
       terminalStartPath,
       setTerminalStartPath,
@@ -2680,6 +2932,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTerminalStartCommandEnabled,
       terminalStartCommand,
       setTerminalStartCommand,
+      cliHarnesses,
+      setCliHarnesses,
       terminalPrefixSuffixEnabled,
       setTerminalPrefixSuffixEnabled,
       terminalPrefix,
@@ -2696,6 +2950,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAgyPrefix,
       agySuffix,
       setAgySuffix,
+      platformStartCommands,
+      setPlatformStartCommands,
+      platformWaitTimes,
+      setPlatformWaitTimes,
       mainView,
       hasSetupCompleted,
       isSending,
@@ -2748,6 +3006,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDevicePopupEnabled,
       setSpotifyStartUri,
       setSpotifyWidgetEnabled,
+      setDiscordRpcEnabled,
       setDiscordIdleMessage,
       addHomeApp,
       updateHomeApp,
@@ -2762,6 +3021,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createLibraryTag,
       deleteLibraryTag,
       setLibraryBannerBackgroundEnabled,
+      setLibraryStyle,
       launchHomeApp,
       launchLibraryApp,
       selectHomeTab,
@@ -2798,7 +3058,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLyzDevPluginEnabled,
       startLyzDevChat,
       startTerminalChat,
-      startUnrealTerminalChat,
+      startWorkspace,
+      apiProviders,
+      setApiProviders,
+      apiChatConfig,
+      setApiChatConfig,
+      apiPending,
+      startApiChat,
+      sendApiMessage,
+      clearAllChats,
       setOriginalPluginEnabled,
       sendAgentInput,
       refreshCodexPlugins,
@@ -2822,6 +3090,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       libraryApps,
       libraryTags,
       libraryBannerBackgroundEnabled,
+      libraryStyle,
       homeTabs,
       activeHomeTabId,
       activeHomeTab,
@@ -2856,6 +3125,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       devicePopupEnabled,
       spotifyStartUri,
       spotifyWidgetEnabled,
+      discordRpcEnabled,
       discordIdleMessage,
       terminalStartPath,
       terminalStartCommandEnabled,
@@ -2890,7 +3160,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncServerUrl,
       startLyzDevChat,
       startTerminalChat,
-      startUnrealTerminalChat,
+      startWorkspace,
+      cliHarnesses,
+      apiProviders,
+      apiChatConfig,
+      apiPending,
     ],
   );
 

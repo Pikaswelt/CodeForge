@@ -1,6 +1,7 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('agentWorkspace', {
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   selectProjectFolder: () => ipcRenderer.invoke('dialog:select-project'),
   createProjectFolder: (name) => ipcRenderer.invoke('dialog:create-project', name),
   getScratchProjectFolder: () => ipcRenderer.invoke('dialog:scratch-project'),
@@ -77,6 +78,9 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     ipcRenderer.on(`terminal:output:${id}`, listener);
     return () => ipcRenderer.removeListener(`terminal:output:${id}`, listener);
   },
+  apiChatSend: (input) => ipcRenderer.invoke('apichat:send', input),
+  apiChatModels: (input) => ipcRenderer.invoke('apichat:models', input),
+  apiChatProjectFiles: (root) => ipcRenderer.invoke('apichat:project-files', root),
   createShellSession: (request) => ipcRenderer.invoke('shell:create', request),
   writeToShellSession: (request) => ipcRenderer.invoke('shell:write', request),
   killShellSession: (chatId) => ipcRenderer.invoke('shell:kill', chatId),
@@ -85,5 +89,12 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on(`shell:output:${chatId}`, listener);
     return () => ipcRenderer.removeListener(`shell:output:${chatId}`, listener);
+  },
+  startSpeechRecognition: (options) => ipcRenderer.invoke('speech:start', options),
+  stopSpeechRecognition: () => ipcRenderer.invoke('speech:stop'),
+  onSpeechResult: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('speech:result', listener);
+    return () => ipcRenderer.removeListener('speech:result', listener);
   },
 });

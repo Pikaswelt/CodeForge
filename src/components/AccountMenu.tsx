@@ -1,16 +1,14 @@
 import { useState, type ReactNode } from 'react';
-import { BookOpen, CircleUserRound, Gauge, Loader2, LogOut, Megaphone, Play, Settings, Upload } from 'lucide-react';
+import { BookOpen, CircleUserRound, Loader2, LogOut, Megaphone, MessageSquare, Play, Settings } from 'lucide-react';
 import { PROVIDER_MODELS, useAppContext } from '../AppContext';
 import TutorialModal from './TutorialModal';
 
 export default function AccountMenu({
   onSettingsClick,
-  onActionsClick,
   className = 'right-0 top-8',
   onClose,
 }: {
   onSettingsClick(): void;
-  onActionsClick?(): void;
   className?: string;
   onClose(): void;
 }) {
@@ -18,19 +16,16 @@ export default function AccountMenu({
     provider,
     apiKeys,
     setApiKey,
-    usage,
-    setMainView,
     mobileMode,
     startAntigravityLimit,
-    importAntigravityChats,
+    discordRpcEnabled,
+    setDiscordRpcEnabled,
   } = useAppContext();
   const [showLimitStarter, setShowLimitStarter] = useState(false);
   const [limitModel, setLimitModel] = useState(PROVIDER_MODELS.antigravity[0].id);
-  const [busy, setBusy] = useState<'limit' | 'import' | null>(null);
+  const [busy, setBusy] = useState<'limit' | null>(null);
   const [status, setStatus] = useState('');
   const [showTutorial, setShowTutorial] = useState(false);
-  const remainingTokens =
-    usage.tokenLimit > 0 ? Math.max(0, usage.tokenLimit - usage.totalTokens).toLocaleString('de-DE') : null;
   const providerInfo = PROVIDER_INFO[provider];
 
   return (
@@ -51,14 +46,6 @@ export default function AccountMenu({
         </div>
         <div className="border-t border-white/10 py-1">
           <AccountMenuButton
-            icon={<CircleUserRound className="h-4 w-4" />}
-            label="Actions"
-            onClick={() => {
-              onActionsClick?.();
-              onClose();
-            }}
-          />
-          <AccountMenuButton
             icon={<Settings className="h-4 w-4" />}
             label="Einstellungen"
             shortcut="Ctrl+,"
@@ -67,15 +54,31 @@ export default function AccountMenu({
               onClose();
             }}
           />
-          <AccountMenuButton
-            icon={<Gauge className="h-4 w-4" />}
-            label="Verbleibendes Kontingent"
-            value={remainingTokens || 'Ansehen'}
-            onClick={() => {
-              setMainView('usage');
-              onClose();
-            }}
-          />
+          <div className="flex items-center justify-between px-3 py-2 text-[13px] text-zinc-200 hover:bg-white/5 transition-colors">
+            <div className="flex items-center gap-3">
+              <MessageSquare className="h-4 w-4 text-zinc-500" />
+              <span>Discord Status</span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={discordRpcEnabled}
+              onClick={(event) => {
+                event.stopPropagation();
+                setDiscordRpcEnabled(!discordRpcEnabled);
+              }}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                discordRpcEnabled ? 'bg-amber-400' : 'bg-white/20'
+              }`}
+              title={discordRpcEnabled ? 'Discord Rich Presence ausschalten' : 'Discord Rich Presence einschalten'}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  discordRpcEnabled ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
           <AccountMenuButton
             icon={busy === 'limit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             label="Limit starten"
@@ -124,22 +127,6 @@ export default function AccountMenu({
               {status && <div className="mt-2 text-[10px] text-zinc-500">{status}</div>}
             </div>
           )}
-          <AccountMenuButton
-            icon={busy === 'import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            label="Antigravity Chats importieren"
-            onClick={async () => {
-              setBusy('import');
-              try {
-                const count = await importAntigravityChats();
-                window.alert(count ? `${count} Antigravity-Chats importiert.` : 'Keine Antigravity-Chats gefunden.');
-                onClose();
-              } catch (error) {
-                window.alert(error instanceof Error ? error.message : 'Import fehlgeschlagen.');
-              } finally {
-                setBusy(null);
-              }
-            }}
-          />
           {mobileMode && (
             <AccountMenuButton
               icon={<BookOpen className="h-4 w-4" />}

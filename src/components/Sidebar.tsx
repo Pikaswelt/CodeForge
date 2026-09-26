@@ -2,11 +2,8 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AppWindow,
-  Blocks,
-  Gamepad2,
   LayoutGrid,
   ExternalLink,
-  Gauge,
   ChevronDown,
   ChevronRight,
   Edit2,
@@ -15,7 +12,7 @@ import {
   Plus,
   Search,
   Settings,
-  SquarePen,
+  House,
   Terminal,
   Trash2,
   X,
@@ -26,10 +23,8 @@ import type { HomeApp, ProjectFolder } from '../types';
 
 export default function Sidebar({
   onSettingsClick,
-  onActionsClick,
 }: {
   onSettingsClick: () => void;
-  onActionsClick: () => void;
 }) {
   const {
     folders,
@@ -106,8 +101,8 @@ export default function Sidebar({
           className={navClass(mainView === 'chat' && !selectedChatId)}
         >
           {renderActiveBg(mainView === 'chat' && !selectedChatId)}
-          <SquarePen className="w-4 h-4" />
-          Neuer Chat
+          <House className="w-4 h-4" />
+          Home
         </motion.button>
         <motion.button
           onClick={() => setSearchOpen((value) => !value)}
@@ -138,16 +133,6 @@ export default function Sidebar({
             </motion.div>
           )}
         </AnimatePresence>
-        <motion.button
-          onClick={() => setMainView('plugins')}
-          whileHover={{ x: 4 }}
-          whileTap={{ scale: 0.98 }}
-          className={navClass(mainView === 'plugins')}
-        >
-          {renderActiveBg(mainView === 'plugins')}
-          <Blocks className="w-4 h-4" />
-          Plugins
-        </motion.button>
         {!mobileMode && (
           <motion.button
             onClick={() => setMainView('workspace')}
@@ -160,26 +145,6 @@ export default function Sidebar({
             Workspace
           </motion.button>
         )}
-        <motion.button
-          onClick={() => setMainView('studio')}
-          whileHover={{ x: 4 }}
-          whileTap={{ scale: 0.98 }}
-          className={navClass(mainView === 'studio')}
-        >
-          {renderActiveBg(mainView === 'studio')}
-          <Gamepad2 className="w-4 h-4" />
-          Game Studio
-        </motion.button>
-        <motion.button
-          onClick={() => setMainView('usage')}
-          whileHover={{ x: 4 }}
-          whileTap={{ scale: 0.98 }}
-          className={navClass(mainView === 'usage')}
-        >
-          {renderActiveBg(mainView === 'usage')}
-          <Gauge className="w-4 h-4" />
-          Nutzung
-        </motion.button>
       </div>
 
       {!mobileMode && (
@@ -281,7 +246,6 @@ export default function Sidebar({
         {settingsMenuOpen && (
           <AccountMenu
             onSettingsClick={onSettingsClick}
-            onActionsClick={onActionsClick}
             onClose={() => setSettingsMenuOpen(false)}
             className="bottom-10 left-3"
           />
