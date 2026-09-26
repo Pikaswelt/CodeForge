@@ -3033,7 +3033,7 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
   }
   
   const isWin = process.platform === 'win32';
-  let shell = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'bash';
+  let shell = isWin ? (process.env.COMSPEC || 'cmd.exe') : process.env.SHELL || 'bash';
   let args = [];
   const env = { ...process.env };
 
@@ -3182,6 +3182,9 @@ ipcMain.handle('device:status', () => {
     // Normalize Windows drive letter path
     if (process.platform === 'win32') {
       filePath = filePath.replace(/^\/([a-zA-Z]:)/, '$1');
+    } else if (!filePath.startsWith('/')) {
+      // codeforge-media:///home/... loses its leading slash when the scheme is stripped.
+      filePath = `/${filePath}`;
     }
 
     try {
@@ -3629,7 +3632,7 @@ ipcMain.handle('device:status', () => {
     stopNativeSpeech();
     return new Promise((resolve) => {
       if (process.platform !== 'win32') {
-        return resolve({ ok: false, error: 'Native speech recognition is only supported on Windows.' });
+        return resolve({ ok: false, error: 'Spracheingabe ist derzeit nur unter Windows verfuegbar.' });
       }
 
       // Synchronous Recognize() loop: event actions (Register-ObjectEvent -Action)
