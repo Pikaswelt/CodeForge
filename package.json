@@ -1,7 +1,7 @@
 {
   "name": "codeforge-desktop",
   "private": true,
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "CodeForge <info@codeforge.app>",
   "type": "module",
