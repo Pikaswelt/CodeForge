@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Loader2, MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { ArrowUp, Loader2, MessageSquare, Mic, MicOff, Plus, Trash2 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { useDictation } from '../useDictation';
 import type { ApiChatProvider, ApiProviderConfig, Chat } from '../types';
 
 export const API_PROVIDER_TYPES: { id: ApiChatProvider; label: string; baseUrl: string; model: string }[] = [
@@ -326,14 +327,27 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
   const endRef = useRef<HTMLDivElement>(null);
   const pending = Boolean(apiPending[chat.id]);
   const project = folders.find((folder) => folder.id === chat.folderId);
+  const dictation = useDictation((spoken) => setText((current) => `${current}${current ? ' ' : ''}${spoken}`));
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chat.messages.length, pending]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.altKey && event.key.toLowerCase() === 's') || (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's')) {
+        event.preventDefault();
+        dictation.toggle();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dictation.toggle]);
+
   const send = () => {
     const value = text.trim();
     if (!value || pending) return;
+    dictation.stop();
     setText('');
     void sendApiMessage(chat.id, value);
   };
@@ -380,10 +394,20 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
             placeholder="Nachricht schreiben... (Enter senden, Shift+Enter neue Zeile)"
             className="flex-1 min-w-0 resize-none bg-transparent px-2 py-2 text-sm text-white outline-none max-h-48"
           />
+          <button
+            onClick={dictation.toggle}
+            className={`rounded-lg p-2 transition-colors ${
+              dictation.listening ? 'bg-red-500/20 text-red-300 animate-pulse' : 'text-zinc-400 hover:bg-white/[0.06] hover:text-white'
+            }`}
+            title={dictation.listening ? 'Spracheingabe stoppen (Alt+S)' : 'Spracheingabe (Alt+S)'}
+          >
+            {dictation.listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
           <button onClick={send} disabled={pending || !text.trim()} className="primary-button !px-4 !py-2 disabled:opacity-40" title="Senden">
             <ArrowUp className="w-4 h-4" />
           </button>
         </div>
+        {dictation.error && <p className="mx-auto mt-2 max-w-[760px] text-xs text-red-400">{dictation.error}</p>}
       </div>
     </main>
   );

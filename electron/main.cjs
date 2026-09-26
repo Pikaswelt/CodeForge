@@ -3632,50 +3632,35 @@ ipcMain.handle('device:status', () => {
         return resolve({ ok: false, error: 'Native speech recognition is only supported on Windows.' });
       }
 
+      // Synchronous Recognize() loop: event actions (Register-ObjectEvent -Action)
+      // never fire while the script blocks, so results were never delivered.
+      // The worker is stopped by killing the process (see stopNativeSpeech).
+      const safeLang = String(lang || 'de-DE').replace(/[^A-Za-z-]/g, '');
       const psScript = `
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Speech
-
+function Send($obj) { [Console]::WriteLine(($obj | ConvertTo-Json -Compress)); [Console]::Out.Flush() }
 try {
-    $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine
-    $grammar = New-Object System.Speech.Recognition.DictationGrammar
-    $engine.LoadGrammar($grammar)
+    $all = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers()
+    $info = $all | Where-Object { $_.Culture.Name -eq '${safeLang}' } | Select-Object -First 1
+    if (-not $info) { $info = $all | Where-Object { $_.Culture.TwoLetterISOLanguageName -eq '${safeLang}'.Substring(0, 2) } | Select-Object -First 1 }
+    if (-not $info) { $info = $all | Select-Object -First 1 }
+    if (-not $info) { throw 'Keine Windows-Spracherkennung installiert (Einstellungen > Zeit und Sprache > Sprache > Sprachpaket mit Spracherkennung).' }
+    $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($info)
+    $engine.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
     $engine.SetInputToDefaultAudioDevice()
-
-    Register-ObjectEvent -InputObject $engine -EventName SpeechRecognized -Action {
-        $text = $EventArgs.Result.Text
-        $confidence = $EventArgs.Result.Confidence
-        if ($text) {
-            $msg = @{ type = "final"; text = $text; confidence = $confidence } | ConvertTo-Json -Compress
-            [Console]::WriteLine($msg)
-        }
-    } | Out-Null
-
-    Register-ObjectEvent -InputObject $engine -EventName SpeechHypothesized -Action {
-        $text = $EventArgs.Result.Text
-        if ($text) {
-            $msg = @{ type = "interim"; text = $text } | ConvertTo-Json -Compress
-            [Console]::WriteLine($msg)
-        }
-    } | Out-Null
-
-    Register-ObjectEvent -InputObject $engine -EventName RecognizeCompleted -Action {
-        $msg = @{ type = "completed" } | ConvertTo-Json -Compress
-        [Console]::WriteLine($msg)
-    } | Out-Null
-
-    [Console]::WriteLine('{"type":"ready"}')
-    $engine.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple)
-
+    $engine.InitialSilenceTimeout = [TimeSpan]::FromSeconds(30)
+    $engine.EndSilenceTimeout = [TimeSpan]::FromMilliseconds(700)
+    Send @{ type = 'ready'; culture = $info.Culture.Name }
     while ($true) {
-        $line = [Console]::ReadLine()
-        if ($line -eq 'stop' -or $line -eq $null) { break }
+        $result = $engine.Recognize()
+        if ($result -and $result.Text) {
+            Send @{ type = 'final'; text = $result.Text; confidence = $result.Confidence }
+        }
     }
-    $engine.RecognizeAsyncStop()
 } catch {
-    $err = @{ type = "error"; error = $_.Exception.Message } | ConvertTo-Json -Compress
-    [Console]::WriteLine($err)
+    Send @{ type = 'error'; error = $_.Exception.Message }
 }
 `;
 
@@ -3693,10 +3678,10 @@ try {
         for (const line of lines) {
           try {
             const parsed = JSON.parse(line);
-            if (parsed.type === 'ready') {
+            if (parsed.type === 'ready' || parsed.type === 'error') {
               if (!resolved) {
                 resolved = true;
-                resolve({ ok: true });
+                resolve(parsed.type === 'ready' ? { ok: true } : { ok: false, error: parsed.error });
               }
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3719,10 +3704,12 @@ try {
           resolved = true;
           resolve({ ok: false, error: err.message });
         }
-        activeSpeechProcess = null;
+        if (activeSpeechProcess === child) activeSpeechProcess = null;
       });
 
       child.on('close', () => {
+        // Ignore the close of a worker that was already replaced by a newer one.
+        if (activeSpeechProcess !== child && activeSpeechProcess !== null) return;
         activeSpeechProcess = null;
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('speech:result', { type: 'stopped' });

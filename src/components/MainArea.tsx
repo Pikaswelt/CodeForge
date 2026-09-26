@@ -37,6 +37,7 @@ import { useAppContext } from '../AppContext';
 import InputArea from './InputArea';
 import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
+import { useDictation } from '../useDictation';
 import { isVideoPath, toFileUrl } from '../media';
 import type { Chat, HomeAppTab, Message, ResponseDisplayMode } from '../types';
 import type { HomeApp } from '../types';
@@ -1302,111 +1303,14 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
 
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
-
-  const toggleDictation = async () => {
-    if (listening) {
-      if (window.agentWorkspace?.stopSpeechRecognition) {
-        window.agentWorkspace.stopSpeechRecognition().catch(() => {});
-      }
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setListening(false);
-      return;
-    }
-
-    // 1. Electron Native Windows Speech Engine
-    if (window.agentWorkspace?.startSpeechRecognition && window.agentWorkspace?.onSpeechResult) {
-      try {
-        setListening(true);
-        const unsub = window.agentWorkspace.onSpeechResult((payload) => {
-          if (payload.type === 'final' && payload.text) {
-            if (window.agentWorkspace?.writeToShellSession && activeTabId) {
-              window.agentWorkspace.writeToShellSession({ chatId: activeTabId, text: payload.text });
-            }
-          } else if (payload.type === 'error' || payload.type === 'stopped') {
-            setListening(false);
-          }
-        });
-        const res = await window.agentWorkspace.startSpeechRecognition({ lang: navigator.language || 'de-DE' });
-        if (!res.ok && res.error) {
-          console.warn('[Speech] Native speech warning:', res.error);
-        }
-        return;
-      } catch (err) {
-        console.error('[Speech] Native speech error in terminal, falling back to Web Speech:', err);
-      }
-    }
-
-    // 2. Web Speech API Fallback
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn('[Speech] Recognition not supported on this browser context.');
-      setListening(false);
-      return;
-    }
-
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    } catch (permErr) {
-      console.error('Mikrofon-Zugriff verweigert:', permErr);
-      console.warn('[Speech] Microphone access denied.');
-      setListening(false);
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.lang = navigator.language || 'de-DE';
-      recognition.interimResults = false;
-      recognition.continuous = true;
-      recognition.onstart = () => setListening(true);
-      recognition.onend = () => {
-        setListening(false);
-        recognitionRef.current = null;
-      };
-      recognition.onerror = (event: any) => {
-        setListening(false);
-        recognitionRef.current = null;
-        const errName = event?.error;
-        if (errName === 'not-allowed') {
-          console.warn('[Speech] Microphone permission not allowed.');
-        } else if (errName === 'audio-capture') {
-          console.warn('[Speech] Audio capture error or microphone in use.');
-        } else if (errName === 'network') {
-          console.warn('[Speech] Network connection required for speech recognition.');
-        } else if (errName !== 'no-speech') {
-          console.warn(`[Speech] Error: ${errName || 'Unbekannt'}`);
-        }
-      };
-      recognition.onresult = (event: any) => {
-        const results = event.results;
-        for (let i = event.resultIndex || 0; i < results.length; i++) {
-          if (results[i].isFinal) {
-            const transcript = results[i][0]?.transcript;
-            if (transcript && window.agentWorkspace?.writeToShellSession && activeTabId) {
-              window.agentWorkspace.writeToShellSession({ chatId: activeTabId, text: transcript });
-            }
-          }
-        }
-      };
-      recognition.start();
-    } catch (err) {
-      console.error(err);
-      setListening(false);
-    }
-  };
+  // Dictation writes recognized text into the active terminal tab.
+  const activeTabRef = useRef(activeTabId);
+  activeTabRef.current = activeTabId;
+  const dictation = useDictation((spoken) => {
+    if (activeTabRef.current) window.agentWorkspace?.writeToShellSession({ chatId: activeTabRef.current, text: spoken });
+  });
+  const listening = dictation.listening;
+  const toggleDictation = dictation.toggle;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1419,25 +1323,8 @@ function TerminalChatView({ chat }: { chat: Chat }) {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [listening, activeTabId]);
-
-  useEffect(() => {
-    return () => {
-      if (window.agentWorkspace?.stopSpeechRecognition) {
-        window.agentWorkspace.stopSpeechRecognition().catch(() => {});
-      }
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch (e) {
-          // ignore
-        }
-      }
-    };
-  }, []);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleDictation]);
 
   const handleSelectTab = (tabId: string) => {
     setChats((current) =>
