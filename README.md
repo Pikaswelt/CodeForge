@@ -44,6 +44,12 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - **Drag and drop** files or folders into a terminal to insert their paths.
 - Optional prompt prefix/suffix and **trigger-word notifications** when an agent needs attention.
 
+### V-Servers and SFTP
+- Save as many **SSH servers** as you like (host, port, user, private key) and add more at any time with **Add server**, on the home screen or from the **+** menu inside a terminal.
+- Tick several servers and press **Connect selected** or **Connect to all**. Each server gets its own terminal; up to four open as a grid, more as tabs.
+- Mix servers, local shells and CLI harnesses in one workspace. Every tab can talk to a different server.
+- **SFTP file browser** for every server: browse folders, upload and download files, create folders, rename and delete. Log in with your key or a password (kept in memory only). Unknown host keys are remembered on first use and connections are refused if the key changes later.
+
 ### API chat
 - Chat directly with **Anthropic**, **OpenAI** or any **OpenAI-compatible** endpoint (Ollama, OpenRouter, LM Studio, …).
 - Save multiple **AI providers** with URL, API key and default model; load the model list with one click.
@@ -131,6 +137,7 @@ npm run dist:linux # Build AppImage + .deb (run on Linux)
 | Shell | Electron |
 | UI | React 19, Vite, Tailwind CSS 4, Motion |
 | Terminals | xterm.js, node-pty (ConPTY) |
+| SFTP | ssh2 |
 | Speech | Windows `System.Speech` via a PowerShell worker |
 | Packaging | electron-builder (NSIS) |
 
@@ -141,6 +148,7 @@ electron/
   main.cjs       Main process: windows, IPC, PTY sessions, API chat, speech
   preload.cjs    Secure bridge exposed as window.agentWorkspace
   updater.cjs    GitHub Releases auto-updater
+  sftp.cjs       SFTP client for saved V-Servers (ssh2)
 src/
   App.tsx        Layout, theme backdrop, modals
   AppContext.tsx Application state and persistence
