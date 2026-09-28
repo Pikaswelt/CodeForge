@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type {
+  VServerConnection,
   AccessMode,
   AgentRunStats,
   ApiChatConfig,
@@ -365,6 +366,7 @@ interface AppContextType {
   startLyzDevChat(): Promise<void>;
   startTerminalChat(): Promise<void>;
   startWorkspace(input: { harnessId: string; grid: boolean; count: number }): Promise<void>;
+  startVServerSession(server: VServerConnection): Promise<void>;
   apiProviders: ApiProviderConfig[];
   setApiProviders: React.Dispatch<React.SetStateAction<ApiProviderConfig[]>>;
   apiChatConfig: ApiChatConfig;
@@ -2149,6 +2151,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectChat(chat.id);
   };
 
+  const startVServerSession = async (server: VServerConnection) => {
+    const projectForRun = await ensureRunnableProject();
+    const chatId = newId();
+    const chat: Chat = {
+      id: chatId,
+      title: `SSH · ${server.name}`,
+      updatedAt: Date.now(),
+      folderId: projectForRun.id,
+      mode: 'terminal',
+      vserver: { id: server.id, name: server.name, host: server.host, port: server.port, user: server.user, keyPath: server.keyPath },
+      terminalTabs: [{ id: chatId, title: server.name, shellType: 'cmd', blank: true }],
+      activeTerminalTabId: chatId,
+      terminalLayout: 'single',
+      messages: [],
+    };
+    setChats((current) => [chat, ...current]);
+    selectChat(chat.id);
+  };
+
   const startWorkspace = async ({ harnessId, grid, count }: { harnessId: string; grid: boolean; count: number }) => {
     const projectForRun = await ensureRunnableProject();
     const harness = cliHarnesses.find((item) => item.id === harnessId) || cliHarnesses[0];
@@ -3059,6 +3080,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startLyzDevChat,
       startTerminalChat,
       startWorkspace,
+      startVServerSession,
       apiProviders,
       setApiProviders,
       apiChatConfig,
@@ -3161,6 +3183,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startLyzDevChat,
       startTerminalChat,
       startWorkspace,
+      startVServerSession,
       cliHarnesses,
       apiProviders,
       apiChatConfig,

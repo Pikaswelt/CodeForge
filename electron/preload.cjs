@@ -90,11 +90,16 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     ipcRenderer.on(`shell:output:${chatId}`, listener);
     return () => ipcRenderer.removeListener(`shell:output:${chatId}`, listener);
   },
-  startSpeechRecognition: (options) => ipcRenderer.invoke('speech:start', options),
-  stopSpeechRecognition: () => ipcRenderer.invoke('speech:stop'),
-  onSpeechResult: (callback) => {
+  whisperStatus: () => ipcRenderer.invoke('whisper:status'),
+  whisperInstall: (input) => ipcRenderer.invoke('whisper:install', input),
+  whisperRemove: () => ipcRenderer.invoke('whisper:remove'),
+  whisperTranscribe: (input) => ipcRenderer.invoke('whisper:transcribe', input),
+  whisperWarmUp: (model) => ipcRenderer.invoke('whisper:warm-up', model),
+  onWhisperProgress: (callback) => {
     const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on('speech:result', listener);
-    return () => ipcRenderer.removeListener('speech:result', listener);
+    ipcRenderer.on('whisper:progress', listener);
+    return () => ipcRenderer.removeListener('whisper:progress', listener);
   },
+  importSshKey: (input) => ipcRenderer.invoke('ssh:import-key', input),
+  removeSshKey: (keyPath) => ipcRenderer.invoke('ssh:remove-key', keyPath),
 });

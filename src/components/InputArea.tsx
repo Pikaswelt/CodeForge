@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { useDictation } from '../useDictation';
+import { appendSpoken, useVoiceSettings } from '../voice';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -84,12 +86,11 @@ export default function InputArea() {
     null,
   );
   const [error, setError] = useState('');
-  const [listening, setListening] = useState(false);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
-  const recognitionRef = useRef<any>(null);
 
   const send = async () => {
     const isInteractiveInput = isSending && originalPluginEnabled;
+    const text = textRef.current;
     if (!text.trim() || (isSending && !isInteractiveInput)) return;
     setError('');
     const prompt = text.trim();
@@ -106,138 +107,17 @@ export default function InputArea() {
     }
   };
 
-  const nativeSpeechCleanupRef = useRef<(() => void) | null>(null);
-
-  const stopDictation = () => {
-    if (window.agentWorkspace?.stopSpeechRecognition) {
-      window.agentWorkspace.stopSpeechRecognition().catch(() => {});
-    }
-    if (nativeSpeechCleanupRef.current) {
-      nativeSpeechCleanupRef.current();
-      nativeSpeechCleanupRef.current = null;
-    }
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {
-        console.error(e);
-      }
-      recognitionRef.current = null;
-    }
-    setListening(false);
-  };
-
-  const startDictation = async () => {
-    if (listening) {
-      stopDictation();
-      return;
-    }
-
-    setError('');
-
-    // 1. Electron Native Windows Speech Engine (Offline, 100% reliable)
-    if (window.agentWorkspace?.startSpeechRecognition && window.agentWorkspace?.onSpeechResult) {
-      try {
-        setListening(true);
-        if (nativeSpeechCleanupRef.current) {
-          nativeSpeechCleanupRef.current();
-        }
-
-        const unsub = window.agentWorkspace.onSpeechResult((payload) => {
-          if (payload.type === 'final' && payload.text) {
-            setText((current) => `${current}${current ? ' ' : ''}${payload.text}`);
-          } else if (payload.type === 'error') {
-            setError(`Spracherkennungsfehler: ${payload.error || 'Unbekannt'}`);
-            setListening(false);
-          } else if (payload.type === 'stopped') {
-            setListening(false);
-          }
-        });
-        nativeSpeechCleanupRef.current = unsub;
-
-        const res = await window.agentWorkspace.startSpeechRecognition({ lang: navigator.language || 'de-DE' });
-        if (!res.ok && res.error) {
-          console.warn('[Speech] Native speech warning:', res.error);
-        }
-        return;
-      } catch (err) {
-        console.error('[Speech] Native speech error, falling back to Web Speech:', err);
-      }
-    }
-
-    // 2. Web Speech API Fallback (Browser / Android)
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError('Spracherkennung wird auf diesem System nicht unterstuetzt.');
-      setListening(false);
-      return;
-    }
-
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    } catch (permErr) {
-      console.error('Mikrofon-Zugriff verweigert:', permErr);
-      setError('Mikrofon-Zugriff wurde verweigert.');
-      setListening(false);
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.lang = navigator.language || 'de-DE';
-      recognition.interimResults = false;
-      recognition.continuous = true;
-      recognition.onstart = () => {
-        setListening(true);
-        setError('');
-      };
-      recognition.onend = () => {
-        setListening(false);
-        recognitionRef.current = null;
-      };
-      recognition.onerror = (event: any) => {
-        setListening(false);
-        recognitionRef.current = null;
-        const errName = event?.error;
-        if (errName === 'not-allowed') {
-          setError('Mikrofon-Zugriff wurde nicht erlaubt.');
-        } else if (errName === 'audio-capture') {
-          setError('Kein Mikrofon gefunden.');
-        } else if (errName === 'network') {
-          setError('Web-Spracherkennung verlangt Internetverbindung.');
-        } else if (errName !== 'no-speech') {
-          setError(`Spracherkennungsfehler: ${errName || 'Unbekannt'}`);
-        }
-      };
-      recognition.onresult = (event: any) => {
-        const results = event.results;
-        for (let i = event.resultIndex || 0; i < results.length; i++) {
-          if (results[i].isFinal) {
-            const transcript = results[i][0]?.transcript;
-            if (transcript) {
-              setText((current) => `${current}${current ? ' ' : ''}${transcript}`);
-            }
-          }
-        }
-      };
-      recognition.start();
-    } catch (err) {
-      console.error(err);
-      setListening(false);
-      setError('Spracherkennung konnte nicht gestartet werden.');
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      stopDictation();
-    };
-  }, []);
+  const voice = useVoiceSettings();
+  const textRef = useRef(text);
+  textRef.current = text;
+  const sendRef = useRef<() => void>(() => {});
+  const dictation = useDictation(
+    (spoken) => setText((current) => appendSpoken(current, spoken)),
+    () => window.setTimeout(() => sendRef.current(), 60),
+  );
+  const listening = dictation.listening;
+  const startDictation = dictation.toggle;
+  sendRef.current = () => void send();
 
   const access = ACCESS_OPTIONS.find((option) => option.id === accessMode)!;
   const models = PROVIDER_MODELS[provider];
@@ -399,13 +279,15 @@ export default function InputArea() {
                 </Dropdown>
               )}
             </AnimatePresence>
-            <button
-              onClick={startDictation}
-              className={`p-1.5 rounded-md ${listening ? 'text-red-400 bg-red-500/10' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
-              title="Spracheingabe"
-            >
-              <Mic className="w-4 h-4" />
-            </button>
+            {voice.enabled && voice.showMicButton && (
+              <button
+                onClick={startDictation}
+                className={`p-1.5 rounded-md ${listening ? 'text-red-400 bg-red-500/10 animate-pulse' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                title={listening ? 'Spracheingabe stoppen' : 'Spracheingabe'}
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+            )}
             {(isSending || chats.find(c => c.id === selectedChatId)?.mode === 'terminal') && (
               <button
                 onClick={sendEscKey}
@@ -640,7 +522,7 @@ export default function InputArea() {
           </AnimatePresence>
         </div>
       </div>
-      {error && <div className="mt-2 px-3 text-xs text-red-400">{error}</div>}
+      {(error || dictation.error) && <div className="mt-2 px-3 text-xs text-red-400">{error || dictation.error}</div>}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
-import type { AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
+import type { VServerConnection, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
 
 type NativeTabBounds = {
   x: number;
@@ -15,8 +15,17 @@ type NativeTabResult = {
   message: string;
 };
 
-type UpdateStatus = {
-  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
+export type WhisperStatus = {
+  supported: boolean;
+  binaryInstalled: boolean;
+  models: Record<string, boolean>;
+  installed: boolean;
+  installing: boolean;
+  modelOptions: { id: string; label: string; size: number }[];
+};
+
+export type UpdateStatus = {
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error';
   currentVersion: string;
   availableVersion: string;
   downloaded: boolean;
@@ -25,6 +34,10 @@ type UpdateStatus = {
   error: string;
   feedUrl: string;
   installerPath?: string;
+  receivedBytes?: number;
+  totalBytes?: number;
+  bytesPerSecond?: number;
+  installing?: boolean;
 };
 
 declare global {
@@ -140,14 +153,19 @@ declare global {
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;
       cancelTerminalCommand(id: string): Promise<boolean>;
       onTerminalOutput(id: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
-      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any }): Promise<void>;
+      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection }): Promise<void>;
       writeToShellSession(request: { chatId: string; text: string }): Promise<boolean>;
       killShellSession(chatId: string): Promise<boolean>;
       resizeShellSession(request: { chatId: string; cols: number; rows: number }): Promise<boolean>;
       onShellOutput(chatId: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
-      startSpeechRecognition(options?: { lang?: string }): Promise<{ ok: boolean; error?: string }>;
-      stopSpeechRecognition(): Promise<{ ok: boolean }>;
-      onSpeechResult(callback: (payload: { type: 'ready' | 'final' | 'interim' | 'completed' | 'stopped' | 'error'; text?: string; error?: string; confidence?: number }) => void): () => void;
+      whisperStatus(): Promise<WhisperStatus>;
+      whisperInstall(input: { model: string }): Promise<{ ok: boolean; error?: string; status: WhisperStatus }>;
+      whisperRemove(): Promise<WhisperStatus>;
+      whisperTranscribe(input: { audio: ArrayBuffer; language: string; model: string; prompt?: string }): Promise<{ ok: boolean; text?: string; error?: string }>;
+      whisperWarmUp(model: string): Promise<boolean>;
+      onWhisperProgress(callback: (payload: { type: 'progress' | 'done' | 'error'; label?: string; percent?: number; received?: number; total?: number; error?: string }) => void): () => void;
+      importSshKey(input: { sourcePath: string; name?: string }): Promise<{ keyPath: string; keyName: string }>;
+      removeSshKey(keyPath: string): Promise<boolean>;
     };
   }
 }

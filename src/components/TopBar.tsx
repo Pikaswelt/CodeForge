@@ -13,6 +13,7 @@ import {
 import { useAppContext } from '../AppContext';
 import AccountMenu from './AccountMenu';
 import AppLogo from './AppLogo';
+import { openUpdateWindow } from './UpdateModal';
 
 export default function TopBar({
   onSettingsClick,
@@ -54,11 +55,8 @@ export default function TopBar({
   }, []);
 
   const handleUpdateClick = () => {
-    if (updateStatus.status === 'downloaded') {
-      window.agentWorkspace?.installUpdate();
-    } else if (updateStatus.status === 'idle' || updateStatus.status === 'error' || updateStatus.status === 'available') {
-      window.agentWorkspace?.checkForUpdates({ manual: true });
-    }
+    const idle = updateStatus.status === 'idle' || updateStatus.status === 'error' || updateStatus.status === 'available';
+    openUpdateWindow(idle);
   };
 
   const getUpdateLabel = () => {

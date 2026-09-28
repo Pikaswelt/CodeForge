@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Loader2, MessageSquare, Mic, MicOff, Plus, Trash2 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { useDictation } from '../useDictation';
+import { appendSpoken, useVoiceSettings } from '../voice';
 import type { ApiChatProvider, ApiProviderConfig, Chat } from '../types';
 
 export const API_PROVIDER_TYPES: { id: ApiChatProvider; label: string; baseUrl: string; model: string }[] = [
@@ -327,7 +328,13 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
   const endRef = useRef<HTMLDivElement>(null);
   const pending = Boolean(apiPending[chat.id]);
   const project = folders.find((folder) => folder.id === chat.folderId);
-  const dictation = useDictation((spoken) => setText((current) => `${current}${current ? ' ' : ''}${spoken}`));
+  const voice = useVoiceSettings();
+  const textRef = useRef(text);
+  textRef.current = text;
+  const dictation = useDictation(
+    (spoken) => setText((current) => appendSpoken(current, spoken)),
+    () => window.setTimeout(() => send(true), 60),
+  );
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -335,6 +342,7 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (!voice.enabled) return;
       if ((event.altKey && event.key.toLowerCase() === 's') || (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's')) {
         event.preventDefault();
         dictation.toggle();
@@ -342,12 +350,12 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dictation.toggle]);
+  }, [dictation.toggle, voice.enabled]);
 
-  const send = () => {
-    const value = text.trim();
+  const send = (fromVoice = false) => {
+    const value = textRef.current.trim();
     if (!value || pending) return;
-    dictation.stop();
+    if (!fromVoice && dictation.listening) dictation.stop();
     setText('');
     void sendApiMessage(chat.id, value);
   };
@@ -394,7 +402,7 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
             placeholder="Nachricht schreiben... (Enter senden, Shift+Enter neue Zeile)"
             className="flex-1 min-w-0 resize-none bg-transparent px-2 py-2 text-sm text-white outline-none max-h-48"
           />
-          <button
+          {voice.enabled && voice.showMicButton && <button
             onClick={dictation.toggle}
             className={`rounded-lg p-2 transition-colors ${
               dictation.listening ? 'bg-red-500/20 text-red-300 animate-pulse' : 'text-zinc-400 hover:bg-white/[0.06] hover:text-white'
@@ -402,8 +410,8 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
             title={dictation.listening ? 'Spracheingabe stoppen (Alt+S)' : 'Spracheingabe (Alt+S)'}
           >
             {dictation.listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </button>
-          <button onClick={send} disabled={pending || !text.trim()} className="primary-button !px-4 !py-2 disabled:opacity-40" title="Senden">
+          </button>}
+          <button onClick={() => send()} disabled={pending || !text.trim()} className="primary-button !px-4 !py-2 disabled:opacity-40" title="Senden">
             <ArrowUp className="w-4 h-4" />
           </button>
         </div>

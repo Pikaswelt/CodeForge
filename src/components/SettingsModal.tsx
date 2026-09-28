@@ -1,4 +1,7 @@
-import { CheckCircle2, Download, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, RefreshCw, Settings, Smartphone, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
+import type { UpdateStatus } from '../electron.d';
+import { VoiceSettingsSection } from './VoiceSettings';
+import { openUpdateWindow } from './UpdateModal';
+import { CheckCircle2, Download, Mic, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, RefreshCw, Settings, Smartphone, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DEFAULT_LIBRARY_STYLE, useAppContext } from '../AppContext';
@@ -17,16 +20,6 @@ const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
   { id: 'freebuff', label: 'FreeBuff', command: 'freebuff' },
 ];
 
-type UpdateStatus = {
-  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
-  currentVersion: string;
-  availableVersion: string;
-  downloaded: boolean;
-  percent: number;
-  message: string;
-  error: string;
-  feedUrl: string;
-};
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const {
@@ -89,7 +82,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     terminalTriggerWords,
     setTerminalTriggerWords,
   } = useAppContext();
-  const [activeTab, setActiveTab] = useState<'general' | 'appearance'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'voice' | 'appearance'>('general');
   const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null);
   const [statusNotice, setStatusNotice] = useState('');
   const [customName, setCustomName] = useState('Mein Theme');
@@ -139,6 +132,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   const installUpdate = async () => {
+    openUpdateWindow(false);
     setUpdateBusy(true);
     try {
       await window.agentWorkspace?.installUpdate();
@@ -219,6 +213,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className="flex border-b border-white/5 bg-[#120f12] px-6 gap-4 shrink-0 overflow-x-auto custom-scrollbar">
           {[
             { id: 'general', label: 'Allgemein', icon: Settings },
+            { id: 'voice', label: 'Sprache', icon: Mic },
             { id: 'appearance', label: 'Aussehen', icon: Palette },
           ].map((t) => {
             const active = activeTab === t.id;
@@ -694,6 +689,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             </motion.div>
           )}
 
+
+          {activeTab === 'voice' && (
+            <motion.div key="voice" variants={tabContentVariants} initial="initial" animate="animate" exit="exit">
+              <VoiceSettingsSection />
+            </motion.div>
+          )}
 
           {activeTab === 'appearance' && (
             <motion.div
