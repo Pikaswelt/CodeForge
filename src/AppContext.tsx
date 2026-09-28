@@ -367,6 +367,7 @@ interface AppContextType {
   startTerminalChat(): Promise<void>;
   startWorkspace(input: { harnessId: string; grid: boolean; count: number }): Promise<void>;
   startVServerSession(server: VServerConnection): Promise<void>;
+  startVServerSessions(servers: VServerConnection[]): Promise<void>;
   apiProviders: ApiProviderConfig[];
   setApiProviders: React.Dispatch<React.SetStateAction<ApiProviderConfig[]>>;
   apiChatConfig: ApiChatConfig;
@@ -2151,24 +2152,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectChat(chat.id);
   };
 
-  const startVServerSession = async (server: VServerConnection) => {
+  // One workspace with one SSH tab per server; several servers open as a grid.
+  const startVServerSessions = async (servers: VServerConnection[]) => {
+    if (servers.length === 0) return;
     const projectForRun = await ensureRunnableProject();
     const chatId = newId();
+    const connections = servers.map((server) => ({
+      id: server.id,
+      name: server.name,
+      host: server.host,
+      port: server.port,
+      user: server.user,
+      keyPath: server.keyPath,
+    }));
     const chat: Chat = {
       id: chatId,
-      title: `SSH · ${server.name}`,
+      title: connections.length === 1 ? `SSH · ${connections[0].name}` : `SSH · ${connections.length} Server`,
       updatedAt: Date.now(),
       folderId: projectForRun.id,
       mode: 'terminal',
-      vserver: { id: server.id, name: server.name, host: server.host, port: server.port, user: server.user, keyPath: server.keyPath },
-      terminalTabs: [{ id: chatId, title: server.name, shellType: 'cmd', blank: true }],
+      vserver: connections.length === 1 ? connections[0] : undefined,
+      terminalTabs: connections.map((vserver, index) => ({
+        id: index === 0 ? chatId : newId(),
+        title: vserver.name,
+        shellType: 'cmd' as const,
+        blank: true,
+        vserver,
+      })),
       activeTerminalTabId: chatId,
-      terminalLayout: 'single',
+      // The grid shows at most four terminals; more servers stay reachable as tabs.
+      terminalLayout: connections.length > 1 && connections.length <= 4 ? 'grid' : 'single',
+      terminalGridSize: connections.length > 1 && connections.length <= 4 ? connections.length : undefined,
       messages: [],
     };
     setChats((current) => [chat, ...current]);
     selectChat(chat.id);
   };
+
+  const startVServerSession = (server: VServerConnection) => startVServerSessions([server]);
 
   const startWorkspace = async ({ harnessId, grid, count }: { harnessId: string; grid: boolean; count: number }) => {
     const projectForRun = await ensureRunnableProject();
@@ -3081,6 +3102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startTerminalChat,
       startWorkspace,
       startVServerSession,
+      startVServerSessions,
       apiProviders,
       setApiProviders,
       apiChatConfig,
@@ -3184,6 +3206,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startTerminalChat,
       startWorkspace,
       startVServerSession,
+      startVServerSessions,
       cliHarnesses,
       apiProviders,
       apiChatConfig,

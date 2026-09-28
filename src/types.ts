@@ -112,6 +112,16 @@ export type TerminalTab = {
   command?: string;
   // Tab without start command even if the chat has a harness.
   blank?: boolean;
+  // SSH login to a saved V-Server; lets one workspace hold tabs for several servers.
+  vserver?: VServerConnection;
+};
+
+export type SftpEntry = {
+  name: string;
+  type: 'dir' | 'file' | 'link';
+  size: number;
+  modifiedAt: number;
+  mode?: number;
 };
 
 // Saved V-Server (SSH host) from the home screen.

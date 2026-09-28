@@ -1,8 +1,9 @@
 import { useState, useSyncExternalStore } from 'react';
-import { KeyRound, Loader2, Pencil, Plug, Plus, Server, SquareTerminal, Trash2, Upload } from 'lucide-react';
+import { FolderOpen, KeyRound, Loader2, Pencil, Plug, Plus, Server, SquareTerminal, Trash2, Upload, X } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { harnessIcon } from '../harnessIcons';
 import type { CliHarness, VServer } from '../types';
+import { SftpBrowser } from './SftpBrowser';
 
 // Saved V-Servers (SSH hosts). Stored locally; the private key is copied into
 // CodeForge's data folder when uploaded, so the original file may be moved.
@@ -27,7 +28,7 @@ function saveServers(next: VServer[]) {
   listeners.forEach((listener) => listener());
 }
 
-function useServers() {
+export function useVServers() {
   return useSyncExternalStore(
     (listener) => {
       listeners.add(listener);
@@ -40,21 +41,25 @@ function useServers() {
 const newId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 export function VServerPanel({ onCancel }: { onCancel(): void }) {
-  const list = useServers();
-  const { startVServerSession } = useAppContext();
+  const list = useVServers();
+  const { startVServerSessions } = useAppContext();
   const [editing, setEditing] = useState<VServer | 'new' | null>(list.length ? null : 'new');
-  const [connecting, setConnecting] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [connecting, setConnecting] = useState(false);
+  const [sftpServer, setSftpServer] = useState<VServer | null>(null);
   const [error, setError] = useState('');
 
-  const connect = async (server: VServer) => {
-    setConnecting(server.id);
+  const connect = async (targets: VServer[]) => {
+    if (targets.length === 0) return;
+    setConnecting(true);
     setError('');
     try {
-      saveServers(servers.map((item) => (item.id === server.id ? { ...item, lastConnectedAt: Date.now() } : item)));
-      await startVServerSession(server);
+      const ids = new Set(targets.map((item) => item.id));
+      saveServers(servers.map((item) => (ids.has(item.id) ? { ...item, lastConnectedAt: Date.now() } : item)));
+      await startVServerSessions(targets);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verbindung konnte nicht gestartet werden.');
-      setConnecting('');
+      setConnecting(false);
     }
   };
 
@@ -63,8 +68,22 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
     if (server.keyPath && !servers.some((item) => item.id !== server.id && item.keyPath === server.keyPath)) {
       void window.agentWorkspace?.removeSshKey(server.keyPath);
     }
+    void window.agentWorkspace?.sftpDisconnect(server.id);
+    setSelected((current) => {
+      const next = new Set(current);
+      next.delete(server.id);
+      return next;
+    });
     saveServers(servers.filter((item) => item.id !== server.id));
   };
+
+  const toggle = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   if (editing) {
     return (
@@ -81,26 +100,45 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
   }
 
   const sorted = [...list].sort((a, b) => (b.lastConnectedAt || 0) - (a.lastConnectedAt || 0));
+  const chosen = sorted.filter((server) => selected.has(server.id));
+  const allSelected = sorted.length > 0 && chosen.length === sorted.length;
 
   return (
     <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="section-label">V-Server</div>
-        <button onClick={() => setEditing('new')} className="secondary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5">
-          <Plus className="w-3.5 h-3.5" />
-          Hinzufuegen
-        </button>
+      <div className="flex items-center justify-between gap-3">
+        <div className="section-label">V-Server ({list.length})</div>
+        <div className="flex items-center gap-2">
+          {sorted.length > 1 && (
+            <button
+              onClick={() => setSelected(allSelected ? new Set() : new Set(sorted.map((server) => server.id)))}
+              className="text-xs text-zinc-400 hover:text-white"
+            >
+              {allSelected ? 'Keine auswaehlen' : 'Alle auswaehlen'}
+            </button>
+          )}
+          <button onClick={() => setEditing('new')} className="primary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5">
+            <Plus className="w-3.5 h-3.5" />
+            Server hinzufuegen
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2">
         {sorted.map((server) => (
           <div
             key={server.id}
-            className="group flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 hover:bg-white/[0.06] transition-colors"
+            className={`group flex items-center gap-3 rounded-xl border px-3 py-3 transition-colors ${selected.has(server.id) ? 'border-sky-400/40 bg-sky-500/[0.07]' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'}`}
           >
-            <button onClick={() => void connect(server)} disabled={Boolean(connecting)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+            <input
+              type="checkbox"
+              checked={selected.has(server.id)}
+              onChange={() => toggle(server.id)}
+              className="h-4 w-4 shrink-0 accent-sky-500"
+              title="Fuer die Mehrfach-Verbindung auswaehlen"
+            />
+            <button onClick={() => void connect([server])} disabled={connecting} className="flex min-w-0 flex-1 items-center gap-3 text-left">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-sky-400/20 bg-sky-500/10">
-                {connecting === server.id ? <Loader2 className="w-4 h-4 animate-spin text-sky-300" /> : <Server className="w-4 h-4 text-sky-300" />}
+                <Server className="w-4 h-4 text-sky-300" />
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-sm text-white">{server.name}</span>
@@ -117,8 +155,16 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
               <Trash2 className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => void connect(server)}
-              disabled={Boolean(connecting)}
+              onClick={() => setSftpServer(server)}
+              className="secondary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5"
+              title="Dateien per SFTP durchsuchen, hoch- und herunterladen"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              SFTP
+            </button>
+            <button
+              onClick={() => void connect([server])}
+              disabled={connecting}
               className="primary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5 disabled:opacity-50"
             >
               <Plug className="w-3.5 h-3.5" />
@@ -128,16 +174,62 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
         ))}
       </div>
 
+      {sorted.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => void connect(chosen)}
+            disabled={connecting || chosen.length === 0}
+            className="primary-button flex-1 !py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+          >
+            {connecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
+            Auswahl verbinden ({chosen.length})
+          </button>
+          <button
+            onClick={() => void connect(sorted)}
+            disabled={connecting}
+            className="secondary-button flex-1 !py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+          >
+            Mit allen verbinden ({sorted.length})
+          </button>
+        </div>
+      )}
+      {sorted.length > 4 && (
+        <p className="text-[11px] text-zinc-600">Ab fuenf Servern oeffnen sich die Terminals als Tabs statt im Grid.</p>
+      )}
+
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
 
       <button onClick={onCancel} className="w-full rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
         Zurueck
       </button>
+
+      {sftpServer && <SftpBrowser server={sftpServer} onClose={() => setSftpServer(null)} />}
     </section>
   );
 }
 
-function VServerForm({ initial, onCancel, onSave }: { initial?: VServer; onCancel(): void; onSave(server: VServer): void }) {
+// Modal form used from the terminal "+" menu to add another server on the fly.
+export function AddVServerDialog({ onCancel, onSaved }: { onCancel(): void; onSaved(server: VServer): void }) {
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto bg-black/60 p-6 backdrop-blur-sm" onMouseDown={onCancel}>
+      <div className="relative w-full max-w-[520px]" onMouseDown={(event) => event.stopPropagation()}>
+        <button onClick={onCancel} className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title="Schliessen">
+          <X className="w-4 h-4" />
+        </button>
+        <VServerForm
+          modal
+          onCancel={onCancel}
+          onSave={(server) => {
+            saveServers([...servers, server]);
+            onSaved(server);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function VServerForm({ initial, modal, onCancel, onSave }: { initial?: VServer; modal?: boolean; onCancel(): void; onSave(server: VServer): void }) {
   const [name, setName] = useState(initial?.name || '');
   const [host, setHost] = useState(initial?.host || '');
   const [port, setPort] = useState(String(initial?.port || 22));
@@ -186,7 +278,7 @@ function VServerForm({ initial, onCancel, onSave }: { initial?: VServer; onCance
   const field = 'w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-orange-400/60';
 
   return (
-    <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-4">
+    <section className={`panel w-full p-6 border border-white/10 backdrop-blur-md rounded-2xl shadow-xl space-y-4 ${modal ? 'bg-[#18161a]' : 'mt-8 bg-black/20'}`}>
       <div className="section-label">{initial ? 'V-Server bearbeiten' : 'V-Server hinzufuegen'}</div>
       <label className="block">
         <span className="mb-1 block text-[11px] text-zinc-500">Name (optional)</span>
@@ -212,7 +304,7 @@ function VServerForm({ initial, onCancel, onSave }: { initial?: VServer; onCance
           <div className={`${field} flex min-w-0 items-center gap-2 !py-2`}>
             <KeyRound className={`w-4 h-4 shrink-0 ${keyPath ? 'text-emerald-400' : 'text-zinc-600'}`} />
             <span className={`truncate font-mono text-xs ${keyPath ? 'text-zinc-200' : 'text-zinc-600'}`}>
-              {keyName || 'Kein Key (Passwort-Login im Terminal)'}
+              {keyName || 'Kein Key (Passwort-Login)'}
             </span>
           </div>
           <button onClick={() => void uploadKey()} disabled={busy} className="secondary-button !py-2 !px-3 text-xs flex shrink-0 items-center gap-1.5 disabled:opacity-50">
@@ -249,18 +341,26 @@ function VServerForm({ initial, onCancel, onSave }: { initial?: VServer; onCance
   );
 }
 
-// Menu of the "+" button in a terminal: empty terminal or start a harness.
+// Menu of the "+" button in a terminal: empty terminal, start a harness or open another V-Server.
 export function NewTabMenu({
   harnesses,
+  servers: savedServers,
   onBlank,
   onHarness,
+  onServer,
+  onAddServer,
+  onSftp,
 }: {
   harnesses: CliHarness[];
+  servers: VServer[];
   onBlank(): void;
   onHarness(harness: CliHarness): void;
+  onServer(server: VServer): void;
+  onAddServer(): void;
+  onSftp(server: VServer): void;
 }) {
   return (
-    <div className="absolute left-0 top-full z-50 mt-2 w-60 rounded-xl border border-white/10 bg-[#18161a]/95 p-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl">
+    <div className="absolute left-0 top-full z-50 mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-xl border border-white/10 bg-[#18161a]/95 p-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl custom-scrollbar">
       <button onClick={onBlank} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-white/[0.07]">
         <SquareTerminal className="w-4 h-4 text-zinc-400" />
         <span>
@@ -290,6 +390,26 @@ export function NewTabMenu({
           );
         })
       )}
+      <div className="my-1 border-t border-white/5" />
+      <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">V-Server</div>
+      {savedServers.map((server) => (
+        <div key={server.id} className="flex items-center rounded-lg hover:bg-white/[0.07]">
+          <button onClick={() => onServer(server)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left text-xs text-zinc-200">
+            <Server className="w-4 h-4 shrink-0 text-sky-300" />
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{server.name}</span>
+              <span className="block truncate font-mono text-[10px] text-zinc-500">{server.user ? `${server.user}@` : ''}{server.host}</span>
+            </span>
+          </button>
+          <button onClick={() => onSftp(server)} className="mr-1 rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title="SFTP-Dateien">
+            <FolderOpen className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <button onClick={onAddServer} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-sky-300 hover:bg-white/[0.07]">
+        <Plus className="w-4 h-4" />
+        <span className="font-medium">Neuen Server hinzufuegen</span>
+      </button>
     </div>
   );
 }
