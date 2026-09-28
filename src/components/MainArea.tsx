@@ -16,6 +16,7 @@ import {
   FileText,
   Gamepad2,
   Home,
+  Server,
   MessageSquare,
   LayoutGrid,
   GitPullRequest,
@@ -38,8 +39,10 @@ import InputArea from './InputArea';
 import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
 import { useDictation } from '../useDictation';
+import { useVoiceSettings } from '../voice';
+import { NewTabMenu, VServerPanel } from './VServers';
 import { isVideoPath, toFileUrl } from '../media';
-import type { Chat, HomeAppTab, Message, ResponseDisplayMode } from '../types';
+import type { Chat, CliHarness, HomeAppTab, Message, ResponseDisplayMode, TerminalTab } from '../types';
 import type { HomeApp } from '../types';
 import libraryBannerUrl from '../../assets/library-banner.png';
 import { Terminal as XTerm } from '@xterm/xterm';
@@ -995,12 +998,14 @@ function TerminalInstance({
   active,
   shellType,
   chat,
+  tab,
 }: {
   tabId: string;
   startPath: string | undefined;
   active: boolean;
   shellType?: 'powershell' | 'cmd';
   chat: Chat;
+  tab?: TerminalTab;
 }) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -1082,10 +1087,23 @@ function TerminalInstance({
       chatId: tabId,
       cwd: startPath,
       shellType,
-      externalServer: externalServer.enabled ? externalServer : undefined
+      externalServer: !chat.vserver && externalServer.enabled ? externalServer : undefined,
+      vserver: chat.vserver,
     });
 
-    if (chat.mode === 'standard') {
+    // SSH login takes longer than a local shell before a command can be typed.
+    const commandDelay = chat.vserver ? 3500 : 1000;
+    if (tab?.command || tab?.blank) {
+      if (tab.command && !startedTerminalTabs.has(tabId)) {
+        startedTerminalTabs.add(tabId);
+        const tabCommand = tab.command;
+        setTimeout(() => {
+          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
+        }, commandDelay);
+      }
+    } else if (chat.vserver) {
+      // Plain SSH session: no local start command.
+    } else if (chat.mode === 'standard') {
       const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
       const waitTime = platformWaitTimes[provider] || 5000;
       if (!startedTerminalTabs.has(tabId)) {
@@ -1290,6 +1308,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     terminalPrefixSuffixEnabled,
     setTerminalPrefixSuffixEnabled,
     openBrowserTab,
+    cliHarnesses,
   } = useAppContext();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -1306,14 +1325,21 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   // Dictation writes recognized text into the active terminal tab.
   const activeTabRef = useRef(activeTabId);
   activeTabRef.current = activeTabId;
-  const dictation = useDictation((spoken) => {
-    if (activeTabRef.current) window.agentWorkspace?.writeToShellSession({ chatId: activeTabRef.current, text: spoken });
-  });
+  const voice = useVoiceSettings();
+  const dictation = useDictation(
+    (spoken) => {
+      if (activeTabRef.current) window.agentWorkspace?.writeToShellSession({ chatId: activeTabRef.current, text: spoken });
+    },
+    () => {
+      if (activeTabRef.current) window.agentWorkspace?.writeToShellSession({ chatId: activeTabRef.current, text: '\r' });
+    },
+  );
   const listening = dictation.listening;
   const toggleDictation = dictation.toggle;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (!voice.enabled) return;
       if (
         (event.altKey && event.key.toLowerCase() === 's') ||
         (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's')
@@ -1324,7 +1350,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleDictation]);
+  }, [toggleDictation, voice.enabled]);
 
   const handleSelectTab = (tabId: string) => {
     setChats((current) =>
@@ -1339,14 +1365,31 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const lastClickTimeRef = useRef<number>(0);
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleAddTab = (shellType?: 'powershell' | 'cmd') => {
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (!addMenuRef.current?.contains(event.target as Node)) setAddMenuOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [addMenuOpen]);
+
+  const handleAddTab = (shellType?: 'powershell' | 'cmd', harness?: CliHarness | 'blank') => {
     const newTabId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    const label = shellType === 'powershell' ? 'PowerShell' : 'Terminal';
-    const newTab = {
+    const label = harness && harness !== 'blank'
+      ? harness.name
+      : chat.vserver
+        ? chat.vserver.name
+        : shellType === 'powershell' ? 'PowerShell' : 'Terminal';
+    const newTab: TerminalTab = {
       id: newTabId,
       title: `${label} ${tabs.length + 1}`,
-      shellType: shellType || 'cmd'
+      shellType: shellType || 'cmd',
+      ...(harness === 'blank' ? { blank: true } : harness ? { command: harness.command } : {}),
     };
+    setAddMenuOpen(false);
     setChats((current) =>
       current.map((c) => {
         if (c.id === chat.id) {
@@ -1392,7 +1435,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
       } else {
         lastClickTimeRef.current = now;
         clickTimeoutRef.current = setTimeout(() => {
-          handleAddTab('cmd');
+          setAddMenuOpen((open) => !open);
           clickTimeoutRef.current = null;
         }, 280);
       }
@@ -1501,7 +1544,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
       <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4 shrink-0">
         <div className="flex items-center gap-4 overflow-x-auto max-w-[70%] custom-scrollbar">
           <div className="flex items-center gap-1.5 shrink-0 pr-3 border-r border-white/10">
-            <Terminal className="w-4 h-4 text-emerald-400" />
+            {chat.vserver ? <Server className="w-4 h-4 text-sky-400" /> : <Terminal className="w-4 h-4 text-emerald-400" />}
             <span className="text-sm font-semibold text-white">{chat.title}</span>
           </div>
           
@@ -1551,6 +1594,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 </div>
               );
             })}
+            <div ref={addMenuRef} className="relative">
             <button
               onMouseDown={handlePlusMouseDown}
               onMouseUp={handlePlusMouseUp}
@@ -1562,11 +1606,19 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
+            {addMenuOpen && (
+              <NewTabMenu
+                harnesses={cliHarnesses}
+                onBlank={() => handleAddTab('cmd', 'blank')}
+                onHarness={(harness) => handleAddTab('cmd', harness)}
+              />
+            )}
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
+          {voice.showStartCommandButton && <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
             terminalStartCommandEnabled
               ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
               : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
@@ -1579,9 +1631,9 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             />
             <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalStartCommandEnabled ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
             <span>Start-Befehl</span>
-          </label>
+          </label>}
 
-          <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
+          {voice.showPrefixSuffixButton && <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
             terminalPrefixSuffixEnabled
               ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-medium'
               : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
@@ -1594,7 +1646,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             />
             <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalPrefixSuffixEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
             <span>Präfix/Suffix</span>
-          </label>
+          </label>}
 
           <button
             onClick={async () => {
@@ -1614,7 +1666,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             <span>Einfügen</span>
           </button>
 
-          <button
+          {voice.enabled && voice.showMicButton && <button
             onClick={toggleDictation}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-colors duration-150 ${
               listening
@@ -1631,8 +1683,8 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             ) : (
               <Mic className="w-3.5 h-3.5" />
             )}
-            <span>{listening ? 'Aufnahme...' : 'Spracheingabe'}</span>
-          </button>
+            <span>{listening ? (dictation.busy ? 'Erkenne...' : 'Aufnahme...') : 'Spracheingabe'}</span>
+          </button>}
 
           <div className="h-4 w-px bg-white/10" />
 
@@ -1683,6 +1735,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                     active={true}
                     shellType={tab.shellType}
                     chat={chat}
+                    tab={tab}
                   />
                 </div>
               </div>
@@ -1708,6 +1761,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
               active={tab.id === activeTabId}
               shellType={tab.shellType}
               chat={chat}
+              tab={tab}
             />
           ))
         )}
@@ -1718,7 +1772,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
 function HomeView() {
   const { cliHarnesses, startWorkspace, selectedProject } = useAppContext();
-  const [picking, setPicking] = useState<false | 'workspace' | 'chat'>(false);
+  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver'>(false);
   const [harnessId, setHarnessId] = useState(() => cliHarnesses[0]?.id || '');
   const [grid, setGrid] = useState(true);
   const [count, setCount] = useState(1);
@@ -1763,9 +1817,18 @@ function HomeView() {
               <MessageSquare className="w-4 h-4 text-white" />
               <span>Chat starten</span>
             </button>
+            <button
+              onClick={() => setPicking('vserver')}
+              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+            >
+              <Server className="w-4 h-4 text-white" />
+              <span>V-Server</span>
+            </button>
           </div>
         ) : picking === 'chat' ? (
           <ApiChatSetup onCancel={() => setPicking(false)} />
+        ) : picking === 'vserver' ? (
+          <VServerPanel onCancel={() => setPicking(false)} />
         ) : (
           <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-6">
             <div>

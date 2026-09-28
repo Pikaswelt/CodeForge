@@ -12,6 +12,9 @@ import MainArea from './components/MainArea';
 import NewsPopup, { shouldShowNewsPopup, dismissNewsPopup } from './components/NewsPopup';
 import { AppProvider, useAppContext } from './AppContext';
 import { isVideoPath, toFileUrl } from './media';
+import UpdateModal from './components/UpdateModal';
+import { VoiceIndicator, VoiceInstallModal } from './components/VoiceSettings';
+import { syncWakeMode } from './voice';
 
 // Modals and widgets load on demand to keep startup fast.
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
@@ -55,6 +58,11 @@ function AppLayout() {
     setShowNewsPopup(false);
     dismissNewsPopup();
   };
+
+  // Start the always-on wake word listener if it is enabled.
+  useEffect(() => {
+    void syncWakeMode();
+  }, []);
 
   // Re-check news popup when setup completes later in the session
   useEffect(() => {
@@ -233,6 +241,9 @@ function AppLayout() {
         <AnimatePresence>
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
         </AnimatePresence>
+        <UpdateModal />
+        <VoiceInstallModal />
+        <VoiceIndicator />
         <AnimatePresence>
           {!hasSetupCompleted && <SetupModal />}
         </AnimatePresence>

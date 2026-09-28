@@ -22,3 +22,15 @@
   nsExec::Exec 'taskkill /im "electron.exe" /t /f'
   Sleep 1000
 !macroend
+
+; An old uninstaller that fails (error 2) must not block the update with a
+; dialog: the new files simply overwrite the old installation.
+!macro customUnInstallCheck
+  ClearErrors
+  DetailPrint "Old uninstaller exit code $R0 ignored."
+!macroend
+
+!macro customUnInstallCheckCurrentUser
+  ClearErrors
+  DetailPrint "Old uninstaller exit code $R0 ignored."
+!macroend

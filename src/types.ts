@@ -95,13 +95,38 @@ export type Chat = {
     name: string;
     source: string;
   };
-  terminalTabs?: { id: string; title: string; shellType?: 'powershell' | 'cmd' }[];
+  terminalTabs?: TerminalTab[];
   activeTerminalTabId?: string;
   terminalLayout?: 'single' | 'grid';
   terminalGridSize?: number;
   harness?: { name: string; command: string; icon: string };
+  vserver?: VServerConnection;
   api?: { providerId?: string; provider: ApiChatProvider; baseUrl: string; model: string };
 };
+
+export type TerminalTab = {
+  id: string;
+  title: string;
+  shellType?: 'powershell' | 'cmd';
+  // Command typed into the tab after it starts (harness picked for this tab).
+  command?: string;
+  // Tab without start command even if the chat has a harness.
+  blank?: boolean;
+};
+
+// Saved V-Server (SSH host) from the home screen.
+export type VServer = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  keyPath: string;
+  keyName: string;
+  lastConnectedAt?: number;
+};
+
+export type VServerConnection = Pick<VServer, 'id' | 'name' | 'host' | 'port' | 'user' | 'keyPath'>;
 
 export type CliHarness = {
   id: string;

@@ -32,7 +32,9 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const DiscordRPC = require('discord-rpc');
 const { setupUpdater } = require('./updater.cjs');
+const { setupWhisper } = require('./whisper.cjs');
 let updater = null;
+const whisper = setupWhisper({ app, getWindow: () => mainWindow });
 
 const http = require('node:http');
 const os = require('node:os');
@@ -3025,20 +3027,87 @@ function cancelTerminalCommand(id) {
 
 const activeShells = new Map();
 
-async function createShellSession(event, { chatId, cwd, shellType, externalServer }) {
+// Interactive SSH login to a saved V-Server: a plain `ssh` inside the PTY, so
+// prompts (host key, password, passphrase) behave like in a normal terminal.
+async function buildVServerSshArgs(vserver) {
+  const host = String(vserver.host || '').trim();
+  const user = String(vserver.user || '').trim();
+  const port = Number(vserver.port || 22);
+  const keyPath = String(vserver.keyPath || '').trim();
+  if (!host || !/^[a-z0-9._:\[\]-]+$/i.test(host) || host.startsWith('-')) throw new Error('V-Server: Adresse ist ungueltig.');
+  if (user && (!/^[a-z0-9._~@-]+$/i.test(user) || user.startsWith('-'))) throw new Error('V-Server: Benutzername ist ungueltig.');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('V-Server: Port ist ungueltig.');
+  if (keyPath && !fs.existsSync(keyPath)) throw new Error('V-Server: Key-Datei fehlt. Bitte Key neu hochladen.');
+  const ssh = await findExecutable('ssh');
+  if (!ssh) throw new Error('OpenSSH wurde nicht gefunden. Installiere den Windows-OpenSSH-Client (Einstellungen > Apps > Optionale Features).');
+  const args = ['-p', String(port), '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30', '-o', 'ConnectTimeout=15'];
+  if (keyPath) args.push('-i', keyPath, '-o', 'IdentitiesOnly=yes');
+  args.push('-t', `${user ? `${user}@` : ''}${host}`);
+  return { command: ssh, args };
+}
+
+// Copies an uploaded private key into CodeForge's own folder with LF line endings
+// and owner-only permissions (OpenSSH refuses keys that others can read).
+function importSshKey(_event, { sourcePath, name } = {}) {
+  if (!sourcePath || !fs.existsSync(sourcePath)) throw new Error('Key-Datei nicht gefunden.');
+  const content = fs.readFileSync(sourcePath, 'utf8');
+  if (!/PRIVATE KEY/.test(content) && !/PuTTY-User-Key-File/.test(content)) {
+    throw new Error('Das ist kein privater SSH-Key (erwartet z.B. id_ed25519 oder id_rsa, nicht die .pub-Datei).');
+  }
+  if (/PuTTY-User-Key-File/.test(content)) {
+    throw new Error('PuTTY-Keys (.ppk) werden nicht unterstuetzt. In PuTTYgen: Conversions > Export OpenSSH key.');
+  }
+  const dir = path.join(app.getPath('userData'), 'ssh-keys');
+  fs.mkdirSync(dir, { recursive: true });
+  const safeName = String(name || path.basename(sourcePath)).replace(/[^a-z0-9._-]/gi, '_').slice(0, 60) || 'key';
+  const target = path.join(dir, `${Date.now().toString(36)}-${safeName}`);
+  fs.writeFileSync(target, content.replace(/\r\n/g, '\n').replace(/\n*$/, '\n'), { mode: 0o600 });
+  if (process.platform === 'win32') {
+    const user = process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${process.env.USERNAME}` : process.env.USERNAME;
+    try {
+      require('node:child_process').execFileSync('icacls', [target, '/inheritance:r', '/grant:r', `${user}:F`], { windowsHide: true, stdio: 'ignore' });
+    } catch (_) {}
+  }
+  return { keyPath: target, keyName: path.basename(sourcePath) };
+}
+
+function removeSshKey(_event, keyPath) {
+  const dir = path.join(app.getPath('userData'), 'ssh-keys');
+  const resolved = path.resolve(String(keyPath || ''));
+  if (!resolved.startsWith(dir + path.sep)) return false;
+  fs.rmSync(resolved, { force: true });
+  return true;
+}
+
+async function createShellSession(event, { chatId, cwd, shellType, externalServer, vserver }) {
   console.log(`[Shell] Creating PTY session for chat: ${chatId}, requested cwd: ${cwd}, shellType: ${shellType}`);
   if (activeShells.has(chatId)) {
     console.log(`[Shell] PTY Session already active for chat: ${chatId}`);
     return;
   }
-  
+
   const isWin = process.platform === 'win32';
   let shell = isWin ? (process.env.COMSPEC || 'cmd.exe') : process.env.SHELL || 'bash';
   let args = [];
   const env = { ...process.env };
 
-  const server = externalServer?.enabled ? normalizeExternalServerConfig(externalServer) : null;
-  if (server) {
+  let server = null;
+  if (vserver) {
+    try {
+      const ssh = await buildVServerSshArgs(vserver);
+      shell = ssh.command;
+      args = ssh.args;
+      cwd = app.getPath('home');
+    } catch (error) {
+      event.sender.send(`shell:output:${chatId}`, { type: 'stderr', text: `\x1b[31m${error.message}\x1b[0m\r\n` });
+      return;
+    }
+  } else {
+    server = externalServer?.enabled ? normalizeExternalServerConfig(externalServer) : null;
+  }
+  if (vserver) {
+    // args already prepared above
+  } else if (server) {
     const sshExe = await findExecutable('ssh') || 'ssh';
     shell = sshExe;
     args = [
@@ -3609,137 +3678,14 @@ ipcMain.handle('device:status', () => {
     return { running: false };
   });
 
-  // Native Speech Recognition Engine (Windows System.Speech / SAPI worker)
-  let activeSpeechProcess = null;
-
-  function stopNativeSpeech() {
-    if (activeSpeechProcess) {
-      try {
-        activeSpeechProcess.stdin.write('stop\r\n');
-        activeSpeechProcess.stdin.end();
-      } catch (_) {}
-      const procToKill = activeSpeechProcess;
-      setTimeout(() => {
-        if (procToKill && !procToKill.killed) {
-          try { procToKill.kill(); } catch (_) {}
-        }
-      }, 500);
-      activeSpeechProcess = null;
-    }
-  }
-
-  function startNativeSpeech(lang = 'de-DE') {
-    stopNativeSpeech();
-    return new Promise((resolve) => {
-      if (process.platform !== 'win32') {
-        return resolve({ ok: false, error: 'Spracheingabe ist derzeit nur unter Windows verfuegbar.' });
-      }
-
-      // Synchronous Recognize() loop: event actions (Register-ObjectEvent -Action)
-      // never fire while the script blocks, so results were never delivered.
-      // The worker is stopped by killing the process (see stopNativeSpeech).
-      const safeLang = String(lang || 'de-DE').replace(/[^A-Za-z-]/g, '');
-      const psScript = `
-$OutputEncoding = [System.Text.Encoding]::UTF8
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Speech
-function Send($obj) { [Console]::WriteLine(($obj | ConvertTo-Json -Compress)); [Console]::Out.Flush() }
-try {
-    $all = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers()
-    $info = $all | Where-Object { $_.Culture.Name -eq '${safeLang}' } | Select-Object -First 1
-    if (-not $info) { $info = $all | Where-Object { $_.Culture.TwoLetterISOLanguageName -eq '${safeLang}'.Substring(0, 2) } | Select-Object -First 1 }
-    if (-not $info) { $info = $all | Select-Object -First 1 }
-    if (-not $info) { throw 'Keine Windows-Spracherkennung installiert (Einstellungen > Zeit und Sprache > Sprache > Sprachpaket mit Spracherkennung).' }
-    $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($info)
-    $engine.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
-    $engine.SetInputToDefaultAudioDevice()
-    $engine.InitialSilenceTimeout = [TimeSpan]::FromSeconds(30)
-    $engine.EndSilenceTimeout = [TimeSpan]::FromMilliseconds(700)
-    Send @{ type = 'ready'; culture = $info.Culture.Name }
-    while ($true) {
-        $result = $engine.Recognize()
-        if ($result -and $result.Text) {
-            Send @{ type = 'final'; text = $result.Text; confidence = $result.Confidence }
-        }
-    }
-} catch {
-    Send @{ type = 'error'; error = $_.Exception.Message }
-}
-`;
-
-      const b64 = Buffer.from(psScript, 'utf16le').toString('base64');
-      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', b64], {
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      activeSpeechProcess = child;
-      let resolved = false;
-
-      child.stdout.on('data', (data) => {
-        const lines = data.toString().split('\n').map(l => l.trim()).filter(Boolean);
-        for (const line of lines) {
-          try {
-            const parsed = JSON.parse(line);
-            if (parsed.type === 'ready' || parsed.type === 'error') {
-              if (!resolved) {
-                resolved = true;
-                resolve(parsed.type === 'ready' ? { ok: true } : { ok: false, error: parsed.error });
-              }
-            }
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('speech:result', parsed);
-            }
-            broadcast({ type: 'ipc-event', channel: 'speech:result', data: parsed });
-          } catch (_) {}
-        }
-      });
-
-      child.stderr.on('data', (data) => {
-        const text = data.toString();
-        if (!text.includes('#< CLIXML') && !text.includes('System.Management.Automation')) {
-          console.error('[Speech Worker stderr]:', text);
-        }
-      });
-
-      child.on('error', (err) => {
-        if (!resolved) {
-          resolved = true;
-          resolve({ ok: false, error: err.message });
-        }
-        if (activeSpeechProcess === child) activeSpeechProcess = null;
-      });
-
-      child.on('close', () => {
-        // Ignore the close of a worker that was already replaced by a newer one.
-        if (activeSpeechProcess !== child && activeSpeechProcess !== null) return;
-        activeSpeechProcess = null;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('speech:result', { type: 'stopped' });
-        }
-      });
-
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          resolve({ ok: true });
-        }
-      }, 4000);
-    });
-  }
-
-  ipcMain.handle('speech:start', (_event, { lang } = {}) => {
-    return startNativeSpeech(lang);
-  });
-
-  ipcMain.handle('speech:stop', () => {
-    stopNativeSpeech();
-    return { ok: true };
-  });
-
-  ipcMain.handle('speech:status', () => {
-    return { listening: activeSpeechProcess !== null, supported: process.platform === 'win32' };
-  });
+  // Local Whisper speech-to-text (installed on demand, see whisper.cjs).
+  ipcMain.handle('whisper:status', () => whisper.status());
+  ipcMain.handle('whisper:install', whisper.install);
+  ipcMain.handle('whisper:remove', () => whisper.remove());
+  ipcMain.handle('whisper:transcribe', whisper.transcribe);
+  ipcMain.handle('whisper:warm-up', (_event, model) => whisper.warmUp(model));
+  ipcMain.handle('ssh:import-key', importSshKey);
+  ipcMain.handle('ssh:remove-key', removeSshKey);
 
   ipcMain.on('window:minimize', () => mainWindow?.minimize());
   ipcMain.on('window:maximize', () => {
@@ -3747,7 +3693,6 @@ try {
     mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
   });
   ipcMain.on('window:close', () => {
-    stopNativeSpeech();
     mainWindow?.close();
   });
 
@@ -3767,7 +3712,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  try { stopNativeSpeech(); } catch (_) {}
+  try { whisper.stopServer(); } catch (_) {}
   for (const [runId, child] of activeProcesses) {
     try {
       if (child && !child.killed) {
@@ -3789,7 +3734,9 @@ app.on('before-quit', () => {
 });
 
 app.on('quit', () => {
-  if (process.platform === 'win32') {
+  // Never tree-kill while an update is installing: the installer script is a
+  // child of this process and /t would kill it too.
+  if (process.platform === 'win32' && !updater?.isInstalling()) {
     try { spawn('taskkill', ['/pid', String(process.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' }); } catch (_) {}
   }
   process.exit(0);

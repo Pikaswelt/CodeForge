@@ -1,59 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { finishDictation, registerVoiceTarget, toggleDictation, useVoiceState } from './voice';
 
-// Windows dictation via the native speech worker in the main process.
-// Keeps exactly one result listener alive and cleans it up on stop/unmount.
-export function useDictation(onText: (text: string) => void) {
-  const [listening, setListening] = useState(false);
-  const [error, setError] = useState('');
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+// Connects a view to the shared Whisper voice engine: while mounted, the view
+// receives dictated text (onText) and the optional "send" (onSubmit).
+export function useDictation(onText: (text: string) => void, onSubmit?: () => void) {
+  const state = useVoiceState();
   const onTextRef = useRef(onText);
+  const onSubmitRef = useRef(onSubmit);
   onTextRef.current = onText;
+  onSubmitRef.current = onSubmit;
 
-  const detach = () => {
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = null;
-  };
+  useEffect(
+    () =>
+      registerVoiceTarget({
+        insert: (text) => onTextRef.current(text),
+        submit: () => onSubmitRef.current?.(),
+      }),
+    [],
+  );
 
   const stop = useCallback(() => {
-    window.agentWorkspace?.stopSpeechRecognition?.().catch(() => {});
-    detach();
-    setListening(false);
+    void finishDictation();
   }, []);
 
-  const start = useCallback(async () => {
-    const workspace = window.agentWorkspace;
-    if (!workspace?.startSpeechRecognition || !workspace.onSpeechResult) {
-      setError('Spracheingabe ist nur in der Desktop-App verfuegbar.');
-      return;
-    }
-    setError('');
-    detach();
-    unsubscribeRef.current = workspace.onSpeechResult((payload) => {
-      if (payload.type === 'final' && payload.text) {
-        onTextRef.current(payload.text);
-      } else if (payload.type === 'error') {
-        setError(payload.error || 'Spracherkennung fehlgeschlagen.');
-        detach();
-        setListening(false);
-      } else if (payload.type === 'stopped') {
-        detach();
-        setListening(false);
-      }
-    });
-    setListening(true);
-    const result = await workspace.startSpeechRecognition({ lang: navigator.language || 'de-DE' });
-    if (!result.ok) {
-      setError(result.error || 'Spracherkennung konnte nicht gestartet werden.');
-      stop();
-    }
-  }, [stop]);
-
-  useEffect(() => stop, [stop]);
-
-  const toggle = useCallback(() => {
-    if (listening) stop();
-    else void start();
-  }, [listening, start, stop]);
-
-  return { listening, error, toggle, stop };
+  return {
+    listening: state.mode === 'dictating',
+    busy: state.transcribing,
+    level: state.level,
+    error: state.error,
+    toggle: toggleDictation,
+    stop,
+  };
 }
