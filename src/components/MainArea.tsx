@@ -14,6 +14,7 @@ import {
   ExternalLink,
   FileCode2,
   FileText,
+  FolderOpen,
   Gamepad2,
   Home,
   Server,
@@ -40,9 +41,10 @@ import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
 import { useDictation } from '../useDictation';
 import { useVoiceSettings } from '../voice';
-import { NewTabMenu, VServerPanel } from './VServers';
+import { AddVServerDialog, NewTabMenu, VServerPanel, useVServers } from './VServers';
+import { SftpBrowser } from './SftpBrowser';
 import { isVideoPath, toFileUrl } from '../media';
-import type { Chat, CliHarness, HomeAppTab, Message, ResponseDisplayMode, TerminalTab } from '../types';
+import type { Chat, CliHarness, HomeAppTab, Message, ResponseDisplayMode, TerminalTab, VServerConnection } from '../types';
 import type { HomeApp } from '../types';
 import libraryBannerUrl from '../../assets/library-banner.png';
 import { Terminal as XTerm } from '@xterm/xterm';
@@ -1011,8 +1013,8 @@ function TerminalInstance({
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const lastNotificationTimeRef = useRef<number>(0);
-  // Tabs of an SSH chat run on the V-Server unless they were opened on this PC.
-  const onVserver = Boolean(chat.vserver) && tab?.location !== 'local';
+  // A tab may target its own V-Server; otherwise the whole chat does. 'local' tabs of an SSH chat run on this PC.
+  const sshServer = tab?.location === 'local' ? undefined : tab?.vserver ?? chat.vserver;
 
   const {
     terminalStartCommandEnabled,
@@ -1089,12 +1091,12 @@ function TerminalInstance({
       chatId: tabId,
       cwd: startPath,
       shellType,
-      externalServer: !chat.vserver && externalServer.enabled ? externalServer : undefined,
-      vserver: onVserver ? chat.vserver : undefined,
+      externalServer: !chat.vserver && !sshServer && externalServer.enabled ? externalServer : undefined,
+      vserver: sshServer,
     });
 
     // SSH login takes longer than a local shell before a command can be typed.
-    const commandDelay = onVserver ? 3500 : 1000;
+    const commandDelay = sshServer ? 3500 : 1000;
     if (tab?.command || tab?.blank) {
       if (tab.command && !startedTerminalTabs.has(tabId)) {
         startedTerminalTabs.add(tabId);
@@ -1103,7 +1105,7 @@ function TerminalInstance({
           window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
         }, commandDelay);
       }
-    } else if (onVserver) {
+    } else if (sshServer) {
       // Plain SSH session: no local start command.
     } else if (chat.mode === 'standard') {
       const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
@@ -1323,6 +1325,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const gridSize = Math.max(1, Math.min(4, currentChat.terminalGridSize || 4));
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
+  const activeServer = tabs.find((tab) => tab.id === activeTabId)?.vserver ?? currentChat.vserver;
 
   // Dictation writes recognized text into the active terminal tab.
   const activeTabRef = useRef(activeTabId);
@@ -1378,24 +1381,32 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     return () => window.removeEventListener('mousedown', close);
   }, [addMenuOpen]);
 
+  const [addServerOpen, setAddServerOpen] = useState(false);
+  const [sftpServer, setSftpServer] = useState<VServerConnection | null>(null);
+  const savedServers = useVServers();
+
   const handleAddTab = (
     shellType?: 'powershell' | 'cmd',
     harness?: CliHarness | 'blank',
-    location?: 'local' | 'vserver',
+    target?: VServerConnection | 'local',
   ) => {
     const newTabId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    const tabLocation = chat.vserver ? location || 'vserver' : undefined;
+    const server = target && target !== 'local' ? target : undefined;
+    const local = target === 'local' || (target === undefined && !chat.vserver);
     const label = harness && harness !== 'blank'
       ? harness.name
-      : tabLocation === 'vserver' && chat.vserver
-        ? chat.vserver.name
-        : shellType === 'powershell' ? 'PowerShell' : 'Terminal';
+      : server
+        ? server.name
+        : !local && chat.vserver
+          ? chat.vserver.name
+          : shellType === 'powershell' ? 'PowerShell' : 'Terminal';
     const newTab: TerminalTab = {
       id: newTabId,
-      title: `${label} ${tabs.length + 1}`,
+      title: server ? label : `${label} ${tabs.length + 1}`,
       shellType: shellType || 'cmd',
-      ...(tabLocation ? { location: tabLocation } : {}),
-      ...(harness === 'blank' ? { blank: true } : harness ? { command: harness.command } : {}),
+      ...(target === 'local' && chat.vserver ? { location: 'local' as const } : {}),
+      ...(server ? { vserver: { id: server.id, name: server.name, host: server.host, port: server.port, user: server.user, keyPath: server.keyPath } } : {}),
+      ...(harness === 'blank' || (server && !harness) ? { blank: true } : harness ? { command: harness.command } : {}),
     };
     setAddMenuOpen(false);
     setChats((current) =>
@@ -1584,14 +1595,14 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                     />
                   ) : (
                     <span
-                      className="truncate max-w-[100px]"
+                      className="flex items-center gap-1.5 truncate max-w-[120px]"
                       onDoubleClick={() => startEditing(tab.id, tab.title)}
                       title="Doppelklick zum Umbenennen"
                     >
-                      {tab.title}
+                      {tab.location !== 'local' && (tab.vserver || chat.vserver) && <Server className="w-3 h-3 shrink-0 text-sky-400" />}
+                      <span className="truncate">{tab.title}</span>
                     </span>
                   )}
-                  {chat.vserver && tab.location !== 'local' && <Server className="w-3 h-3 shrink-0 text-sky-400" />}
                   {tabs.length > 1 && (
                     <button
                       onClick={(e) => void handleCloseTab(e, tab.id)}
@@ -1618,9 +1629,19 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             {addMenuOpen && (
               <NewTabMenu
                 harnesses={cliHarnesses}
-                vserverName={chat.vserver?.name}
-                onBlank={(location) => handleAddTab('cmd', 'blank', location)}
-                onHarness={(harness, location) => handleAddTab('cmd', harness, location)}
+                servers={savedServers}
+                sshChat={Boolean(chat.vserver)}
+                onBlank={(target) => handleAddTab('cmd', 'blank', target)}
+                onHarness={(harness, target) => handleAddTab('cmd', harness, target)}
+                onServer={(server) => handleAddTab('cmd', undefined, server)}
+                onAddServer={() => {
+                  setAddMenuOpen(false);
+                  setAddServerOpen(true);
+                }}
+                onSftp={(server) => {
+                  setAddMenuOpen(false);
+                  setSftpServer(server);
+                }}
               />
             )}
             </div>
@@ -1657,6 +1678,17 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalPrefixSuffixEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
             <span>Präfix/Suffix</span>
           </label>}
+
+          {activeServer && (
+            <button
+              onClick={() => setSftpServer(activeServer)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-sky-400/20 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-xs cursor-pointer select-none transition-colors duration-150"
+              title={`SFTP-Dateien von ${activeServer.name}`}
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              <span>SFTP</span>
+            </button>
+          )}
 
           <button
             onClick={async () => {
@@ -1776,6 +1808,17 @@ function TerminalChatView({ chat }: { chat: Chat }) {
           ))
         )}
       </div>
+
+      {addServerOpen && (
+        <AddVServerDialog
+          onCancel={() => setAddServerOpen(false)}
+          onSaved={(server) => {
+            setAddServerOpen(false);
+            handleAddTab('cmd', undefined, server);
+          }}
+        />
+      )}
+      {sftpServer && <SftpBrowser server={sftpServer} onClose={() => setSftpServer(null)} />}
     </main>
   );
 }

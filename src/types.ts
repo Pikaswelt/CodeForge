@@ -112,8 +112,18 @@ export type TerminalTab = {
   command?: string;
   // Tab without start command even if the chat has a harness.
   blank?: boolean;
-  // In an SSH chat: 'local' runs on this PC, otherwise the tab runs on the V-Server.
-  location?: 'local' | 'vserver';
+  // In an SSH chat: 'local' makes this tab run on this PC instead of the V-Server.
+  location?: 'local';
+  // SSH login to a saved V-Server; lets one workspace hold tabs for several servers.
+  vserver?: VServerConnection;
+};
+
+export type SftpEntry = {
+  name: string;
+  type: 'dir' | 'file' | 'link';
+  size: number;
+  modifiedAt: number;
+  mode?: number;
 };
 
 // Saved V-Server (SSH host) from the home screen.
