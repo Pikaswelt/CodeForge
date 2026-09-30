@@ -5,7 +5,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { Client } = require('ssh2');
+let Client = null;
+try {
+  ({ Client } = require('ssh2'));
+} catch (err) {
+  console.warn('[SFTP] Failed to load ssh2 module:', err?.message || err);
+}
 
 const IDLE_MS = 5 * 60 * 1000;
 const connections = new Map();
@@ -93,6 +98,9 @@ function disconnect(id) {
 function openConnection(server, secret) {
   const config = validateServer(server);
   return new Promise((resolve, reject) => {
+    if (!Client) {
+      return reject(new Error('Das SFTP-Modul (ssh2) ist nicht verfuegbar.'));
+    }
     const client = new Client();
     let hostKeyChanged = false;
     const options = {
