@@ -112,6 +112,8 @@ export type TerminalTab = {
   command?: string;
   // Tab without start command even if the chat has a harness.
   blank?: boolean;
+  // In an SSH chat: 'local' runs on this PC, otherwise the tab runs on the V-Server.
+  location?: 'local' | 'vserver';
 };
 
 // Saved V-Server (SSH host) from the home screen.

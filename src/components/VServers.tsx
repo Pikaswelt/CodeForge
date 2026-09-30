@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { KeyRound, Loader2, Pencil, Plug, Plus, Server, SquareTerminal, Trash2, Upload } from 'lucide-react';
+import { KeyRound, Loader2, Monitor, Pencil, Plug, Plus, Server, SquareTerminal, Trash2, Upload } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { harnessIcon } from '../harnessIcons';
 import type { CliHarness, VServer } from '../types';
@@ -250,18 +250,52 @@ function VServerForm({ initial, onCancel, onSave }: { initial?: VServer; onCance
 }
 
 // Menu of the "+" button in a terminal: empty terminal or start a harness.
+// In an SSH chat it first asks where the new tab runs (this PC or the V-Server).
 export function NewTabMenu({
   harnesses,
+  vserverName,
   onBlank,
   onHarness,
 }: {
   harnesses: CliHarness[];
-  onBlank(): void;
-  onHarness(harness: CliHarness): void;
+  vserverName?: string;
+  onBlank(location: 'local' | 'vserver'): void;
+  onHarness(harness: CliHarness, location: 'local' | 'vserver'): void;
 }) {
+  const [location, setLocation] = useState<'local' | 'vserver' | null>(vserverName ? null : 'local');
+  const box = 'absolute left-0 top-full z-50 mt-2 w-60 rounded-xl border border-white/10 bg-[#18161a]/95 p-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl';
+
+  if (!location) {
+    return (
+      <div className={box}>
+        <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">Wo soll das Tab laufen?</div>
+        <button onClick={() => setLocation('local')} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-white/[0.07]">
+          <Monitor className="w-4 h-4 text-emerald-400" />
+          <span>
+            <span className="block font-medium">Auf diesem PC</span>
+            <span className="block text-[10px] text-zinc-500">Lokales Terminal</span>
+          </span>
+        </button>
+        <button onClick={() => setLocation('vserver')} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-white/[0.07]">
+          <Server className="w-4 h-4 text-sky-400" />
+          <span className="min-w-0">
+            <span className="block truncate font-medium">Auf dem V-Server</span>
+            <span className="block truncate text-[10px] text-zinc-500">{vserverName}</span>
+          </span>
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="absolute left-0 top-full z-50 mt-2 w-60 rounded-xl border border-white/10 bg-[#18161a]/95 p-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl">
-      <button onClick={onBlank} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-white/[0.07]">
+    <div className={box}>
+      {vserverName && (
+        <button onClick={() => setLocation(null)} className="mb-1 flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[10px] uppercase tracking-wider text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300">
+          {location === 'vserver' ? <Server className="w-3 h-3 text-sky-400" /> : <Monitor className="w-3 h-3 text-emerald-400" />}
+          {location === 'vserver' ? vserverName : 'Dieser PC'} · aendern
+        </button>
+      )}
+      <button onClick={() => onBlank(location)} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-white/[0.07]">
         <SquareTerminal className="w-4 h-4 text-zinc-400" />
         <span>
           <span className="block font-medium">Leer</span>
@@ -278,7 +312,7 @@ export function NewTabMenu({
           return (
             <button
               key={harness.id}
-              onClick={() => onHarness(harness)}
+              onClick={() => onHarness(harness, location)}
               className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-white/[0.07]"
             >
               <Icon className="w-4 h-4 shrink-0 text-orange-300" />

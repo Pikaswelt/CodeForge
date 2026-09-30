@@ -1011,6 +1011,8 @@ function TerminalInstance({
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const lastNotificationTimeRef = useRef<number>(0);
+  // Tabs of an SSH chat run on the V-Server unless they were opened on this PC.
+  const onVserver = Boolean(chat.vserver) && tab?.location !== 'local';
 
   const {
     terminalStartCommandEnabled,
@@ -1088,11 +1090,11 @@ function TerminalInstance({
       cwd: startPath,
       shellType,
       externalServer: !chat.vserver && externalServer.enabled ? externalServer : undefined,
-      vserver: chat.vserver,
+      vserver: onVserver ? chat.vserver : undefined,
     });
 
     // SSH login takes longer than a local shell before a command can be typed.
-    const commandDelay = chat.vserver ? 3500 : 1000;
+    const commandDelay = onVserver ? 3500 : 1000;
     if (tab?.command || tab?.blank) {
       if (tab.command && !startedTerminalTabs.has(tabId)) {
         startedTerminalTabs.add(tabId);
@@ -1101,7 +1103,7 @@ function TerminalInstance({
           window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
         }, commandDelay);
       }
-    } else if (chat.vserver) {
+    } else if (onVserver) {
       // Plain SSH session: no local start command.
     } else if (chat.mode === 'standard') {
       const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
@@ -1376,17 +1378,23 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     return () => window.removeEventListener('mousedown', close);
   }, [addMenuOpen]);
 
-  const handleAddTab = (shellType?: 'powershell' | 'cmd', harness?: CliHarness | 'blank') => {
+  const handleAddTab = (
+    shellType?: 'powershell' | 'cmd',
+    harness?: CliHarness | 'blank',
+    location?: 'local' | 'vserver',
+  ) => {
     const newTabId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const tabLocation = chat.vserver ? location || 'vserver' : undefined;
     const label = harness && harness !== 'blank'
       ? harness.name
-      : chat.vserver
+      : tabLocation === 'vserver' && chat.vserver
         ? chat.vserver.name
         : shellType === 'powershell' ? 'PowerShell' : 'Terminal';
     const newTab: TerminalTab = {
       id: newTabId,
       title: `${label} ${tabs.length + 1}`,
       shellType: shellType || 'cmd',
+      ...(tabLocation ? { location: tabLocation } : {}),
       ...(harness === 'blank' ? { blank: true } : harness ? { command: harness.command } : {}),
     };
     setAddMenuOpen(false);
@@ -1413,7 +1421,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     }
     plusButtonTimerRef.current = setTimeout(() => {
       isLongPressRef.current = true;
-      handleAddTab('powershell');
+      handleAddTab('powershell', undefined, 'local');
     }, 600); // 600ms hold
   };
 
@@ -1583,6 +1591,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                       {tab.title}
                     </span>
                   )}
+                  {chat.vserver && tab.location !== 'local' && <Server className="w-3 h-3 shrink-0 text-sky-400" />}
                   {tabs.length > 1 && (
                     <button
                       onClick={(e) => void handleCloseTab(e, tab.id)}
@@ -1609,8 +1618,9 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             {addMenuOpen && (
               <NewTabMenu
                 harnesses={cliHarnesses}
-                onBlank={() => handleAddTab('cmd', 'blank')}
-                onHarness={(harness) => handleAddTab('cmd', harness)}
+                vserverName={chat.vserver?.name}
+                onBlank={(location) => handleAddTab('cmd', 'blank', location)}
+                onHarness={(harness, location) => handleAddTab('cmd', harness, location)}
               />
             )}
             </div>
