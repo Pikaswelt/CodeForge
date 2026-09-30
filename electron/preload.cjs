@@ -102,4 +102,12 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   },
   importSshKey: (input) => ipcRenderer.invoke('ssh:import-key', input),
   removeSshKey: (keyPath) => ipcRenderer.invoke('ssh:remove-key', keyPath),
+  sftpConnect: (input) => ipcRenderer.invoke('sftp:connect', input),
+  sftpList: (input) => ipcRenderer.invoke('sftp:list', input),
+  sftpDisconnect: (id) => ipcRenderer.invoke('sftp:disconnect', id),
+  sftpMkdir: (input) => ipcRenderer.invoke('sftp:mkdir', input),
+  sftpRename: (input) => ipcRenderer.invoke('sftp:rename', input),
+  sftpDelete: (input) => ipcRenderer.invoke('sftp:delete', input),
+  sftpDownload: (input) => ipcRenderer.invoke('sftp:download', input),
+  sftpUpload: (input) => ipcRenderer.invoke('sftp:upload', input),
 });

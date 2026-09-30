@@ -33,6 +33,7 @@ const crypto = require('node:crypto');
 const DiscordRPC = require('discord-rpc');
 const { setupUpdater } = require('./updater.cjs');
 const { setupWhisper } = require('./whisper.cjs');
+const sftp = require('./sftp.cjs');
 let updater = null;
 const whisper = setupWhisper({ app, getWindow: () => mainWindow });
 
@@ -3687,6 +3688,52 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('ssh:import-key', importSshKey);
   ipcMain.handle('ssh:remove-key', removeSshKey);
 
+  // SFTP file access for saved V-Servers (see sftp.cjs).
+  sftp.init(app.getPath('userData'));
+  const sftpErrorMessage = (error) => {
+    const err = new Error(error?.message || String(error));
+    if (error?.code === 'NEED_SECRET') err.message = `NEED_SECRET: ${err.message}`;
+    return err;
+  };
+  const sftpSafe = (fn) => async (_event, input = {}) => {
+    try {
+      return await fn(input);
+    } catch (error) {
+      throw sftpErrorMessage(error);
+    }
+  };
+  const baseName = (remotePath) => String(remotePath).replace(/\/+$/, '').split('/').pop() || 'download';
+  ipcMain.handle('sftp:connect', sftpSafe(({ vserver, secret }) => sftp.connect(vserver, secret)));
+  ipcMain.handle('sftp:list', sftpSafe(({ vserver, path: remotePath }) => sftp.list(vserver, remotePath)));
+  ipcMain.handle('sftp:disconnect', (_event, id) => sftp.disconnect(String(id || '')));
+  ipcMain.handle('sftp:mkdir', sftpSafe(({ vserver, path: remotePath }) => sftp.mkdirRemote(vserver, remotePath)));
+  ipcMain.handle('sftp:rename', sftpSafe(({ vserver, from, to }) => sftp.rename(vserver, from, to)));
+  ipcMain.handle('sftp:delete', sftpSafe(({ vserver, path: remotePath }) => sftp.remove(vserver, remotePath)));
+  ipcMain.handle('sftp:download', sftpSafe(async ({ vserver, path: remotePath }) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Datei speichern unter',
+      defaultPath: path.join(app.getPath('downloads'), baseName(remotePath)),
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    await sftp.downloadFile(vserver, remotePath, result.filePath);
+    return { canceled: false, localPath: result.filePath };
+  }));
+  ipcMain.handle('sftp:upload', sftpSafe(async ({ vserver, path: remoteDir }) => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Dateien zum Hochladen auswaehlen',
+      defaultPath: app.getPath('downloads'),
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (result.canceled || !result.filePaths.length) return { canceled: true, uploaded: [] };
+    const uploaded = [];
+    for (const localPath of result.filePaths) {
+      const name = path.basename(localPath);
+      await sftp.uploadFile(vserver, localPath, sftp.joinRemote(remoteDir, name));
+      uploaded.push(name);
+    }
+    return { canceled: false, uploaded };
+  }));
+
   ipcMain.on('window:minimize', () => mainWindow?.minimize());
   ipcMain.on('window:maximize', () => {
     if (!mainWindow) return;
@@ -3713,6 +3760,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   try { whisper.stopServer(); } catch (_) {}
+  try { sftp.disconnectAll(); } catch (_) {}
   for (const [runId, child] of activeProcesses) {
     try {
       if (child && !child.killed) {

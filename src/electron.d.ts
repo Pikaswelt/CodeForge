@@ -1,5 +1,5 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
-import type { VServerConnection, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
+import type { VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
 
 type NativeTabBounds = {
   x: number;
@@ -166,6 +166,14 @@ declare global {
       onWhisperProgress(callback: (payload: { type: 'progress' | 'done' | 'error'; label?: string; percent?: number; received?: number; total?: number; error?: string }) => void): () => void;
       importSshKey(input: { sourcePath: string; name?: string }): Promise<{ keyPath: string; keyName: string }>;
       removeSshKey(keyPath: string): Promise<boolean>;
+      sftpConnect(input: { vserver: VServerConnection; secret?: string }): Promise<{ home: string }>;
+      sftpList(input: { vserver: VServerConnection; path: string }): Promise<{ path: string; entries: SftpEntry[] }>;
+      sftpDisconnect(id: string): Promise<boolean>;
+      sftpMkdir(input: { vserver: VServerConnection; path: string }): Promise<void>;
+      sftpRename(input: { vserver: VServerConnection; from: string; to: string }): Promise<void>;
+      sftpDelete(input: { vserver: VServerConnection; path: string }): Promise<void>;
+      sftpDownload(input: { vserver: VServerConnection; path: string }): Promise<{ canceled: boolean; localPath?: string }>;
+      sftpUpload(input: { vserver: VServerConnection; path: string }): Promise<{ canceled: boolean; uploaded: string[] }>;
     };
   }
 }
