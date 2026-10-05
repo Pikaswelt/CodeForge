@@ -9,6 +9,7 @@ import TutorialModal from './TutorialModal';
 import { HARNESS_ICONS, harnessIcon } from '../harnessIcons';
 import { isVideoPath, toFileUrl } from '../media';
 import { ApiProvidersSettings } from './ApiChat';
+import { AgyAccountsSettings } from './AgyAccounts';
 import type { CliHarness, ProviderId } from '../types';
 
 const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
@@ -406,6 +407,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 </p>
               </section>
               )}
+
+              {!mobileMode && <AgyAccountsSettings onClose={onClose} />}
 
               {!mobileMode && (
               <section>

@@ -177,6 +177,7 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
       };
     },
     openExternal: (url: string) => invoke('shell:open-external', url),
+    openInChrome: (url: string) => invoke('shell:open-in-chrome', url),
     openPath: (targetPath: string) => invoke('shell:open-path', targetPath),
     getActions: (dirPath: string) => invoke('actions:list', dirPath),
     playAction: (dirPath: string, name: string) => invoke('actions:play', dirPath, name),
@@ -202,6 +203,8 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
     writeToShellSession: (request: any) => invoke('shell:write', request),
     killShellSession: (chatId: string) => invoke('shell:kill', chatId),
     resizeShellSession: (request: any) => invoke('shell:resize', request),
+    getAgyAccountsStatus: (accountIds: string[]) => invoke('agy-accounts:status', accountIds),
+    removeAgyAccountProfile: (accountId: string) => invoke('agy-accounts:remove-profile', accountId),
     onShellOutput: (chatId: string, callback: any) => {
       const channel = `shell:output:${chatId}`;
       if (!eventListeners.has(channel)) eventListeners.set(channel, []);
