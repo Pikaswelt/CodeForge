@@ -2,20 +2,26 @@
 # CodeForge CLI: start Antigravity (agy) with one of several saved Google accounts.
 # Each account gets its own HOME folder, so agy keeps a separate login per account
 # (agy stores its OAuth token as a file below HOME on SSH/Linux sessions).
+# Sessions run in tmux: they survive a dropped SSH connection and end only when closed.
 set -euo pipefail
 
-REAL_HOME="${HOME}"
+REAL_HOME="${CODEFORGE_REAL_HOME:-$HOME}"
 ROOT="${CODEFORGE_HOME:-$REAL_HOME/.codeforge}/agy-accounts"
+SELF="$(readlink -f "$0")"
 AGY_BIN="$(command -v agy || true)"
 AGY_ARGS=(--dangerously-skip-permissions)
+PREFIX="cf-"
 
 c_bold=$'\e[1m'; c_dim=$'\e[2m'; c_or=$'\e[38;5;208m'; c_gr=$'\e[32m'; c_red=$'\e[31m'; c_off=$'\e[0m'
 
 die() { echo "${c_red}$*${c_off}" >&2; exit 1; }
+warn() { echo "${c_red}$*${c_off}" >&2; }
 [ -n "$AGY_BIN" ] || die "agy wurde nicht gefunden (PATH)."
 
 mkdir -p "$ROOT"
 chmod 700 "$ROOT" "$(dirname "$ROOT")"
+
+# ---------- accounts ----------
 
 # Account folders sorted by creation, one id per line.
 list_ids() {
@@ -48,23 +54,6 @@ seed_account() {
   return 0
 }
 
-run_agy() { # $1 = account id, empty = main login
-  local id="$1"; shift
-  if [ -z "$id" ]; then
-    exec "$AGY_BIN" "${AGY_ARGS[@]}" "$@"
-  fi
-  local home="$ROOT/$id"
-  seed_account "$home"
-  echo "${c_dim}Starte agy als ${c_off}${c_bold}$(account_name "$id")${c_off}${c_dim} …${c_off}"
-  HOME="$home" \
-  GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL:-$REAL_HOME/.gitconfig}" \
-  NPM_CONFIG_USERCONFIG="${NPM_CONFIG_USERCONFIG:-$REAL_HOME/.npmrc}" \
-  SSH_CONNECTION="${SSH_CONNECTION:-127.0.0.1 0 127.0.0.1 0}" \
-  SSH_CLIENT="${SSH_CLIENT:-127.0.0.1 0 0}" \
-  SSH_TTY="${SSH_TTY:-codeforge-agy}" \
-    exec "$AGY_BIN" "${AGY_ARGS[@]}" "$@"
-}
-
 print_accounts() {
   local i=1 id email
   while read -r id; do
@@ -74,22 +63,43 @@ print_accounts() {
       "$([ -n "$email" ] && echo "${c_gr}$email${c_off}" || echo "${c_dim}nicht angemeldet${c_off}")"
     i=$((i + 1))
   done < <(list_ids)
-  [ "$i" -gt 1 ] || echo "  ${c_dim}Noch keine Accounts hinterlegt (Taste 3).${c_off}"
+  [ "$i" -gt 1 ] || echo "  ${c_dim}Noch keine Accounts hinterlegt (Einstellungen).${c_off}"
 }
 
-pick_account() { # prints the chosen id
+# Prints the chosen id; "-" stands for the main login when allow_main is set.
+pick_account() {
+  local allow_main="${1:-}" choice
   mapfile -t ids < <(list_ids)
-  [ "${#ids[@]}" -gt 0 ] || { echo "${c_red}Noch keine Accounts hinterlegt. Mit 3 einen anlegen.${c_off}" >&2; return 1; }
+  if [ "${#ids[@]}" -eq 0 ] && [ -z "$allow_main" ]; then
+    warn "Noch keine Accounts hinterlegt. In den Einstellungen (2) einen anlegen."; return 1
+  fi
+  [ -n "$allow_main" ] && echo "  ${c_or}0)${c_off} Hauptlogin         ${c_dim}ohne eigenen Account-Ordner${c_off}" >&2
   print_accounts >&2
-  local choice
-  read -rp "Account-Nummer: " choice
+  read -rp "Account-Nummer (Enter = zurueck): " choice
+  [ -n "$choice" ] || return 1
+  if [ "$choice" = "0" ] && [ -n "$allow_main" ]; then echo "-"; return 0; fi
   [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#ids[@]}" ] \
-    || { echo "${c_red}Ungueltige Auswahl.${c_off}" >&2; return 1; }
+    || { warn "Ungueltige Auswahl."; return 1; }
   echo "${ids[$((choice - 1))]}"
 }
 
+resolve_account() { # number or id/name -> id
+  local arg="$1" id lower
+  mapfile -t ids < <(list_ids)
+  if [[ "$arg" =~ ^[0-9]+$ ]] && [ "$arg" -ge 1 ] && [ "$arg" -le "${#ids[@]}" ]; then
+    echo "${ids[$((arg - 1))]}"; return 0
+  fi
+  lower="$(echo "$arg" | tr '[:upper:]' '[:lower:]')"
+  for id in "${ids[@]}"; do
+    if [ "$id" = "$arg" ] || [ "$(account_name "$id" | tr '[:upper:]' '[:lower:]')" = "$lower" ]; then
+      echo "$id"; return 0
+    fi
+  done
+  die "Account \"$arg\" nicht gefunden."
+}
+
 add_account() {
-  local name id
+  local name id yn
   read -rp "Name fuer den Account (z.B. Main, Alt 2): " name
   name="$(echo "$name" | tr -d '\n' | sed 's/^ *//;s/ *$//')"
   [ -n "$name" ] || name="Account $(( $(list_ids | wc -l) + 1 ))"
@@ -104,77 +114,243 @@ add_account() {
   echo "${c_gr}Account \"$name\" angelegt.${c_off}"
   read -rp "Jetzt mit Google anmelden (agy starten)? [J/n] " yn
   case "$yn" in n|N|nein) return 0 ;; esac
-  run_agy "$id"
+  start_session "$id"
+}
+
+rename_account() {
+  local id name
+  id="$(pick_account)" || return 0
+  read -rp "Neuer Name fuer \"$(account_name "$id")\": " name
+  [ -n "$name" ] || return 0
+  printf '%s' "$name" > "$ROOT/$id/.codeforge-name"
+  echo "${c_gr}Umbenannt.${c_off}"
+}
+
+# Deletes only the stored token, the account entry stays.
+logout_account() {
+  local id yn
+  id="$(pick_account)" || return 0
+  read -rp "Login von \"$(account_name "$id")\" loeschen? [j/N] " yn
+  case "$yn" in
+    j|J|ja|y|Y) rm -f -- "$ROOT/$id/.gemini/antigravity-cli/antigravity-oauth-token"; echo "${c_gr}Abgemeldet.${c_off}" ;;
+    *) echo "Abgebrochen." ;;
+  esac
 }
 
 remove_account() {
-  local id
-  id="$(pick_account)" || return 1
+  local id yn
+  id="$(pick_account)" || return 0
   read -rp "Account \"$(account_name "$id")\" samt Login loeschen? [j/N] " yn
   case "$yn" in j|J|ja|y|Y) rm -rf -- "${ROOT:?}/$id"; echo "${c_gr}Geloescht.${c_off}" ;; *) echo "Abgebrochen." ;; esac
 }
 
-usage() {
-  cat <<USAGE
-codeforge            Menue
-codeforge agy        agy mit Hauptlogin starten
-codeforge start [N]  gespeicherten Account starten (Nummer oder Name)
-codeforge add        Account hinterlegen
-codeforge list       Accounts anzeigen
-codeforge rm         Account loeschen
-Weitere Argumente nach -- gehen an agy, z.B.: codeforge start 2 -- -c
-USAGE
-}
+# ---------- agy process (runs inside tmux) ----------
 
-resolve_account() { # number or id/name -> id
-  local arg="$1" id
-  mapfile -t ids < <(list_ids)
-  if [[ "$arg" =~ ^[0-9]+$ ]] && [ "$arg" -ge 1 ] && [ "$arg" -le "${#ids[@]}" ]; then
-    echo "${ids[$((arg - 1))]}"; return 0
+run_agy() { # $1 = account id, "-" = main login
+  local id="$1"; shift
+  if [ "$id" = "-" ]; then
+    exec "$AGY_BIN" "${AGY_ARGS[@]}" "$@"
   fi
-  for id in "${ids[@]}"; do
-    if [ "$id" = "$arg" ] || [ "$(account_name "$id" | tr '[:upper:]' '[:lower:]')" = "$(echo "$arg" | tr '[:upper:]' '[:lower:]')" ]; then
-      echo "$id"; return 0
-    fi
-  done
-  die "Account \"$arg\" nicht gefunden."
+  local home="$ROOT/$id"
+  [ -d "$home" ] || die "Account \"$id\" existiert nicht mehr."
+  seed_account "$home"
+  HOME="$home" \
+  GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL:-$REAL_HOME/.gitconfig}" \
+  NPM_CONFIG_USERCONFIG="${NPM_CONFIG_USERCONFIG:-$REAL_HOME/.npmrc}" \
+  SSH_CONNECTION="${SSH_CONNECTION:-127.0.0.1 0 127.0.0.1 0}" \
+  SSH_CLIENT="${SSH_CLIENT:-127.0.0.1 0 0}" \
+  SSH_TTY="${SSH_TTY:-codeforge-agy}" \
+    exec "$AGY_BIN" "${AGY_ARGS[@]}" "$@"
 }
 
-menu() {
+# ---------- tmux sessions ----------
+
+require_tmux() { command -v tmux >/dev/null || die "tmux fehlt (apt install tmux)."; }
+
+label_for() { [ "$1" = "-" ] && echo "Hauptlogin" || account_name "$1"; }
+
+unique_session() {
+  local base="$PREFIX$1" name n=2
+  name="$base"
+  while tmux has-session -t "=$name" 2>/dev/null; do name="$base-$n"; n=$((n + 1)); done
+  echo "$name"
+}
+
+pane_cmd() { printf "%q __run %q" "$SELF" "$1"; }
+
+style_session() { # $1 = session, $2 = label
+  local s="$1"
+  tmux set -s escape-time 10 \; \
+    set -t "$s" @cf_session "$2" \; \
+    set -t "$s" mouse on \; \
+    set -t "$s" status-style "bg=colour235,fg=colour250" \; \
+    set -t "$s" status-left "#[fg=colour208,bold] CodeForge #[default]· #{@cf_session} " \; \
+    set -t "$s" status-left-length 60 \; \
+    set -t "$s" status-right "#[fg=colour244]Ctrl-b d = Hintergrund · Ctrl-b Pfeile = Pane wechseln " \; \
+    set -t "$s" status-right-length 80 \; \
+    set -t "$s" pane-border-status top \; \
+    set -t "$s" pane-border-format " #[bold]#{@cf_label} " \; \
+    set -t "$s" pane-active-border-style "fg=colour208" >/dev/null
+}
+
+attach_session() {
+  if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$1"; else tmux attach-session -t "=$1"; fi
+}
+
+term_size() { echo "-x $(tput cols 2>/dev/null || echo 200) -y $(tput lines 2>/dev/null || echo 50)"; }
+
+start_session() { # $1 = account id or "-", rest goes to agy
+  require_tmux
+  local id="$1"; shift
+  local label name
+  label="$(label_for "$id")"
+  name="$(unique_session "$( [ "$id" = "-" ] && echo main || echo "$id")")"
+  # shellcheck disable=SC2046
+  tmux new-session -d -s "$name" -c "$PWD" $(term_size) -e "CODEFORGE_REAL_HOME=$REAL_HOME" \
+    "$(pane_cmd "$id")$([ $# -eq 0 ] || printf ' %q' "$@")"
+  style_session "$name" "$label"
+  tmux set -p -t "$name" @cf_label "$label" >/dev/null
+  attach_session "$name"
+}
+
+start_grid() {
+  require_tmux
+  mapfile -t ids < <(list_ids)
+  [ "${#ids[@]}" -gt 0 ] || { warn "Noch keine Accounts hinterlegt. In den Einstellungen (2) einen anlegen."; return 1; }
+  local name pane id
+  name="$(unique_session grid)"
+  # shellcheck disable=SC2046
+  pane="$(tmux new-session -d -P -F '#{pane_id}' -s "$name" -c "$PWD" $(term_size) \
+    -e "CODEFORGE_REAL_HOME=$REAL_HOME" "$(pane_cmd "${ids[0]}")")"
+  style_session "$name" "Grid (${#ids[@]} Accounts)"
+  tmux set -p -t "$pane" @cf_label "$(account_name "${ids[0]}")" >/dev/null
+  for id in "${ids[@]:1}"; do
+    pane="$(tmux split-window -P -F '#{pane_id}' -t "$name" -c "$PWD" \
+      -e "CODEFORGE_REAL_HOME=$REAL_HOME" "$(pane_cmd "$id")")"
+    tmux set -p -t "$pane" @cf_label "$(account_name "$id")" \; select-layout -t "$name" tiled >/dev/null
+  done
+  tmux select-layout -t "$name" tiled \; select-pane -t "$name.0" >/dev/null
+  attach_session "$name"
+}
+
+list_sessions() { # prints "name|label|created|attached|panes"
+  command -v tmux >/dev/null || return 0
+  tmux list-sessions -F '#{session_name}|#{@cf_session}|#{session_created}|#{session_attached}|#{session_windows}|#{window_panes}' 2>/dev/null \
+    | grep "^$PREFIX" || true
+}
+
+sessions_menu() {
+  local choice
   while true; do
+    mapfile -t rows < <(list_sessions)
     echo
-    echo "  ${c_or}${c_bold}CodeForge${c_off} ${c_dim}· Antigravity Accounts · $(pwd)${c_off}"
+    echo "  ${c_or}${c_bold}Laufende Sessions${c_off} ${c_dim}(laufen weiter, auch wenn die Verbindung abbricht)${c_off}"
     echo
-    echo "  ${c_or}1)${c_off} agy starten (Hauptlogin)"
-    echo "  ${c_or}2)${c_off} gespeicherten Account starten"
-    echo "  ${c_or}3)${c_off} Account hinterlegen"
-    echo "  ${c_or}4)${c_off} Account loeschen"
-    echo "  ${c_or}q)${c_off} Beenden"
+    if [ "${#rows[@]}" -eq 0 ]; then
+      echo "  ${c_dim}Keine laufenden Sessions.${c_off}"; echo; return 0
+    fi
+    local i=1 row name label created attached _w panes
+    for row in "${rows[@]}"; do
+      IFS='|' read -r name label created attached _w panes <<<"$row"
+      printf '  %s%d)%s %-26s %s%s · seit %s%s %s\n' "$c_or" "$i" "$c_off" "${label:-$name}" "$c_dim" \
+        "$panes Pane(s)" "$(date -d "@$created" '+%d.%m. %H:%M')" "$c_off" \
+        "$([ "$attached" -gt 0 ] && echo "${c_gr}verbunden${c_off}" || echo "${c_dim}im Hintergrund${c_off}")"
+      i=$((i + 1))
+    done
     echo
-    print_accounts
-    echo
-    local key id
-    read -rsn1 -p "Auswahl: " key; echo
-    case "$key" in
-      1) run_agy "" ;;
-      2) id="$(pick_account)" && run_agy "$id" ;;
-      3) add_account ;;
-      4) remove_account || true ;;
-      q|Q|0|$'\e') exit 0 ;;
-      *) echo "${c_red}Unbekannte Auswahl.${c_off}" ;;
+    read -rp "Nummer = oeffnen, x<Nummer> = beenden, Enter = zurueck: " choice
+    case "$choice" in
+      "") return 0 ;;
+      x[0-9]*|X[0-9]*)
+        local n="${choice:1}"
+        if [ "$n" -ge 1 ] && [ "$n" -le "${#rows[@]}" ]; then
+          tmux kill-session -t "=${rows[$((n - 1))]%%|*}" && echo "${c_gr}Beendet.${c_off}"
+        else warn "Ungueltige Auswahl."; fi ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#rows[@]}" ]; then
+          attach_session "${rows[$((choice - 1))]%%|*}"
+        else warn "Ungueltige Auswahl."; fi ;;
     esac
   done
 }
 
+settings_menu() {
+  local key
+  while true; do
+    echo
+    echo "  ${c_or}${c_bold}Einstellungen${c_off} ${c_dim}· Accounts in $ROOT${c_off}"
+    echo
+    print_accounts
+    echo
+    echo "  ${c_or}1)${c_off} Account hinzufuegen"
+    echo "  ${c_or}2)${c_off} Account umbenennen"
+    echo "  ${c_or}3)${c_off} Account abmelden (Login loeschen)"
+    echo "  ${c_or}4)${c_off} Account loeschen"
+    echo "  ${c_or}b)${c_off} Zurueck"
+    echo
+    read -rsn1 -p "Auswahl: " key; echo
+    case "$key" in
+      1) add_account ;;
+      2) rename_account ;;
+      3) logout_account ;;
+      4) remove_account ;;
+      b|B|q|Q|""|$'\e') return 0 ;;
+      *) warn "Unbekannte Auswahl." ;;
+    esac
+  done
+}
+
+menu() {
+  local key id count
+  while true; do
+    count="$(list_sessions | wc -l)"
+    echo
+    echo "  ${c_or}${c_bold}CodeForge${c_off} ${c_dim}· Antigravity · $(pwd)${c_off}"
+    echo
+    echo "  ${c_or}1)${c_off} Account auswaehlen und starten"
+    echo "  ${c_or}2)${c_off} Einstellungen (Accounts verwalten)"
+    echo "  ${c_or}3)${c_off} Alle Accounts im Grid starten ${c_dim}($(list_ids | wc -l))${c_off}"
+    echo "  ${c_or}4)${c_off} Laufende Sessions ${c_dim}($count)${c_off}"
+    echo "  ${c_or}q)${c_off} Beenden"
+    echo
+    read -rsn1 -p "Auswahl: " key; echo
+    case "$key" in
+      1) id="$(pick_account main)" && start_session "$id" || true ;;
+      2) settings_menu ;;
+      3) start_grid || true ;;
+      4) sessions_menu ;;
+      q|Q|0|$'\e') exit 0 ;;
+      *) warn "Unbekannte Auswahl." ;;
+    esac
+  done
+}
+
+usage() {
+  cat <<USAGE
+codeforge              Menue
+codeforge start [N]    Account starten (Nummer oder Name; ohne = Auswahl)
+codeforge main         agy mit Hauptlogin starten
+codeforge grid         alle Accounts im Grid starten
+codeforge sessions     laufende Sessions anzeigen / oeffnen
+codeforge add          Account hinterlegen
+codeforge list         Accounts anzeigen
+codeforge rm           Account loeschen
+Weitere Argumente nach -- gehen an agy, z.B.: codeforge start 2 -- -c
+Sessions laufen in tmux weiter; Ctrl-b d legt sie in den Hintergrund.
+USAGE
+}
+
 cmd="${1:-}"; [ $# -gt 0 ] && shift
-extra=()
 case "$cmd" in
   "") menu ;;
-  agy) [ "${1:-}" = "--" ] && shift; run_agy "" "$@" ;;
+  __run) id="$1"; shift; run_agy "$id" "$@" ;;
+  main) [ "${1:-}" = "--" ] && shift; start_session "-" "$@" ;;
   start)
     target="${1:-}"; [ $# -gt 0 ] && shift; [ "${1:-}" = "--" ] && shift
-    if [ -z "$target" ] || [ "$target" = "--" ]; then id="$(pick_account)" || exit 1; else id="$(resolve_account "$target")"; fi
-    run_agy "$id" "$@" ;;
+    if [ -z "$target" ] || [ "$target" = "--" ]; then id="$(pick_account main)" || exit 1; else id="$(resolve_account "$target")"; fi
+    start_session "$id" "$@" ;;
+  grid) start_grid ;;
+  sessions|ps) sessions_menu ;;
   add) add_account ;;
   list|ls) print_accounts ;;
   rm|remove) remove_account ;;

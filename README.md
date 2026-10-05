@@ -126,7 +126,9 @@ sudo install -m 755 cli/codeforge /usr/local/bin/codeforge
 codeforge
 ```
 
-The menu offers `1` agy with the main login, `2` one of the saved accounts, `3` add an account (and sign in right away) and `4` delete one. agy always starts with `--dangerously-skip-permissions`. Every account has its own home folder under `~/.codeforge/agy-accounts/`, so each keeps its own login; settings, skills and MCP servers are shared with the main login. Shortcuts: `codeforge start 2`, `codeforge add`, `codeforge list`.
+The menu offers `1` start one account (or the main login), `2` settings to add, rename, log out or delete accounts, `3` all accounts side by side in a grid and `4` the running sessions. agy always starts with `--dangerously-skip-permissions`. Every account has its own home folder under `~/.codeforge/agy-accounts/`, so each keeps its own login; settings, skills and MCP servers are shared with the main login.
+
+Sessions run in tmux (`apt install tmux`): they keep running when the SSH connection drops and end only when agy is closed or the session is ended under `4`. `Ctrl-b d` puts a session in the background. Shortcuts: `codeforge start 2`, `codeforge grid`, `codeforge sessions`, `codeforge add`.
 
 ## Development
 
