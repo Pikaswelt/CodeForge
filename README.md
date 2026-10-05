@@ -117,6 +117,17 @@ The interface is currently in German. Labels in parentheses show the exact text 
 2. Go to **Home** and choose **Start workspace** (*Workspace starten*) or **Start chat** (*Chat starten*).
 3. Select a project folder, or start without one, and get to work.
 
+## CLI for servers (Linux)
+
+`cli/codeforge` brings the Antigravity account switcher to a terminal, e.g. on a V-Server over SSH.
+
+```bash
+sudo install -m 755 cli/codeforge /usr/local/bin/codeforge
+codeforge
+```
+
+The menu offers `1` agy with the main login, `2` one of the saved accounts, `3` add an account (and sign in right away) and `4` delete one. agy always starts with `--dangerously-skip-permissions`. Every account has its own home folder under `~/.codeforge/agy-accounts/`, so each keeps its own login; settings, skills and MCP servers are shared with the main login. Shortcuts: `codeforge start 2`, `codeforge add`, `codeforge list`.
+
 ## Development
 
 ```bash

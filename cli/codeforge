@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# CodeForge CLI: start Antigravity (agy) with one of several saved Google accounts.
+# Each account gets its own HOME folder, so agy keeps a separate login per account
+# (agy stores its OAuth token as a file below HOME on SSH/Linux sessions).
+set -euo pipefail
+
+REAL_HOME="${HOME}"
+ROOT="${CODEFORGE_HOME:-$REAL_HOME/.codeforge}/agy-accounts"
+AGY_BIN="$(command -v agy || true)"
+AGY_ARGS=(--dangerously-skip-permissions)
+
+c_bold=$'\e[1m'; c_dim=$'\e[2m'; c_or=$'\e[38;5;208m'; c_gr=$'\e[32m'; c_red=$'\e[31m'; c_off=$'\e[0m'
+
+die() { echo "${c_red}$*${c_off}" >&2; exit 1; }
+[ -n "$AGY_BIN" ] || die "agy wurde nicht gefunden (PATH)."
+
+mkdir -p "$ROOT"
+chmod 700 "$ROOT" "$(dirname "$ROOT")"
+
+# Account folders sorted by creation, one id per line.
+list_ids() {
+  find "$ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' 2>/dev/null | sort -n | cut -d' ' -f2
+}
+
+account_name() { cat "$ROOT/$1/.codeforge-name" 2>/dev/null || echo "$1"; }
+
+# Last successful login in the account's agy logs, empty after a logout.
+account_email() {
+  local logdir="$ROOT/$1/.gemini/antigravity-cli/log" line
+  [ -d "$logdir" ] || return 0
+  line="$(ls -t "$logdir"/*.log 2>/dev/null | head -5 | xargs -r cat 2>/dev/null \
+    | grep -oE 'authenticated successfully as [^ ]+@[^ ]+|Logging out current user' | tail -1 || true)"
+  case "$line" in
+    authenticated*) echo "${line#authenticated successfully as }" ;;
+  esac
+}
+
+# Share preferences, skills and MCP servers with the main login; never login data.
+seed_account() {
+  local home="$1" real="$REAL_HOME/.gemini"
+  mkdir -p "$home/.gemini/antigravity-cli" "$home/.gemini/config"
+  [ -f "$real/antigravity-cli/settings.json" ] && [ ! -e "$home/.gemini/antigravity-cli/settings.json" ] \
+    && cp "$real/antigravity-cli/settings.json" "$home/.gemini/antigravity-cli/settings.json"
+  local link
+  for link in GEMINI.md config/skills config/plugins config/mcp_config.json antigravity-cli/bin; do
+    [ -e "$real/$link" ] && [ ! -e "$home/.gemini/$link" ] && ln -s "$real/$link" "$home/.gemini/$link"
+  done
+  return 0
+}
+
+run_agy() { # $1 = account id, empty = main login
+  local id="$1"; shift
+  if [ -z "$id" ]; then
+    exec "$AGY_BIN" "${AGY_ARGS[@]}" "$@"
+  fi
+  local home="$ROOT/$id"
+  seed_account "$home"
+  echo "${c_dim}Starte agy als ${c_off}${c_bold}$(account_name "$id")${c_off}${c_dim} …${c_off}"
+  HOME="$home" \
+  GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL:-$REAL_HOME/.gitconfig}" \
+  NPM_CONFIG_USERCONFIG="${NPM_CONFIG_USERCONFIG:-$REAL_HOME/.npmrc}" \
+  SSH_CONNECTION="${SSH_CONNECTION:-127.0.0.1 0 127.0.0.1 0}" \
+  SSH_CLIENT="${SSH_CLIENT:-127.0.0.1 0 0}" \
+  SSH_TTY="${SSH_TTY:-codeforge-agy}" \
+    exec "$AGY_BIN" "${AGY_ARGS[@]}" "$@"
+}
+
+print_accounts() {
+  local i=1 id email
+  while read -r id; do
+    [ -n "$id" ] || continue
+    email="$(account_email "$id")"
+    printf '  %s%d)%s %-18s %s\n' "$c_or" "$i" "$c_off" "$(account_name "$id")" \
+      "$([ -n "$email" ] && echo "${c_gr}$email${c_off}" || echo "${c_dim}nicht angemeldet${c_off}")"
+    i=$((i + 1))
+  done < <(list_ids)
+  [ "$i" -gt 1 ] || echo "  ${c_dim}Noch keine Accounts hinterlegt (Taste 3).${c_off}"
+}
+
+pick_account() { # prints the chosen id
+  mapfile -t ids < <(list_ids)
+  [ "${#ids[@]}" -gt 0 ] || { echo "${c_red}Noch keine Accounts hinterlegt. Mit 3 einen anlegen.${c_off}" >&2; return 1; }
+  print_accounts >&2
+  local choice
+  read -rp "Account-Nummer: " choice
+  [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#ids[@]}" ] \
+    || { echo "${c_red}Ungueltige Auswahl.${c_off}" >&2; return 1; }
+  echo "${ids[$((choice - 1))]}"
+}
+
+add_account() {
+  local name id
+  read -rp "Name fuer den Account (z.B. Main, Alt 2): " name
+  name="$(echo "$name" | tr -d '\n' | sed 's/^ *//;s/ *$//')"
+  [ -n "$name" ] || name="Account $(( $(list_ids | wc -l) + 1 ))"
+  id="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//' | cut -c1-40)"
+  [ -n "$id" ] || id="account"
+  local base="$id" n=2
+  while [ -e "$ROOT/$id" ]; do id="$base-$n"; n=$((n + 1)); done
+  mkdir -p "$ROOT/$id"
+  chmod 700 "$ROOT/$id"
+  printf '%s' "$name" > "$ROOT/$id/.codeforge-name"
+  seed_account "$ROOT/$id"
+  echo "${c_gr}Account \"$name\" angelegt.${c_off}"
+  read -rp "Jetzt mit Google anmelden (agy starten)? [J/n] " yn
+  case "$yn" in n|N|nein) return 0 ;; esac
+  run_agy "$id"
+}
+
+remove_account() {
+  local id
+  id="$(pick_account)" || return 1
+  read -rp "Account \"$(account_name "$id")\" samt Login loeschen? [j/N] " yn
+  case "$yn" in j|J|ja|y|Y) rm -rf -- "${ROOT:?}/$id"; echo "${c_gr}Geloescht.${c_off}" ;; *) echo "Abgebrochen." ;; esac
+}
+
+usage() {
+  cat <<USAGE
+codeforge            Menue
+codeforge agy        agy mit Hauptlogin starten
+codeforge start [N]  gespeicherten Account starten (Nummer oder Name)
+codeforge add        Account hinterlegen
+codeforge list       Accounts anzeigen
+codeforge rm         Account loeschen
+Weitere Argumente nach -- gehen an agy, z.B.: codeforge start 2 -- -c
+USAGE
+}
+
+resolve_account() { # number or id/name -> id
+  local arg="$1" id
+  mapfile -t ids < <(list_ids)
+  if [[ "$arg" =~ ^[0-9]+$ ]] && [ "$arg" -ge 1 ] && [ "$arg" -le "${#ids[@]}" ]; then
+    echo "${ids[$((arg - 1))]}"; return 0
+  fi
+  for id in "${ids[@]}"; do
+    if [ "$id" = "$arg" ] || [ "$(account_name "$id" | tr '[:upper:]' '[:lower:]')" = "$(echo "$arg" | tr '[:upper:]' '[:lower:]')" ]; then
+      echo "$id"; return 0
+    fi
+  done
+  die "Account \"$arg\" nicht gefunden."
+}
+
+menu() {
+  while true; do
+    echo
+    echo "  ${c_or}${c_bold}CodeForge${c_off} ${c_dim}· Antigravity Accounts · $(pwd)${c_off}"
+    echo
+    echo "  ${c_or}1)${c_off} agy starten (Hauptlogin)"
+    echo "  ${c_or}2)${c_off} gespeicherten Account starten"
+    echo "  ${c_or}3)${c_off} Account hinterlegen"
+    echo "  ${c_or}4)${c_off} Account loeschen"
+    echo "  ${c_or}q)${c_off} Beenden"
+    echo
+    print_accounts
+    echo
+    local key id
+    read -rsn1 -p "Auswahl: " key; echo
+    case "$key" in
+      1) run_agy "" ;;
+      2) id="$(pick_account)" && run_agy "$id" ;;
+      3) add_account ;;
+      4) remove_account || true ;;
+      q|Q|0|$'\e') exit 0 ;;
+      *) echo "${c_red}Unbekannte Auswahl.${c_off}" ;;
+    esac
+  done
+}
+
+cmd="${1:-}"; [ $# -gt 0 ] && shift
+extra=()
+case "$cmd" in
+  "") menu ;;
+  agy) [ "${1:-}" = "--" ] && shift; run_agy "" "$@" ;;
+  start)
+    target="${1:-}"; [ $# -gt 0 ] && shift; [ "${1:-}" = "--" ] && shift
+    if [ -z "$target" ] || [ "$target" = "--" ]; then id="$(pick_account)" || exit 1; else id="$(resolve_account "$target")"; fi
+    run_agy "$id" "$@" ;;
+  add) add_account ;;
+  list|ls) print_accounts ;;
+  rm|remove) remove_account ;;
+  -h|--help|help) usage ;;
+  *) usage; exit 1 ;;
+esac
