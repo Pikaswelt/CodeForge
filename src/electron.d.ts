@@ -154,7 +154,11 @@ declare global {
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;
       cancelTerminalCommand(id: string): Promise<boolean>;
       onTerminalOutput(id: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
-      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection; agyAccountId?: string }): Promise<void>;
+      // CodeForge Web answers with skipStartCommand when the session already runs its program.
+      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection; agyAccountId?: string; cols?: number; rows?: number }): Promise<void | { reattached?: boolean; skipStartCommand?: boolean }>;
+      listAgyAccounts?(): Promise<{ id: string; name: string }[]>;
+      saveAgyAccounts?(accounts: { id: string; name: string }[]): Promise<{ id: string; name: string }[]>;
+      isWeb?: boolean;
       getAgyAccountsStatus(accountIds: string[]): Promise<{ id: string; profileExists: boolean; email: string }[]>;
       removeAgyAccountProfile(accountId: string): Promise<boolean>;
       writeToShellSession(request: { chatId: string; text: string }): Promise<boolean>;

@@ -1,0 +1,13 @@
+{
+  "name": "codeforge-web-server",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Serves CodeForge in the browser behind Cloudflare Access",
+  "type": "module",
+  "main": "codeforge-web-server.mjs",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "ws": "^8.21.0"
+  }
+}

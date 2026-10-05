@@ -1095,7 +1095,7 @@ function TerminalInstance({
     }
 
     // Start PTY session in backend
-    window.agentWorkspace.createShellSession({
+    const shellCreated = window.agentWorkspace.createShellSession({
       chatId: tabId,
       cwd: startPath,
       shellType,
@@ -1104,50 +1104,63 @@ function TerminalInstance({
       agyAccountId: tab?.agyAccountId,
     });
 
-    // SSH login takes longer than a local shell before a command can be typed.
-    const commandDelay = sshServer ? 3500 : 1000;
-    if (tab?.command || tab?.blank) {
-      if (tab.command && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        const tabCommand = tab.command;
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
-        }, commandDelay);
-      }
-    } else if (sshServer) {
-      // Plain SSH session: no local start command.
-    } else if (chat.mode === 'standard') {
-      const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
-      const waitTime = platformWaitTimes[provider] || 5000;
-      if (!startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: agentCmd + '\r' });
+    const runStartCommands = () => {
+      // SSH login takes longer than a local shell before a command can be typed.
+      const commandDelay = sshServer ? 3500 : 1000;
+      if (tab?.command || tab?.blank) {
+        if (tab.command && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          const tabCommand = tab.command;
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
+          }, commandDelay);
+        }
+      } else if (sshServer) {
+        // Plain SSH session: no local start command.
+      } else if (chat.mode === 'standard') {
+        const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
+        const waitTime = platformWaitTimes[provider] || 5000;
+        if (!startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: agentCmd + '\r' });
           
-          const initialPrompt = chat.messages.find(m => m.sender === 'user')?.text;
-          if (initialPrompt) {
-            setTimeout(() => {
-              window.agentWorkspace.writeToShellSession({ chatId: tabId, text: initialPrompt + '\r' });
-            }, waitTime);
-          }
-        }, 1000);
+            const initialPrompt = chat.messages.find(m => m.sender === 'user')?.text;
+            if (initialPrompt) {
+              setTimeout(() => {
+                window.agentWorkspace.writeToShellSession({ chatId: tabId, text: initialPrompt + '\r' });
+              }, waitTime);
+            }
+          }, 1000);
+        }
+      } else if (chat.harness) {
+        if (chat.harness.command && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          const harnessCommand = chat.harness.command;
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: harnessCommand + '\r' });
+          }, 1000);
+        }
+      } else {
+        if (terminalStartCommandEnabled && terminalStartCommand && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: terminalStartCommand + '\r' });
+          }, 1000);
+        }
       }
-    } else if (chat.harness) {
-      if (chat.harness.command && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        const harnessCommand = chat.harness.command;
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: harnessCommand + '\r' });
-        }, 1000);
-      }
-    } else {
-      if (terminalStartCommandEnabled && terminalStartCommand && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: terminalStartCommand + '\r' });
-        }, 1000);
-      }
-    }
+
+    };
+    // CodeForge Web re-attaches running sessions; their program must not be started a second time.
+    Promise.resolve(shellCreated)
+      .then((result) => {
+        if (result && result.skipStartCommand) {
+          startedTerminalTabs.add(tabId);
+          return;
+        }
+        runStartCommands();
+      })
+      .catch(() => runStartCommands());
 
     // Handle incoming output from backend PTY
     const unsubscribe = window.agentWorkspace.onShellOutput(tabId, (payload: any) => {

@@ -890,6 +890,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('terminalStartCommand', terminalStartCommand), [terminalStartCommand]);
   useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
   useEffect(() => writeStorage('agyAccounts', agyAccounts), [agyAccounts]);
+  // CodeForge Web: the accounts live on the server (shared with the codeforge CLI), not in this browser.
+  const agyAccountsLoaded = useRef(false);
+  useEffect(() => {
+    const workspace = window.agentWorkspace;
+    if (!workspace?.isWeb || !workspace.listAgyAccounts) return;
+    workspace
+      .listAgyAccounts()
+      .then((accounts) => {
+        agyAccountsLoaded.current = true;
+        setAgyAccounts(accounts);
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    const workspace = window.agentWorkspace;
+    if (!workspace?.isWeb || !workspace.saveAgyAccounts || !agyAccountsLoaded.current) return;
+    const timer = setTimeout(() => void workspace.saveAgyAccounts?.(agyAccounts).catch(() => {}), 500);
+    return () => clearTimeout(timer);
+  }, [agyAccounts]);
   useEffect(() => writeStorage('terminalPrefixSuffixEnabled', terminalPrefixSuffixEnabled), [terminalPrefixSuffixEnabled]);
   useEffect(() => writeStorage('terminalPrefix', terminalPrefix), [terminalPrefix]);
   useEffect(() => writeStorage('terminalSuffix', terminalSuffix), [terminalSuffix]);
