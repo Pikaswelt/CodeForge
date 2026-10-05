@@ -650,6 +650,14 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
+  // Never open popups as extra app windows; web links go to Chrome instead.
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    if (/^https?:\/\//i.test(details.url)) {
+      openUrlInChrome(details.url).catch((error) => console.error(`[Links] ${error.message}`));
+    }
+    return { action: 'deny' };
+  });
+
   mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
@@ -670,6 +678,37 @@ function createWindow() {
       return { action: 'deny' };
     });
   });
+}
+
+function findChromeExecutable() {
+  if (process.platform !== 'win32') return null;
+  const roots = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA].filter(Boolean);
+  for (const root of roots) {
+    const candidate = path.join(root, 'Google', 'Chrome', 'Application', 'chrome.exe');
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+// Terminal links (e.g. the Google login of agy) belong in the user's real browser, where their accounts are.
+async function openUrlInChrome(url) {
+  const parsed = new URL(String(url));
+  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('URL-Protokoll nicht erlaubt.');
+  const chrome = findChromeExecutable();
+  if (chrome) {
+    // A failed spawn emits 'error' asynchronously; without a listener it would crash the main process.
+    const started = await new Promise((resolve) => {
+      const child = spawn(chrome, [parsed.toString()], { detached: true, stdio: 'ignore', windowsHide: false });
+      child.once('error', () => resolve(false));
+      child.once('spawn', () => {
+        child.unref();
+        resolve(true);
+      });
+    });
+    if (started) return 'chrome';
+  }
+  await shell.openExternal(parsed.toString());
+  return 'default';
 }
 
 function findExecutable(command) {
@@ -3080,7 +3119,155 @@ function removeSshKey(_event, keyPath) {
   return true;
 }
 
-async function createShellSession(event, { chatId, cwd, shellType, externalServer, vserver }) {
+// Each Antigravity account gets its own home folder so several agy logins can run side by side.
+const AGY_ACCOUNT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/i;
+const agyShellAccounts = new Map();
+
+function getAgyAccountsRoot() {
+  return path.join(app.getPath('userData'), 'agy-accounts');
+}
+
+function resolveAgyAccountHome(accountId) {
+  const id = String(accountId || '');
+  if (!AGY_ACCOUNT_ID_PATTERN.test(id)) throw new Error('Ungueltige Antigravity-Account-ID.');
+  const root = getAgyAccountsRoot();
+  const home = path.resolve(root, id);
+  if (!home.startsWith(root + path.sep)) throw new Error('Ungueltige Antigravity-Account-ID.');
+  return home;
+}
+
+function ensureAgyAccountHome(accountId) {
+  const root = getAgyAccountsRoot();
+  if (!fs.existsSync(root)) {
+    fs.mkdirSync(root, { recursive: true });
+    // The folders hold OAuth tokens: keep them readable for the current Windows user only.
+    if (process.platform === 'win32') {
+      const user = process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${process.env.USERNAME}` : process.env.USERNAME;
+      try {
+        require('node:child_process').execFileSync('icacls', [root, '/inheritance:r', '/grant:r', `${user}:(OI)(CI)F`], { windowsHide: true, stdio: 'ignore' });
+      } catch (_) {}
+    }
+  }
+  const home = resolveAgyAccountHome(accountId);
+  if (!fs.existsSync(home)) {
+    fs.mkdirSync(home, { recursive: true });
+    // Carry over agy preferences (model, permissions, global instructions), never login data.
+    const realGemini = path.join(app.getPath('home'), '.gemini');
+    const seeds = [
+      [path.join(realGemini, 'antigravity-cli', 'settings.json'), path.join(home, '.gemini', 'antigravity-cli', 'settings.json')],
+      [path.join(realGemini, 'GEMINI.md'), path.join(home, '.gemini', 'GEMINI.md')],
+    ];
+    for (const [from, to] of seeds) {
+      try {
+        if (fs.existsSync(from)) {
+          fs.mkdirSync(path.dirname(to), { recursive: true });
+          fs.copyFileSync(from, to);
+        }
+      } catch (_) {}
+    }
+  }
+  return home;
+}
+
+function setEnvVar(env, key, value) {
+  // Windows env names are case-insensitive; drop variants so the child sees exactly one value.
+  for (const existing of Object.keys(env)) {
+    if (existing.toUpperCase() === key) delete env[existing];
+  }
+  env[key] = value;
+}
+
+function applyAgyAccountEnv(env, accountId) {
+  const realHome = app.getPath('home');
+  const home = ensureAgyAccountHome(accountId);
+  setEnvVar(env, 'USERPROFILE', home);
+  setEnvVar(env, 'HOME', home);
+  // agy stores its login in the shared Windows credential store ("gemini:antigravity") unless it
+  // detects an SSH session; then it keeps the token in a file below HOME, one per account.
+  setEnvVar(env, 'SSH_CONNECTION', '127.0.0.1 0 127.0.0.1 0');
+  setEnvVar(env, 'SSH_CLIENT', '127.0.0.1 0 0');
+  setEnvVar(env, 'SSH_TTY', 'codeforge-agy');
+  // Keep the user's git and npm config although HOME points to the account folder.
+  const gitconfig = path.join(realHome, '.gitconfig');
+  if (!env.GIT_CONFIG_GLOBAL && fs.existsSync(gitconfig)) setEnvVar(env, 'GIT_CONFIG_GLOBAL', gitconfig);
+  const npmrc = path.join(realHome, '.npmrc');
+  if (!env.NPM_CONFIG_USERCONFIG && fs.existsSync(npmrc)) setEnvVar(env, 'NPM_CONFIG_USERCONFIG', npmrc);
+}
+
+function readAgyAccountEmail(home) {
+  const logDir = path.join(home, '.gemini', 'antigravity-cli', 'log');
+  let files;
+  try {
+    files = fs.readdirSync(logDir)
+      .filter((name) => name.endsWith('.log'))
+      .map((name) => path.join(logDir, name))
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
+      .slice(0, 5);
+  } catch (_) {
+    return '';
+  }
+  for (const file of files) {
+    let text = '';
+    try {
+      const size = fs.statSync(file).size;
+      const length = Math.min(size, 1024 * 1024);
+      const buffer = Buffer.alloc(length);
+      const fd = fs.openSync(file, 'r');
+      try {
+        fs.readSync(fd, buffer, 0, length, size - length);
+      } finally {
+        fs.closeSync(fd);
+      }
+      text = buffer.toString('utf8');
+    } catch (_) {
+      continue;
+    }
+    const lines = text.split(/\r?\n/);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const login = lines[index].match(/authenticated successfully as (\S+@\S+)/);
+      if (login) return login[1];
+      if (/Logging out current user/.test(lines[index])) return '';
+    }
+  }
+  return '';
+}
+
+function getAgyAccountsStatus(_event, accountIds = []) {
+  const ids = Array.isArray(accountIds) ? accountIds.slice(0, 16) : [];
+  return ids.map((id) => {
+    try {
+      const home = resolveAgyAccountHome(id);
+      const exists = fs.existsSync(home);
+      return { id, profileExists: exists, email: exists ? readAgyAccountEmail(home) : '' };
+    } catch (_) {
+      return { id, profileExists: false, email: '' };
+    }
+  });
+}
+
+async function removeAgyAccountProfile(_event, accountId) {
+  const home = resolveAgyAccountHome(accountId);
+  // Running agy sessions keep files open in the folder; close them and wait until they are gone.
+  const exits = [];
+  for (const [chatId, shellAccountId] of agyShellAccounts) {
+    if (shellAccountId !== accountId) continue;
+    const ptyProcess = activeShells.get(chatId);
+    if (ptyProcess) {
+      exits.push(new Promise((resolve) => {
+        ptyProcess.onExit(() => resolve());
+        setTimeout(resolve, 5000);
+      }));
+      try {
+        ptyProcess.kill();
+      } catch (_) {}
+    }
+  }
+  await Promise.all(exits);
+  await fs.promises.rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  return true;
+}
+
+async function createShellSession(event, { chatId, cwd, shellType, externalServer, vserver, agyAccountId }) {
   console.log(`[Shell] Creating PTY session for chat: ${chatId}, requested cwd: ${cwd}, shellType: ${shellType}`);
   if (activeShells.has(chatId)) {
     console.log(`[Shell] PTY Session already active for chat: ${chatId}`);
@@ -3104,7 +3291,8 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
       return;
     }
   } else {
-    server = externalServer?.enabled ? normalizeExternalServerConfig(externalServer) : null;
+    // Account tabs must run locally: their login lives in a folder on this PC.
+    server = externalServer?.enabled && !agyAccountId ? normalizeExternalServerConfig(externalServer) : null;
   }
   if (vserver) {
     // args already prepared above
@@ -3141,6 +3329,15 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
       }
       env[pathKey] = paths.join(path.delimiter);
     }
+
+    if (agyAccountId) {
+      try {
+        applyAgyAccountEnv(env, agyAccountId);
+      } catch (error) {
+        event.sender.send(`shell:output:${chatId}`, { type: 'stderr', text: `\x1b[31m${error.message}\x1b[0m\r\n` });
+        return;
+      }
+    }
   }
 
   let spawnCwd = app.getPath('home');
@@ -3170,15 +3367,17 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
     });
     
     activeShells.set(chatId, ptyProcess);
+    if (agyAccountId) agyShellAccounts.set(chatId, agyAccountId);
     console.log(`[Shell] Spawned PTY process PID: ${ptyProcess.pid}`);
-    
+
     ptyProcess.onData((data) => {
       event.sender.send(`shell:output:${chatId}`, { type: 'stdout', text: data });
     });
-    
+
     ptyProcess.onExit(({ exitCode, signal }) => {
       console.log(`[Shell CLOSE] pid: ${ptyProcess.pid}, code: ${exitCode}, signal: ${signal}`);
       activeShells.delete(chatId);
+      agyShellAccounts.delete(chatId);
       event.sender.send(`shell:output:${chatId}`, { type: 'exit', code: exitCode });
     });
   } catch (err) {
@@ -3535,6 +3734,7 @@ ipcMain.handle('device:status', () => {
     if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('URL-Protokoll nicht erlaubt.');
     return shell.openExternal(parsed.toString());
   });
+  ipcMain.handle('shell:open-in-chrome', (_event, url) => openUrlInChrome(url));
   ipcMain.handle('shell:open-path', (_event, targetPath) => {
     if (typeof targetPath !== 'string' || !targetPath.trim()) throw new Error('Ungueltiger Pfad.');
     if (/^[a-z]+:\/\//i.test(targetPath)) throw new Error('Nur lokale Dateipfade sind erlaubt.');
@@ -3666,6 +3866,8 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('shell:write', writeToShellSession);
   ipcMain.handle('shell:kill', (_event, chatId) => killShellSession(_event, chatId));
   ipcMain.handle('shell:resize', resizeShellSession);
+  ipcMain.handle('agy-accounts:status', getAgyAccountsStatus);
+  ipcMain.handle('agy-accounts:remove-profile', removeAgyAccountProfile);
 
   ipcMain.handle('sync:start-server', async () => {
     return startSyncServer();

@@ -129,6 +129,7 @@ declare global {
       getSpotifyTrack(): Promise<SpotifyTrack>;
       onDeviceConnected(callback: (payload: { id: string; name: string; kind: string }) => void): () => void;
       openExternal(url: string): Promise<void>;
+      openInChrome(url: string): Promise<'chrome' | 'default'>;
       openPath(path: string): Promise<string>;
       getActions(dirPath?: string): Promise<{ name: string; events: number; path: string }[]>;
       playAction(dirPath: string, name: string): Promise<{ success: boolean }>;
@@ -153,7 +154,9 @@ declare global {
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;
       cancelTerminalCommand(id: string): Promise<boolean>;
       onTerminalOutput(id: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
-      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection }): Promise<void>;
+      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection; agyAccountId?: string }): Promise<void>;
+      getAgyAccountsStatus(accountIds: string[]): Promise<{ id: string; profileExists: boolean; email: string }[]>;
+      removeAgyAccountProfile(accountId: string): Promise<boolean>;
       writeToShellSession(request: { chatId: string; text: string }): Promise<boolean>;
       killShellSession(chatId: string): Promise<boolean>;
       resizeShellSession(request: { chatId: string; cols: number; rows: number }): Promise<boolean>;
