@@ -1264,6 +1264,38 @@ function TerminalInstance({
     };
     window.addEventListener('resize', handleResize);
 
+    // xterm.js has no touch scrolling, so vertical swipes become wheel events. With tmux
+    // mouse mode on they scroll the session history; a plain tap still focuses the terminal.
+    const touchTarget = terminalRef.current;
+    let lastTouchY: number | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches.length === 1 ? event.touches[0].clientY : null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (lastTouchY === null || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const deltaY = lastTouchY - touch.clientY;
+      if (Math.abs(deltaY) < 4) return;
+      lastTouchY = touch.clientY;
+      event.preventDefault();
+      term.element?.dispatchEvent(
+        new WheelEvent('wheel', {
+          deltaY: deltaY * 2,
+          deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+    const onTouchEnd = () => {
+      lastTouchY = null;
+    };
+    touchTarget?.addEventListener('touchstart', onTouchStart, { passive: true });
+    touchTarget?.addEventListener('touchmove', onTouchMove, { passive: false });
+    touchTarget?.addEventListener('touchend', onTouchEnd);
+
     const timer = setTimeout(handleResize, 100);
 
     return () => {
@@ -1272,6 +1304,9 @@ function TerminalInstance({
       unsubscribe();
       term.dispose();
       window.removeEventListener('resize', handleResize);
+      touchTarget?.removeEventListener('touchstart', onTouchStart);
+      touchTarget?.removeEventListener('touchmove', onTouchMove);
+      touchTarget?.removeEventListener('touchend', onTouchEnd);
     };
   }, [tabId, startPath]);
 
