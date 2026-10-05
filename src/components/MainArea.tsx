@@ -17,6 +17,7 @@ import {
   FolderOpen,
   Gamepad2,
   Home,
+  Rocket,
   Server,
   MessageSquare,
   LayoutGrid,
@@ -1072,6 +1073,13 @@ function TerminalInstance({
         cursor: cursor,
       },
       convertEol: true,
+      // Links in the terminal (e.g. the agy Google login) open in Chrome, not in an app window.
+      linkHandler: {
+        activate: (_event, uri) => {
+          if (/^https?:\/\//i.test(uri)) void window.agentWorkspace?.openInChrome(uri);
+        },
+        allowNonHttpProtocols: false,
+      },
     });
 
     const fitAddon = new FitAddon();
@@ -1091,8 +1099,9 @@ function TerminalInstance({
       chatId: tabId,
       cwd: startPath,
       shellType,
-      externalServer: !chat.vserver && !sshServer && externalServer.enabled ? externalServer : undefined,
+      externalServer: !chat.vserver && !sshServer && !tab?.agyAccountId && externalServer.enabled ? externalServer : undefined,
       vserver: sshServer,
+      agyAccountId: tab?.agyAccountId,
     });
 
     // SSH login takes longer than a local shell before a command can be typed.
@@ -1322,7 +1331,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const tabs = currentChat.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
   const activeTabId = currentChat.activeTerminalTabId || chat.id;
   const terminalLayout = currentChat.terminalLayout || 'single';
-  const gridSize = Math.max(1, Math.min(4, currentChat.terminalGridSize || 4));
+  const gridSize = Math.max(1, Math.min(6, currentChat.terminalGridSize || 4));
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
   const activeServer = tabs.find((tab) => tab.id === activeTabId)?.vserver ?? currentChat.vserver;
@@ -1763,7 +1772,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
       <div className="flex-1 min-h-0 w-full relative">
         {terminalLayout === 'grid' ? (
-          <div className={`grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : 'grid-cols-2 grid-rows-2'}`}>
+          <div className={`grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : gridSize <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3 grid-rows-2'}`}>
             {tabs.slice(0, gridSize).map((tab) => (
               <div key={tab.id} className="border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col h-full min-h-0">
                 <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
@@ -1824,13 +1833,30 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 }
 
 function HomeView() {
-  const { cliHarnesses, startWorkspace, selectedProject } = useAppContext();
+  const { cliHarnesses, startWorkspace, selectedProject, agyAccounts, startAgyAccounts } = useAppContext();
   const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver'>(false);
   const [harnessId, setHarnessId] = useState(() => cliHarnesses[0]?.id || '');
   const [grid, setGrid] = useState(true);
   const [count, setCount] = useState(1);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [agyStarting, setAgyStarting] = useState(false);
+  const [agyError, setAgyError] = useState('');
+
+  const handleStartAgy = async () => {
+    if (agyAccounts.length === 0) {
+      setAgyError('Noch keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen unter "Antigravity Accounts" hinzu.');
+      return;
+    }
+    setAgyStarting(true);
+    setAgyError('');
+    try {
+      await startAgyAccounts();
+    } catch (err) {
+      setAgyError(err instanceof Error ? err.message : 'Antigravity konnte nicht gestartet werden.');
+      setAgyStarting(false);
+    }
+  };
 
   const handleStart = async () => {
     setStarting(true);
@@ -1877,6 +1903,25 @@ function HomeView() {
               <Server className="w-4 h-4 text-white" />
               <span>V-Server</span>
             </button>
+            <button
+              onClick={handleStartAgy}
+              disabled={agyStarting}
+              title={agyAccounts.length ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten` : 'Accounts in den Einstellungen anlegen'}
+              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 disabled:opacity-50"
+            >
+              {agyStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4 text-white" />}
+              <span>Antigravity starten{agyAccounts.length ? ` (${agyAccounts.length})` : ''}</span>
+            </button>
+            {agyError && (
+              <div className="w-full text-center text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">
+                {agyError}{' '}
+                {agyAccounts.length === 0 && (
+                  <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true }))} className="text-orange-300 hover:underline">
+                    Einstellungen oeffnen
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : picking === 'chat' ? (
           <ApiChatSetup onCancel={() => setPicking(false)} />

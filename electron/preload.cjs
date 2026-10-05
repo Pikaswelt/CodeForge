@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     return () => ipcRenderer.removeListener('device:connected', listener);
   },
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  openInChrome: (url) => ipcRenderer.invoke('shell:open-in-chrome', url),
   openPath: (targetPath) => ipcRenderer.invoke('shell:open-path', targetPath),
   getActions: (dirPath) => ipcRenderer.invoke('actions:list', dirPath),
   playAction: (dirPath, name) => ipcRenderer.invoke('actions:play', dirPath, name),
@@ -85,6 +86,8 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   writeToShellSession: (request) => ipcRenderer.invoke('shell:write', request),
   killShellSession: (chatId) => ipcRenderer.invoke('shell:kill', chatId),
   resizeShellSession: (request) => ipcRenderer.invoke('shell:resize', request),
+  getAgyAccountsStatus: (accountIds) => ipcRenderer.invoke('agy-accounts:status', accountIds),
+  removeAgyAccountProfile: (accountId) => ipcRenderer.invoke('agy-accounts:remove-profile', accountId),
   onShellOutput: (chatId, callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on(`shell:output:${chatId}`, listener);
