@@ -42,6 +42,7 @@ import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
 import { useDictation } from '../useDictation';
 import { useVoiceSettings } from '../voice';
+import { useCompactLayout } from '../useCompactLayout';
 import { AddVServerDialog, NewTabMenu, VServerPanel, useVServers } from './VServers';
 import { SftpBrowser } from './SftpBrowser';
 import { isVideoPath, toFileUrl } from '../media';
@@ -1335,6 +1336,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     setTerminalPrefixSuffixEnabled,
     openBrowserTab,
     cliHarnesses,
+    mobileMode,
   } = useAppContext();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -1344,6 +1346,8 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const tabs = currentChat.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
   const activeTabId = currentChat.activeTerminalTabId || chat.id;
   const terminalLayout = currentChat.terminalLayout || 'single';
+  // Phones and tablets stack grid terminals in one scrollable column.
+  const stacked = useCompactLayout() || mobileMode;
   const gridSize = Math.max(1, Math.min(6, currentChat.terminalGridSize || 4));
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
@@ -1785,9 +1789,9 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
       <div className="flex-1 min-h-0 w-full relative">
         {terminalLayout === 'grid' ? (
-          <div className={`grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : gridSize <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3 grid-rows-2'}`}>
+          <div className={stacked ? 'flex h-full w-full flex-col gap-3 overflow-y-auto' : `grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : gridSize <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3 grid-rows-2'}`}>
             {tabs.slice(0, gridSize).map((tab) => (
-              <div key={tab.id} className="border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col h-full min-h-0">
+              <div key={tab.id} className={`border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col min-h-0 ${stacked ? 'h-[60vh] min-h-[280px] shrink-0' : 'h-full'}`}>
                 <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
                   <span className="font-semibold text-zinc-300">{tab.title}</span>
                   <span className="uppercase text-[8px] bg-white/5 px-1.5 py-0.5 rounded font-mono border border-white/5">{tab.shellType || 'cmd'}</span>
@@ -1804,7 +1808,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 </div>
               </div>
             ))}
-            {tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
+            {!stacked && tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
               <div key={`empty-${i}`} className="border border-dashed border-white/5 rounded-lg flex flex-col items-center justify-center bg-black/10">
                 <span className="text-[10px] text-zinc-600 uppercase font-mono">Kein Tab</span>
                 <button

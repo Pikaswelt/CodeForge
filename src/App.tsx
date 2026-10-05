@@ -5,7 +5,7 @@
 
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X as XIcon, Wifi } from 'lucide-react';
+import { Wifi } from 'lucide-react';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
@@ -14,11 +14,14 @@ import { isVideoPath, toFileUrl } from './media';
 import UpdateModal from './components/UpdateModal';
 import { VoiceIndicator, VoiceInstallModal } from './components/VoiceSettings';
 import { syncWakeMode } from './voice';
+import { useCompactLayout } from './useCompactLayout';
 
 // Modals and widgets load on demand to keep startup fast.
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
 const SpotifyWidget = lazy(() => import('./components/SpotifyWidget'));
 const MobileConnectModal = lazy(() => import('./components/MobileConnectModal'));
+
+const SIDEBAR_STORAGE_KEY = 'agentWorkspace.sidebarCollapsed';
 
 function AppLayout() {
   const {
@@ -35,10 +38,39 @@ function AppLayout() {
     mobileConnectionConfig,
     setMobileConnectionConfig,
     setMobileMode,
+    mainView,
+    selectedChatId,
+    selectedProject,
   } = useAppContext();
   const [showSettings, setShowSettings] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const compact = useCompactLayout() || mobileMode;
+  // On phones and tablets the sidebar is a drawer that starts closed.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const sidebarOpen = compact ? drawerOpen : !sidebarCollapsed;
+  const toggleSidebar = () => {
+    if (compact) return setDrawerOpen((open) => !open);
+    setSidebarCollapsed((collapsed) => {
+      try {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(!collapsed));
+      } catch {
+        // localStorage may be unavailable in restricted render contexts.
+      }
+      return !collapsed;
+    });
+  };
   const [showMobileConnect, setShowMobileConnect] = useState(false);
+  // Close the drawer after navigating somewhere from it.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [mainView, selectedChatId, selectedProject?.id, compact]);
+
   // Start the always-on wake word listener if it is enabled.
   useEffect(() => {
     void syncWakeMode();
@@ -155,38 +187,38 @@ function AppLayout() {
     >
       {backdropTheme && <ThemeBackdrop theme={backdropTheme} />}
       <div className="relative z-10 flex h-full w-full flex-col">
-        <TopBar onSettingsClick={() => setShowSettings(true)} />
+        <TopBar
+          onSettingsClick={() => setShowSettings(true)}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={toggleSidebar}
+        />
         <div className="flex flex-1 overflow-hidden relative">
-          {/* Mobile Mode: Overlay sidebar toggle button */}
-          {mobileMode && (
-            <button
-              onClick={() => setMobileSidebarOpen((v) => !v)}
-              className="fixed left-3 top-14 z-50 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-[#1c181a]/90 backdrop-blur-md text-white shadow-2xl hover:bg-white/10 transition-all duration-200"
-              title={mobileSidebarOpen ? 'Seitenleiste schliessen' : 'Seitenleiste oeffnen'}
-            >
-              {mobileSidebarOpen ? <XIcon className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+          {compact ? (
+            <AnimatePresence>
+              {drawerOpen && (
+                <>
+                  <motion.div
+                    className="absolute inset-0 z-30 bg-black/60 backdrop-blur-sm"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setDrawerOpen(false)}
+                  />
+                  <motion.div
+                    className="absolute inset-y-0 left-0 z-40 max-w-[85vw] shadow-2xl"
+                    initial={{ x: '-100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '-100%' }}
+                    transition={{ type: 'tween', duration: 0.2 }}
+                  >
+                    <Sidebar onSettingsClick={() => setShowSettings(true)} />
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          ) : (
+            sidebarOpen && <Sidebar onSettingsClick={() => setShowSettings(true)} />
           )}
-          {/* Sidebar: hidden when mobile mode is on and sidebar is collapsed */}
-          <div
-            className={`${
-              isMobileMode
-                ? mobileSidebarOpen
-                  ? 'fixed inset-0 z-40 w-full lg:static lg:w-[270px]'
-                  : 'hidden lg:block lg:w-[270px]'
-                : 'lg:w-[270px]'
-            } shrink-0`}
-          >
-            {isMobileMode && mobileSidebarOpen && (
-              <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"
-                onClick={() => setMobileSidebarOpen(false)}
-              />
-            )}
-            <div className={`relative z-40 h-full ${isMobileMode ? 'max-w-[300px] shadow-2xl' : ''}`}>
-              <Sidebar onSettingsClick={() => setShowSettings(true)} />
-            </div>
-          </div>
           <MainArea />
         </div>
         <Suspense fallback={null}>
