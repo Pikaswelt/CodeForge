@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { BookOpen, CircleUserRound, Loader2, LogOut, Megaphone, MessageSquare, Play, Settings } from 'lucide-react';
 import { PROVIDER_MODELS, useAppContext } from '../AppContext';
 import TutorialModal from './TutorialModal';
+import NewsPopup from './NewsPopup';
 
 export default function AccountMenu({
   onSettingsClick,
@@ -26,6 +27,7 @@ export default function AccountMenu({
   const [busy, setBusy] = useState<'limit' | null>(null);
   const [status, setStatus] = useState('');
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showNews, setShowNews] = useState(false);
   const providerInfo = PROVIDER_INFO[provider];
 
   return (
@@ -139,14 +141,7 @@ export default function AccountMenu({
           <AccountMenuButton
             icon={<Megaphone className="h-4 w-4" />}
             label="Was ist neu"
-            onClick={() => {
-              if (window.confirm('Seite neu laden um das News-Popup erneut anzuzeigen?')) {
-                try {
-                  localStorage.removeItem('agentWorkspace.newsPopupDismissed');
-                } catch {}
-                window.location.reload();
-              }
-            }}
+            onClick={() => setShowNews(true)}
           />
           <AccountMenuButton
             icon={<LogOut className="h-4 w-4" />}
@@ -159,6 +154,7 @@ export default function AccountMenu({
         </div>
       </div>
       {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
+      {showNews && <NewsPopup onClose={() => setShowNews(false)} />}
     </>
   );
 }
