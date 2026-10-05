@@ -116,6 +116,8 @@ export type TerminalTab = {
   location?: 'local';
   // SSH login to a saved V-Server; lets one workspace hold tabs for several servers.
   vserver?: VServerConnection;
+  // Runs this tab with the login of a saved Antigravity account (own profile folder).
+  agyAccountId?: string;
 };
 
 export type SftpEntry = {
@@ -139,6 +141,11 @@ export type VServer = {
 };
 
 export type VServerConnection = Pick<VServer, 'id' | 'name' | 'host' | 'port' | 'user' | 'keyPath'>;
+
+export type AgyAccount = {
+  id: string;
+  name: string;
+};
 
 export type CliHarness = {
   id: string;

@@ -17,6 +17,7 @@ import type {
   ApiKeys,
   Automation,
   Chat,
+  AgyAccount,
   CliHarness,
   CliStatus,
   CodexPluginInfo,
@@ -366,6 +367,9 @@ interface AppContextType {
   startLyzDevChat(): Promise<void>;
   startTerminalChat(): Promise<void>;
   startWorkspace(input: { harnessId: string; grid: boolean; count: number }): Promise<void>;
+  agyAccounts: AgyAccount[];
+  setAgyAccounts: React.Dispatch<React.SetStateAction<AgyAccount[]>>;
+  startAgyAccounts(accountIds?: string[]): Promise<void>;
   startVServerSession(server: VServerConnection): Promise<void>;
   startVServerSessions(servers: VServerConnection[]): Promise<void>;
   apiProviders: ApiProviderConfig[];
@@ -428,6 +432,8 @@ function hasHomeAppRunFile(app: HomeApp) {
       (app.executablePath && app.executablePath !== app.folderPath),
   );
 }
+
+export const MAX_AGY_ACCOUNTS = 6;
 
 function newId() {
   return crypto.randomUUID();
@@ -766,6 +772,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       { id: 'shell', name: 'Leeres Terminal', command: '', icon: 'Terminal' },
     ]),
   );
+  const [agyAccounts, setAgyAccounts] = useState<AgyAccount[]>(() => readStorage('agyAccounts', []));
   const [terminalPrefixSuffixEnabled, setTerminalPrefixSuffixEnabled] = useState(() =>
     readStorage('terminalPrefixSuffixEnabled', false),
   );
@@ -882,6 +889,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('terminalStartCommandEnabled', terminalStartCommandEnabled), [terminalStartCommandEnabled]);
   useEffect(() => writeStorage('terminalStartCommand', terminalStartCommand), [terminalStartCommand]);
   useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
+  useEffect(() => writeStorage('agyAccounts', agyAccounts), [agyAccounts]);
   useEffect(() => writeStorage('terminalPrefixSuffixEnabled', terminalPrefixSuffixEnabled), [terminalPrefixSuffixEnabled]);
   useEffect(() => writeStorage('terminalPrefix', terminalPrefix), [terminalPrefix]);
   useEffect(() => writeStorage('terminalSuffix', terminalSuffix), [terminalSuffix]);
@@ -2218,6 +2226,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectChat(chat.id);
   };
 
+  // One terminal per saved Antigravity account, side by side in a single workspace.
+  const startAgyAccounts = async (accountIds?: string[]) => {
+    const accounts = (accountIds ? agyAccounts.filter((account) => accountIds.includes(account.id)) : agyAccounts).slice(0, MAX_AGY_ACCOUNTS);
+    if (accounts.length === 0) throw new Error('Keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen hinzu.');
+    const projectForRun = await ensureRunnableProject();
+    const chatId = newId();
+    const chat: Chat = {
+      id: chatId,
+      title: accounts.length === 1 ? `Antigravity · ${accounts[0].name}` : 'Antigravity Accounts',
+      updatedAt: Date.now(),
+      folderId: projectForRun.id,
+      mode: 'terminal',
+      terminalTabs: accounts.map((account, index) => ({
+        id: index === 0 ? chatId : newId(),
+        title: account.name,
+        shellType: 'cmd' as const,
+        command: 'agy',
+        agyAccountId: account.id,
+      })),
+      activeTerminalTabId: chatId,
+      terminalLayout: accounts.length > 1 ? 'grid' : 'single',
+      terminalGridSize: accounts.length,
+      messages: [],
+    };
+    setChats((current) => [chat, ...current]);
+    selectChat(chat.id);
+  };
+
   const startApiChat = async (projectId: string | null) => {
     const providerConfig = apiProviders.find((item) => item.id === apiChatConfig.providerId);
     if (!providerConfig) throw new Error('Bitte einen AI-Anbieter auswaehlen oder in den Einstellungen anlegen.');
@@ -3101,6 +3137,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startLyzDevChat,
       startTerminalChat,
       startWorkspace,
+      agyAccounts,
+      setAgyAccounts,
+      startAgyAccounts,
       startVServerSession,
       startVServerSessions,
       apiProviders,
@@ -3205,6 +3244,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startLyzDevChat,
       startTerminalChat,
       startWorkspace,
+      agyAccounts,
+      setAgyAccounts,
+      startAgyAccounts,
       startVServerSession,
       startVServerSessions,
       cliHarnesses,
