@@ -9,7 +9,6 @@ import { Menu, X as XIcon, Wifi } from 'lucide-react';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
-import NewsPopup, { shouldShowNewsPopup, dismissNewsPopup } from './components/NewsPopup';
 import { AppProvider, useAppContext } from './AppContext';
 import { isVideoPath, toFileUrl } from './media';
 import UpdateModal from './components/UpdateModal';
@@ -18,18 +17,13 @@ import { syncWakeMode } from './voice';
 
 // Modals and widgets load on demand to keep startup fast.
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
-const WelcomePopup = lazy(() => import('./components/WelcomePopup'));
 const SpotifyWidget = lazy(() => import('./components/SpotifyWidget'));
-const SetupModal = lazy(() => import('./components/SetupModal'));
 const MobileConnectModal = lazy(() => import('./components/MobileConnectModal'));
-
-const WELCOME_POPUP_STORAGE_KEY = 'agentWorkspace.welcomePopupDismissed';
 
 function AppLayout() {
   const {
     theme,
     customThemes,
-    hasSetupCompleted,
     sidebarTransparency,
     surfaceTransparency,
     spotifyWidgetEnabled,
@@ -45,31 +39,11 @@ function AppLayout() {
   const [showSettings, setShowSettings] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showMobileConnect, setShowMobileConnect] = useState(false);
-  const [showWelcomePopup, setShowWelcomePopup] = useState(() => {
-    try {
-      return localStorage.getItem(WELCOME_POPUP_STORAGE_KEY) !== 'true';
-    } catch {
-      return true;
-    }
-  });
-  const [showNewsPopup, setShowNewsPopup] = useState(shouldShowNewsPopup);
-
-  const closeNewsPopup = () => {
-    setShowNewsPopup(false);
-    dismissNewsPopup();
-  };
-
   // Start the always-on wake word listener if it is enabled.
   useEffect(() => {
     void syncWakeMode();
   }, []);
 
-  // Re-check news popup when setup completes later in the session
-  useEffect(() => {
-    if (hasSetupCompleted && shouldShowNewsPopup()) {
-      setShowNewsPopup(true);
-    }
-  }, [hasSetupCompleted]);
   const selectedCustomTheme = customThemes.find((item) => item.id === theme);
   // Media-only themes keep the look of their base theme and only swap the background.
   const baseThemeId = selectedCustomTheme?.mediaOnly ? selectedCustomTheme.baseTheme || 'modern-dark' : theme;
@@ -79,15 +53,6 @@ function AppLayout() {
   const backdropTheme = selectedCustomTheme?.mediaOnly ? selectedCustomTheme : customTheme;
   const cssTheme = customTheme ? 'custom' : baseThemeId;
 
-  const closeWelcomePopup = () => {
-    setShowWelcomePopup(false);
-    try {
-      localStorage.setItem(WELCOME_POPUP_STORAGE_KEY, 'true');
-    } catch {
-      // localStorage may be unavailable in restricted render contexts.
-    }
-  };
-  
   const bgClass = {
     'modern-dark': 'bg-gradient-to-br from-[#1c181a] via-[#111111] to-[#0a0a0a]',
     'classic-light': 'bg-gradient-to-br from-[#f5f2ed] via-[#e5e1d8] to-[#d1ccc0]',
@@ -226,16 +191,6 @@ function AppLayout() {
         </div>
         <Suspense fallback={null}>
         <AnimatePresence>
-          {hasSetupCompleted && showNewsPopup && (
-            <NewsPopup onClose={closeNewsPopup} />
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
-          {hasSetupCompleted && !showNewsPopup && showWelcomePopup && (
-            <WelcomePopup onClose={closeWelcomePopup} />
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
           {spotifyWidgetEnabled && <SpotifyWidget />}
         </AnimatePresence>
         <AnimatePresence>
@@ -244,9 +199,6 @@ function AppLayout() {
         <UpdateModal />
         <VoiceInstallModal />
         <VoiceIndicator />
-        <AnimatePresence>
-          {!hasSetupCompleted && <SetupModal />}
-        </AnimatePresence>
 
         {/* Mobile Mode: Connect modal */}
         <AnimatePresence>
