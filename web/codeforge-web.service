@@ -1,0 +1,27 @@
+[Unit]
+Description=CodeForge Web (behind Cloudflare Access)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/codeforge-web
+EnvironmentFile=/etc/codeforge-web.env
+Environment=HOME=/root
+Environment=PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=CODEFORGE_DIST=/opt/codeforge-web/dist
+ExecStart=/usr/bin/node /opt/codeforge-web/codeforge-web-server.mjs
+Restart=always
+RestartSec=3
+# Terminals live in tmux, which this service may start: keep it alive on restarts.
+KillMode=process
+NoNewPrivileges=yes
+ProtectSystem=no
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

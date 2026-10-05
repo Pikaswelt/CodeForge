@@ -18,6 +18,8 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
   const eventListeners = new Map();
   let ws: WebSocket | null = null;
   let connectPromise: Promise<WebSocket> | null = null;
+  let hadConnection = false;
+  const openShells = new Map<string, any>();
 
   const connect = (): Promise<WebSocket> => {
     if (connectPromise) return connectPromise;
@@ -71,6 +73,9 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
               else pending.resolve(msg.result);
             }
           } else if (msg.type === 'ipc-event') {
+            if (typeof msg.channel === 'string' && msg.channel.startsWith('shell:output:') && msg.data?.type === 'exit') {
+              openShells.delete(msg.channel.slice('shell:output:'.length));
+            }
             const list = eventListeners.get(msg.channel);
             if (list) {
               for (const cb of list) {
@@ -86,6 +91,13 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
       ws.onopen = () => {
         console.log('WebSocket connected');
         resolve(ws!);
+        // After a dropped connection, re-attach the terminals that were open (their sessions kept running).
+        if (hadConnection) {
+          for (const request of openShells.values()) {
+            invoke('shell:create', { ...request, reattachOnly: true }).catch(() => {});
+          }
+        }
+        hadConnection = true;
       };
 
       ws.onerror = (err) => {
@@ -176,8 +188,14 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
         eventListeners.set(channel, list.filter((cb: any) => cb !== callback));
       };
     },
-    openExternal: (url: string) => invoke('shell:open-external', url),
-    openInChrome: (url: string) => invoke('shell:open-in-chrome', url),
+    // The server cannot open a browser for us: web links open in a new tab of this browser.
+    openExternal: async (url: string) => {
+      if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer');
+    },
+    openInChrome: async (url: string) => {
+      if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer');
+      return 'default';
+    },
     openPath: (targetPath: string) => invoke('shell:open-path', targetPath),
     getActions: (dirPath: string) => invoke('actions:list', dirPath),
     playAction: (dirPath: string, name: string) => invoke('actions:play', dirPath, name),
@@ -199,12 +217,20 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
         eventListeners.set(channel, list.filter((cb: any) => cb !== callback));
       };
     },
-    createShellSession: (request: any) => invoke('shell:create', request),
+    createShellSession: (request: any) => {
+      openShells.set(request.chatId, request);
+      return invoke('shell:create', request);
+    },
     writeToShellSession: (request: any) => invoke('shell:write', request),
-    killShellSession: (chatId: string) => invoke('shell:kill', chatId),
+    killShellSession: (chatId: string) => {
+      openShells.delete(chatId);
+      return invoke('shell:kill', chatId);
+    },
     resizeShellSession: (request: any) => invoke('shell:resize', request),
     getAgyAccountsStatus: (accountIds: string[]) => invoke('agy-accounts:status', accountIds),
     removeAgyAccountProfile: (accountId: string) => invoke('agy-accounts:remove-profile', accountId),
+    listAgyAccounts: () => invoke('agy-accounts:list'),
+    saveAgyAccounts: (accounts: any[]) => invoke('agy-accounts:save', accounts),
     onShellOutput: (chatId: string, callback: any) => {
       const channel = `shell:output:${chatId}`;
       if (!eventListeners.has(channel)) eventListeners.set(channel, []);

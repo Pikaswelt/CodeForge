@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, Download, Loader2, RefreshCw, X, XCircle } from 'lucide-react';
 import type { UpdateStatus } from '../electron.d';
 
-// Update window: opens by itself when an update is found (or when the user
-// starts a check with openUpdateWindow) and shows every step until install.
+// Update window: opens only when the user starts a check with openUpdateWindow
+// and shows every step until install.
 
 const OPEN_EVENT = 'codeforge:open-update-window';
 
@@ -29,18 +29,10 @@ export default function UpdateModal() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [open, setOpen] = useState(false);
   const [installClicked, setInstallClicked] = useState(false);
-  const shownFor = useRef('');
 
   useEffect(() => {
     void window.agentWorkspace?.getUpdateStatus().then((value) => value && setStatus(value));
-    const unsubscribe = window.agentWorkspace?.onUpdateStatus((value) => {
-      setStatus(value);
-      // Open automatically once per found version.
-      if ((value.status === 'downloading' || value.status === 'downloaded') && value.availableVersion && shownFor.current !== value.availableVersion) {
-        shownFor.current = value.availableVersion;
-        setOpen(true);
-      }
-    });
+    const unsubscribe = window.agentWorkspace?.onUpdateStatus(setStatus);
     const onOpen = (event: Event) => {
       setOpen(true);
       if ((event as CustomEvent).detail?.check) {

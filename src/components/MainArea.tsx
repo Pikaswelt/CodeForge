@@ -42,6 +42,7 @@ import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
 import { useDictation } from '../useDictation';
 import { useVoiceSettings } from '../voice';
+import { useCompactLayout } from '../useCompactLayout';
 import { AddVServerDialog, NewTabMenu, VServerPanel, useVServers } from './VServers';
 import { SftpBrowser } from './SftpBrowser';
 import { isVideoPath, toFileUrl } from '../media';
@@ -1095,7 +1096,7 @@ function TerminalInstance({
     }
 
     // Start PTY session in backend
-    window.agentWorkspace.createShellSession({
+    const shellCreated = window.agentWorkspace.createShellSession({
       chatId: tabId,
       cwd: startPath,
       shellType,
@@ -1104,50 +1105,63 @@ function TerminalInstance({
       agyAccountId: tab?.agyAccountId,
     });
 
-    // SSH login takes longer than a local shell before a command can be typed.
-    const commandDelay = sshServer ? 3500 : 1000;
-    if (tab?.command || tab?.blank) {
-      if (tab.command && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        const tabCommand = tab.command;
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
-        }, commandDelay);
-      }
-    } else if (sshServer) {
-      // Plain SSH session: no local start command.
-    } else if (chat.mode === 'standard') {
-      const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
-      const waitTime = platformWaitTimes[provider] || 5000;
-      if (!startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: agentCmd + '\r' });
+    const runStartCommands = () => {
+      // SSH login takes longer than a local shell before a command can be typed.
+      const commandDelay = sshServer ? 3500 : 1000;
+      if (tab?.command || tab?.blank) {
+        if (tab.command && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          const tabCommand = tab.command;
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
+          }, commandDelay);
+        }
+      } else if (sshServer) {
+        // Plain SSH session: no local start command.
+      } else if (chat.mode === 'standard') {
+        const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
+        const waitTime = platformWaitTimes[provider] || 5000;
+        if (!startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: agentCmd + '\r' });
           
-          const initialPrompt = chat.messages.find(m => m.sender === 'user')?.text;
-          if (initialPrompt) {
-            setTimeout(() => {
-              window.agentWorkspace.writeToShellSession({ chatId: tabId, text: initialPrompt + '\r' });
-            }, waitTime);
-          }
-        }, 1000);
+            const initialPrompt = chat.messages.find(m => m.sender === 'user')?.text;
+            if (initialPrompt) {
+              setTimeout(() => {
+                window.agentWorkspace.writeToShellSession({ chatId: tabId, text: initialPrompt + '\r' });
+              }, waitTime);
+            }
+          }, 1000);
+        }
+      } else if (chat.harness) {
+        if (chat.harness.command && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          const harnessCommand = chat.harness.command;
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: harnessCommand + '\r' });
+          }, 1000);
+        }
+      } else {
+        if (terminalStartCommandEnabled && terminalStartCommand && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: terminalStartCommand + '\r' });
+          }, 1000);
+        }
       }
-    } else if (chat.harness) {
-      if (chat.harness.command && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        const harnessCommand = chat.harness.command;
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: harnessCommand + '\r' });
-        }, 1000);
-      }
-    } else {
-      if (terminalStartCommandEnabled && terminalStartCommand && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: terminalStartCommand + '\r' });
-        }, 1000);
-      }
-    }
+
+    };
+    // CodeForge Web re-attaches running sessions; their program must not be started a second time.
+    Promise.resolve(shellCreated)
+      .then((result) => {
+        if (result && result.skipStartCommand) {
+          startedTerminalTabs.add(tabId);
+          return;
+        }
+        runStartCommands();
+      })
+      .catch(() => runStartCommands());
 
     // Handle incoming output from backend PTY
     const unsubscribe = window.agentWorkspace.onShellOutput(tabId, (payload: any) => {
@@ -1250,6 +1264,38 @@ function TerminalInstance({
     };
     window.addEventListener('resize', handleResize);
 
+    // xterm.js has no touch scrolling, so vertical swipes become wheel events. With tmux
+    // mouse mode on they scroll the session history; a plain tap still focuses the terminal.
+    const touchTarget = terminalRef.current;
+    let lastTouchY: number | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches.length === 1 ? event.touches[0].clientY : null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (lastTouchY === null || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const deltaY = lastTouchY - touch.clientY;
+      if (Math.abs(deltaY) < 4) return;
+      lastTouchY = touch.clientY;
+      event.preventDefault();
+      term.element?.dispatchEvent(
+        new WheelEvent('wheel', {
+          deltaY: deltaY * 2,
+          deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+    const onTouchEnd = () => {
+      lastTouchY = null;
+    };
+    touchTarget?.addEventListener('touchstart', onTouchStart, { passive: true });
+    touchTarget?.addEventListener('touchmove', onTouchMove, { passive: false });
+    touchTarget?.addEventListener('touchend', onTouchEnd);
+
     const timer = setTimeout(handleResize, 100);
 
     return () => {
@@ -1258,6 +1304,9 @@ function TerminalInstance({
       unsubscribe();
       term.dispose();
       window.removeEventListener('resize', handleResize);
+      touchTarget?.removeEventListener('touchstart', onTouchStart);
+      touchTarget?.removeEventListener('touchmove', onTouchMove);
+      touchTarget?.removeEventListener('touchend', onTouchEnd);
     };
   }, [tabId, startPath]);
 
@@ -1322,6 +1371,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     setTerminalPrefixSuffixEnabled,
     openBrowserTab,
     cliHarnesses,
+    mobileMode,
   } = useAppContext();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -1331,6 +1381,8 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const tabs = currentChat.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
   const activeTabId = currentChat.activeTerminalTabId || chat.id;
   const terminalLayout = currentChat.terminalLayout || 'single';
+  // Phones and tablets stack grid terminals in one scrollable column.
+  const stacked = useCompactLayout() || mobileMode;
   const gridSize = Math.max(1, Math.min(6, currentChat.terminalGridSize || 4));
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
@@ -1772,9 +1824,9 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
       <div className="flex-1 min-h-0 w-full relative">
         {terminalLayout === 'grid' ? (
-          <div className={`grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : gridSize <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3 grid-rows-2'}`}>
+          <div className={stacked ? 'flex h-full w-full flex-col gap-3 overflow-y-auto' : `grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : gridSize <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3 grid-rows-2'}`}>
             {tabs.slice(0, gridSize).map((tab) => (
-              <div key={tab.id} className="border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col h-full min-h-0">
+              <div key={tab.id} className={`border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col min-h-0 ${stacked ? 'h-[60vh] min-h-[280px] shrink-0' : 'h-full'}`}>
                 <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
                   <span className="font-semibold text-zinc-300">{tab.title}</span>
                   <span className="uppercase text-[8px] bg-white/5 px-1.5 py-0.5 rounded font-mono border border-white/5">{tab.shellType || 'cmd'}</span>
@@ -1791,7 +1843,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 </div>
               </div>
             ))}
-            {tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
+            {!stacked && tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
               <div key={`empty-${i}`} className="border border-dashed border-white/5 rounded-lg flex flex-col items-center justify-center bg-black/10">
                 <span className="text-[10px] text-zinc-600 uppercase font-mono">Kein Tab</span>
                 <button
