@@ -6,6 +6,8 @@ import {
   Check,
   Folder,
   Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   Square,
   X,
@@ -17,8 +19,12 @@ import { openUpdateWindow } from './UpdateModal';
 
 export default function TopBar({
   onSettingsClick,
+  sidebarOpen,
+  onToggleSidebar,
 }: {
   onSettingsClick: () => void;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }) {
   const {
     selectedProject,
@@ -158,6 +164,13 @@ export default function TopBar({
       className="app-topbar app-drag flex items-center justify-between h-10 px-3 bg-black/10 text-zinc-400 select-none shrink-0"
     >
       <div className="app-no-drag flex items-center gap-3">
+        <button
+          onClick={onToggleSidebar}
+          className="-ml-1 flex h-8 w-8 items-center justify-center rounded hover:bg-white/5 hover:text-zinc-200"
+          title={sidebarOpen ? 'Seitenleiste einklappen' : 'Seitenleiste ausklappen'}
+        >
+          {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+        </button>
         <div className="flex items-center gap-2 pr-2 text-zinc-200">
           <AppLogo className="w-5 h-5" />
           <span className="text-[12px] font-semibold tracking-wide">CodeForge</span>
