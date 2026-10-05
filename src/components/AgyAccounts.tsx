@@ -27,8 +27,10 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
     try {
       await window.agentWorkspace?.removeAgyAccountProfile(accountId);
       await refreshStatus();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Profil konnte nicht entfernt werden.');
+      return false;
     } finally {
       setBusyId(null);
     }
@@ -103,9 +105,10 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
               <button
                 onClick={() => {
                   if (!window.confirm(`Account "${account.name}" entfernen? Sein Login auf diesem PC wird geloescht.`)) return;
-                  void removeProfile(account.id).then(() =>
-                    setAgyAccounts((current) => current.filter((item) => item.id !== account.id)),
-                  );
+                  // Keep the entry if deleting the login failed, otherwise its token folder would be orphaned.
+                  void removeProfile(account.id).then((removed) => {
+                    if (removed) setAgyAccounts((current) => current.filter((item) => item.id !== account.id));
+                  });
                 }}
                 disabled={busyId === account.id}
                 className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10"

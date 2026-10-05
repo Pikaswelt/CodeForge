@@ -696,8 +696,16 @@ async function openUrlInChrome(url) {
   if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('URL-Protokoll nicht erlaubt.');
   const chrome = findChromeExecutable();
   if (chrome) {
-    spawn(chrome, [parsed.toString()], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-    return 'chrome';
+    // A failed spawn emits 'error' asynchronously; without a listener it would crash the main process.
+    const started = await new Promise((resolve) => {
+      const child = spawn(chrome, [parsed.toString()], { detached: true, stdio: 'ignore', windowsHide: false });
+      child.once('error', () => resolve(false));
+      child.once('spawn', () => {
+        child.unref();
+        resolve(true);
+      });
+    });
+    if (started) return 'chrome';
   }
   await shell.openExternal(parsed.toString());
   return 'default';
