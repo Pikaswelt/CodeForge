@@ -271,7 +271,7 @@ public class CodeForgePlugin extends Plugin {
     @PluginMethod
     public void forgetHost(PluginCall call) {
         String host = call.getString("host", "");
-        int port = call.getInteger("port", 22);
+        int port = call.getInt("port", 22);
         getContext().getSharedPreferences("codeforge-known-hosts", Context.MODE_PRIVATE).edit().remove(host + ":" + port).apply();
         call.resolve();
     }
@@ -311,8 +311,8 @@ public class CodeForgePlugin extends Plugin {
                     server(call),
                     call.getString("command", ""),
                     call.getString("stdin"),
-                    call.getInteger("timeoutMs", 30000),
-                    call.getInteger("outputLimit", 2_000_000));
+                    call.getInt("timeoutMs", 30000),
+                    call.getInt("outputLimit", 2_000_000));
             JSObject result = new JSObject();
             result.put("exitCode", run.exitCode);
             result.put("stdout", run.stdout);
@@ -325,7 +325,7 @@ public class CodeForgePlugin extends Plugin {
     public void openShell(PluginCall call) {
         background(call, () -> {
             ssh.openShell(server(call), call.getString("channelId", ""), call.getString("command", "exec bash -l"),
-                    call.getInteger("cols", 80), call.getInteger("rows", 24));
+                    call.getInt("cols", 80), call.getInt("rows", 24));
             call.resolve();
         });
     }
@@ -340,7 +340,7 @@ public class CodeForgePlugin extends Plugin {
     @PluginMethod
     public void resize(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("ok", ssh.resize(call.getString("channelId", ""), call.getInteger("cols", 80), call.getInteger("rows", 24)));
+        result.put("ok", ssh.resize(call.getString("channelId", ""), call.getInt("cols", 80), call.getInt("rows", 24)));
         call.resolve(result);
     }
 
@@ -402,7 +402,7 @@ public class CodeForgePlugin extends Plugin {
     @PluginMethod
     public void sftpReadText(PluginCall call) {
         background(call, () -> {
-            String text = ssh.readText(server(call), call.getString("path", ""), call.getInteger("maxBytes", 2_000_000));
+            String text = ssh.readText(server(call), call.getString("path", ""), call.getInt("maxBytes", 2_000_000));
             JSObject result = new JSObject();
             result.put("content", text);
             call.resolve(result);
