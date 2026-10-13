@@ -122,6 +122,7 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   },
   importSshKey: (input) => ipcRenderer.invoke('ssh:import-key', input),
   removeSshKey: (keyPath) => ipcRenderer.invoke('ssh:remove-key', keyPath),
+  exportForAndroid: (payload) => ipcRenderer.invoke('vservers:export-android', payload),
   sftpConnect: (input) => ipcRenderer.invoke('sftp:connect', input),
   sftpList: (input) => ipcRenderer.invoke('sftp:list', input),
   sftpDisconnect: (id) => ipcRenderer.invoke('sftp:disconnect', id),

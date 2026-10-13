@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { FolderOpen, KeyRound, Loader2, Monitor, Pencil, Plug, Plus, Server, SquareTerminal, Trash2, Upload, X } from 'lucide-react';
+import { FolderOpen, KeyRound, Loader2, Monitor, Pencil, Plug, Plus, Server, Smartphone, SquareTerminal, Trash2, Upload, X } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { harnessIcon } from '../harnessIcons';
 import type { CliHarness, VServer, VServerConnection } from '../types';
@@ -48,6 +48,7 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
   const [connecting, setConnecting] = useState(false);
   const [sftpServer, setSftpServer] = useState<VServer | null>(null);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   const connect = async (targets: VServer[]) => {
     if (targets.length === 0) return;
@@ -116,12 +117,24 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
               {allSelected ? 'Keine auswaehlen' : 'Alle auswaehlen'}
             </button>
           )}
+          {sorted.length > 0 && window.agentWorkspace?.exportForAndroid && (
+            <button
+              onClick={() => setExporting((value) => !value)}
+              className="secondary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5"
+              title="Server, Keys und Einstellungen in die CodeForge-Android-App uebernehmen"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Fuer Android exportieren
+            </button>
+          )}
           <button onClick={() => setEditing('new')} className="primary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5">
             <Plus className="w-3.5 h-3.5" />
             Server hinzufuegen
           </button>
         </div>
       </div>
+
+      {exporting && <AndroidExport servers={sorted} onDone={() => setExporting(false)} />}
 
       <div className="space-y-2">
         {sorted.map((server) => (
@@ -470,4 +483,71 @@ export function NewTabMenu({
 function cleanIpcError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}
+
+// Writes codeforge-android.json for "Vom PC uebernehmen" in the Android app.
+function AndroidExport({ servers: list, onDone }: { servers: VServer[]; onDone(): void }) {
+  const { cliHarnesses, agyAccounts, theme, customThemes, apiProviders, terminalPrefixSuffixEnabled, terminalPrefix, terminalSuffix, terminalTriggerWords } = useAppContext();
+  const [includeKeys, setIncludeKeys] = useState(true);
+  const [includeApi, setIncludeApi] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const run = async () => {
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await window.agentWorkspace!.exportForAndroid!({
+        servers: list,
+        includeKeys,
+        settings: {
+          harnesses: cliHarnesses,
+          agyAccounts,
+          theme,
+          // Wallpapers are files on this PC; colours and gradients travel, media is picked on the phone.
+          customThemes: customThemes.map(({ backgroundImage: _image, backgroundMedia: _media, ...rest }) => rest),
+          ...(includeApi ? { apiProviders } : {}),
+          terminal: { prefixSuffixEnabled: terminalPrefixSuffixEnabled, prefix: terminalPrefix, suffix: terminalSuffix, triggerWords: terminalTriggerWords },
+        },
+      });
+      if (result.saved) setMessage(`Gespeichert: ${result.path}${result.keys ? ` (${result.keys} Key${result.keys > 1 ? 's' : ''})` : ''}. Datei aufs Handy kopieren, in der App unter "Vom PC uebernehmen" auswaehlen und danach loeschen.`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-sky-400/20 bg-sky-500/[0.06] p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm text-white">
+        <Smartphone className="w-4 h-4 text-sky-300" />
+        CodeForge auf Android einrichten
+      </div>
+      <p className="text-xs leading-relaxed text-zinc-400">
+        Erstellt eine Datei mit deinen {list.length} V-Servern, CLI-Harnesses, Antigravity-Accounts und Themes. Die Android-App arbeitet nur auf den V-Servern, nicht auf diesem PC.
+      </p>
+      <label className="flex items-start gap-2 text-xs text-zinc-300">
+        <input type="checkbox" checked={includeKeys} onChange={(event) => setIncludeKeys(event.target.checked)} className="mt-0.5 accent-sky-500" />
+        <span>SSH-Keys mitnehmen <span className="text-zinc-500">(sonst in der App einen neuen Key erzeugen oder Passwort nutzen)</span></span>
+      </label>
+      <label className="flex items-start gap-2 text-xs text-zinc-300">
+        <input type="checkbox" checked={includeApi} onChange={(event) => setIncludeApi(event.target.checked)} className="mt-0.5 accent-sky-500" />
+        <span>KI-Provider mit API-Keys mitnehmen</span>
+      </label>
+      {(includeKeys || includeApi) && (
+        <p className="text-[11px] leading-relaxed text-amber-300/90">
+          Die Datei enthaelt dann geheime Schluessel. Nur auf dein eigenes Handy uebertragen und danach ueberall loeschen.
+        </p>
+      )}
+      {message && <p className="text-xs leading-relaxed text-zinc-300 break-all">{message}</p>}
+      <div className="flex gap-2">
+        <button onClick={onDone} className="flex-1 rounded-lg border border-white/10 py-2 text-xs text-zinc-400 hover:bg-white/[0.05]">Schliessen</button>
+        <button onClick={() => void run()} disabled={busy} className="primary-button flex-[2] !py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50">
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Smartphone className="w-3.5 h-3.5" />}
+          Exportdatei speichern
+        </button>
+      </div>
+    </div>
+  );
 }
