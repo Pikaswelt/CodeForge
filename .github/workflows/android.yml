@@ -37,7 +37,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
+      # The runner image ships the Android SDK (ANDROID_HOME) with accepted licenses;
+      # Gradle downloads the platform and build tools it needs.
+      - run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       # Native desktop modules (node-pty, Electron) are not needed for the web build.
       - run: npm ci --ignore-scripts
