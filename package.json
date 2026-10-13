@@ -21,12 +21,12 @@
     "cap:open": "npx cap open android",
     "mobile:dev": "concurrently -k \"node scripts/mobile-dev-bridge.mjs\" \"vite --port=3001 --host=127.0.0.1\"",
     "mobile:bridge": "node scripts/mobile-dev-bridge.mjs",
-    "apk:build": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug && echo 'APK erstellt unter: android/app/build/outputs/apk/debug/app-debug.apk'",
-    "apk:release": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease && echo 'Release APK unter: android/app/build/outputs/apk/release/'",
+    "apk:build": "node build-apk.mjs",
+    "apk:release": "npm run build && npx cap sync android && node -e \"require('child_process').spawnSync(process.platform==='win32'?'gradlew.bat':'./gradlew',['assembleRelease'],{cwd:'android',stdio:'inherit',shell:true})\" && echo Release APK unter: android/app/build/outputs/apk/release/",
     "server:install": "node codeforge-remote-server.mjs",
     "cli": "node codeforge-cli.mjs",
     "cli:install": "npm install -g .",
-    "release:all": "npm run dist:win && npm run apk:build && node -e \"require('fs').copyFileSync('codeforge-cli.mjs','release/codeforge-cli.mjs')\" && echo 'Builds fertig: release/*.exe, android/app/build/outputs/apk/debug/, und release/codeforge-cli.mjs'"
+    "release:all": "npm run dist:win && npm run apk:build && node -e \"require('fs').copyFileSync('codeforge-cli.mjs','release/codeforge-cli.mjs')\" && echo 'Builds fertig: release/*.exe, release/*.apk, und release/codeforge-cli.mjs'"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
