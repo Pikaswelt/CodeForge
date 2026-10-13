@@ -17,6 +17,7 @@ import type {
   ApiKeys,
   Automation,
   Chat,
+  TerminalTab,
   AgyAccount,
   CliHarness,
   CliStatus,
@@ -39,6 +40,7 @@ import type {
   WallpaperMode,
   WorkDisplayMode,
 } from './types';
+import { uiClick, uiKey, uiSnapshot, uiType } from './uiControl';
 
 export type Theme = string;
 export type CustomTheme = {
@@ -369,7 +371,10 @@ interface AppContextType {
   startWorkspace(input: { harnessId: string; grid: boolean; count: number }): Promise<void>;
   agyAccounts: AgyAccount[];
   setAgyAccounts: React.Dispatch<React.SetStateAction<AgyAccount[]>>;
-  startAgyAccounts(accountIds?: string[]): Promise<void>;
+  startAgyAccounts(accountIds?: string[], server?: VServerConnection, options?: { resume?: boolean }): Promise<Chat>;
+  savedTerminalWorkspaces: Chat[];
+  rejoinTerminalWorkspace(chatId: string): void;
+  endTerminalWorkspace(chatId: string): void;
   startVServerSession(server: VServerConnection): Promise<void>;
   startVServerSessions(servers: VServerConnection[]): Promise<void>;
   apiProviders: ApiProviderConfig[];
@@ -434,6 +439,16 @@ function hasHomeAppRunFile(app: HomeApp) {
 }
 
 export const MAX_AGY_ACCOUNTS = 6;
+
+// Claude Code without permission prompts; it reaches all terminals through the codeforge MCP server.
+const MANAGER_TAB = (id: string, inServerWorkspace: boolean): TerminalTab => ({
+  id,
+  title: 'Manager (Claude Code)',
+  shellType: 'cmd',
+  command: 'claude --dangerously-skip-permissions',
+  // The MCP server runs on this PC, so the manager must too, even in a V-Server workspace.
+  ...(inServerWorkspace ? { location: 'local' as const } : {}),
+});
 
 function newId() {
   return crypto.randomUUID();
@@ -600,6 +615,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [folders, setFolders] = useState<ProjectFolder[]>(() => readStorage('folders', []));
   const [libraryProjects, setLibraryProjects] = useState<ProjectFolder[]>(() => readStorage('libraryProjects', []));
   const [chats, setChats] = useState<Chat[]>(() => readStorage('chats', []));
+  const [savedTerminalWorkspaces, setSavedTerminalWorkspaces] = useState<Chat[]>(() => readStorage('terminalWorkspaces', []));
   const [apiProviders, setApiProviders] = useState<ApiProviderConfig[]>(() => {
     const stored = readStorage<ApiProviderConfig[] | null>('apiProviders', null);
     if (stored) return stored;
@@ -845,6 +861,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('folders', folders), [folders]);
   useEffect(() => writeStorage('libraryProjects', libraryProjects), [libraryProjects]);
   useEffect(() => writeStorage('chats', chats.filter(c => c.mode !== 'terminal')), [chats]);
+  // Terminal workspaces stay out of the chat list after a restart, but their layout is kept so
+  // "Laufende Sessions" can reopen them while their terminals still run.
+  useEffect(() => {
+    setSavedTerminalWorkspaces((current) => {
+      const open = chats.filter((chat) => chat.mode === 'terminal');
+      const openIds = new Set(open.map((chat) => chat.id));
+      return [...open, ...current.filter((chat) => !openIds.has(chat.id))].slice(0, 40);
+    });
+  }, [chats]);
+  useEffect(() => writeStorage('terminalWorkspaces', savedTerminalWorkspaces), [savedTerminalWorkspaces]);
   useEffect(
     () => writeStorage('automations', automations),
     [automations],
@@ -2227,31 +2253,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // One terminal per saved Antigravity account, side by side in a single workspace.
-  const startAgyAccounts = async (accountIds?: string[]) => {
+  // With a V-Server the tabs log in via SSH and keep each account's login in its own folder there.
+  const startAgyAccounts = async (accountIds?: string[], server?: VServerConnection, options: { resume?: boolean } = {}) => {
     const accounts = (accountIds ? agyAccounts.filter((account) => accountIds.includes(account.id)) : agyAccounts).slice(0, MAX_AGY_ACCOUNTS);
     if (accounts.length === 0) throw new Error('Keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen hinzu.');
     const projectForRun = await ensureRunnableProject();
     const chatId = newId();
+    const vserver = server
+      ? { id: server.id, name: server.name, host: server.host, port: server.port, user: server.user, keyPath: server.keyPath }
+      : undefined;
+    const title = accounts.length === 1 ? `Antigravity · ${accounts[0].name}` : 'Antigravity Accounts';
     const chat: Chat = {
       id: chatId,
-      title: accounts.length === 1 ? `Antigravity · ${accounts[0].name}` : 'Antigravity Accounts',
+      title: vserver ? `${title} · ${vserver.name}` : title,
       updatedAt: Date.now(),
       folderId: projectForRun.id,
       mode: 'terminal',
-      terminalTabs: accounts.map((account, index) => ({
-        id: index === 0 ? chatId : newId(),
-        title: account.name,
-        shellType: 'cmd' as const,
-        command: 'agy',
-        agyAccountId: account.id,
-      })),
+      vserver,
+      terminalTabs: [
+        ...accounts.map((account, index) => ({
+          id: index === 0 ? chatId : newId(),
+          title: account.name,
+          shellType: 'cmd' as const,
+          // --continue picks up the account's last agy conversation.
+          command: options.resume ? 'agy --dangerously-skip-permissions --continue' : 'agy --dangerously-skip-permissions',
+          agyAccountId: account.id,
+          ...(vserver ? { vserver } : {}),
+        })),
+        // Manager window: Claude Code on this PC, where the codeforge MCP server runs, to steer the agy accounts.
+        ...(accounts.length < MAX_AGY_ACCOUNTS ? [MANAGER_TAB(newId(), Boolean(vserver))] : []),
+      ],
       activeTerminalTabId: chatId,
-      terminalLayout: accounts.length > 1 ? 'grid' : 'single',
-      terminalGridSize: accounts.length,
+      terminalLayout: 'grid',
+      terminalGridSize: Math.min(MAX_AGY_ACCOUNTS, accounts.length + 1),
       messages: [],
     };
     setChats((current) => [chat, ...current]);
     selectChat(chat.id);
+    return chat;
   };
 
   const startApiChat = async (projectId: string | null) => {
@@ -2357,6 +2396,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.agentWorkspace?.killShellSession(chatId);
       delete activeShellSessions.current[chatId];
     }
+    chats.filter((chat) => chat.mode === 'terminal').forEach(endTerminals);
+    setSavedTerminalWorkspaces([]);
     setChats([]);
     selectChat(null);
   };
@@ -2952,8 +2993,239 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.agentWorkspace?.killShellSession(selectedChatId);
       delete activeShellSessions.current[selectedChatId];
     }
+    // Terminals now outlive CodeForge, so deleting the workspace has to end them.
+    const removed = chats.find((chat) => chat.id === selectedChatId);
+    if (removed) endTerminals(removed);
+    setSavedTerminalWorkspaces((current) => current.filter((chat) => chat.id !== selectedChatId));
     setChats((current) => current.filter((chat) => chat.id !== selectedChatId));
     selectChat(null);
+  };
+
+  // Ends every terminal of a workspace, including its tmux sessions on V-Servers.
+  const endTerminals = (chat: Chat) => {
+    const tabs = chat.terminalTabs?.length ? chat.terminalTabs : [{ id: chat.id, title: '' } as TerminalTab];
+    for (const tab of tabs) {
+      void window.agentWorkspace?.killShellSession(tab.id);
+      const vserver = tab.location === 'local' ? undefined : tab.vserver ?? chat.vserver;
+      if (vserver) {
+        const tmuxName = tab.agyAccountId ? `cf-agy-${tab.agyAccountId}` : `cf-t-${tab.id}`;
+        void window.agentWorkspace?.killRemoteSession?.({ vserver, tmuxName });
+      }
+    }
+  };
+
+  // Opens a saved terminal workspace again; its terminals re-join their running sessions.
+  const rejoinTerminalWorkspace = (chatId: string) => {
+    const saved = savedTerminalWorkspaces.find((chat) => chat.id === chatId);
+    if (!saved) return;
+    setChats((current) => (current.some((chat) => chat.id === chatId) ? current : [saved, ...current]));
+    selectChat(chatId);
+  };
+
+  // ---------- Agent control (MCP) ----------
+  // Saved V-Servers live in their own storage key (see VServers.tsx).
+  const readSavedServers = (): VServerConnection[] => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('agentWorkspace.vservers') || '[]');
+      return Array.isArray(parsed)
+        ? parsed.map((server) => ({ id: server.id, name: server.name, host: server.host, port: server.port, user: server.user, keyPath: server.keyPath }))
+        : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const findServer = (key?: string) => {
+    if (!key) return undefined;
+    const wanted = key.trim().toLowerCase();
+    const server = readSavedServers().find((item) => item.id === key || item.name.toLowerCase() === wanted || item.host === key);
+    if (!server) throw new Error(`V-Server "${key}" ist in CodeForge nicht gespeichert.`);
+    return server;
+  };
+
+  const describeWorkspace = (chat: Chat) => ({
+    workspaceId: chat.id,
+    title: chat.title,
+    tabs: (chat.terminalTabs?.length ? chat.terminalTabs : [{ id: chat.id, title: chat.title } as TerminalTab]).map((tab) => ({
+      sessionId: tab.id,
+      title: tab.title,
+      command: tab.command,
+      agyAccountId: tab.agyAccountId,
+      server: (tab.location === 'local' ? undefined : tab.vserver ?? chat.vserver)?.name,
+    })),
+  });
+
+  const controlState = () => ({
+    workspaces: savedTerminalWorkspaces.map((chat) => ({
+      ...describeWorkspace(chat),
+      open: chats.some((item) => item.id === chat.id),
+      vserver: chat.vserver,
+      terminalTabs: chat.terminalTabs,
+    })),
+    selectedWorkspaceId: selectedChatId,
+    accounts: agyAccounts,
+    servers: readSavedServers(),
+    harnesses: cliHarnesses.map((harness) => ({ name: harness.name, command: harness.command })),
+  });
+
+  const handleControlRequest = async ({ op, args }: { op: string; args: any }) => {
+    switch (op) {
+      case 'state':
+        return controlState();
+      case 'start-agy': {
+        const ids: string[] | undefined = Array.isArray(args.accounts) && args.accounts.length
+          ? args.accounts.map((key: string) => {
+              const wanted = String(key).trim().toLowerCase();
+              const account = agyAccounts.find((item) => item.id === key || item.name.toLowerCase() === wanted);
+              if (!account) throw new Error(`Antigravity-Account "${key}" gibt es nicht.`);
+              return account.id;
+            })
+          : undefined;
+        const chat = await startAgyAccounts(ids, findServer(args.server), { resume: Boolean(args.resume) });
+        return describeWorkspace(chat);
+      }
+      case 'start-terminals': {
+        const tabsInput: { title?: string; command?: string; server?: string }[] = Array.isArray(args.tabs) && args.tabs.length ? args.tabs.slice(0, 6) : [{}];
+        const projectForRun = await ensureRunnableProject();
+        const chatId = newId();
+        const terminalTabs: TerminalTab[] = tabsInput.map((input, index) => {
+          const server = findServer(input.server);
+          return {
+            id: index === 0 ? chatId : newId(),
+            title: input.title || (input.command ? input.command.split(' ')[0] : server ? server.name : `Terminal ${index + 1}`),
+            shellType: 'cmd' as const,
+            ...(input.command ? { command: input.command } : { blank: true }),
+            ...(server ? { vserver: server } : {}),
+          };
+        });
+        const chat: Chat = {
+          id: chatId,
+          title: args.title || (terminalTabs.length === 1 ? terminalTabs[0].title : `${terminalTabs.length} Terminals`),
+          updatedAt: Date.now(),
+          folderId: projectForRun.id,
+          mode: 'terminal',
+          terminalTabs,
+          activeTerminalTabId: chatId,
+          terminalLayout: terminalTabs.length > 1 ? 'grid' : 'single',
+          terminalGridSize: terminalTabs.length > 1 ? terminalTabs.length : undefined,
+          messages: [],
+        };
+        setChats((current) => [chat, ...current]);
+        selectChat(chat.id);
+        return describeWorkspace(chat);
+      }
+      case 'add-tab': {
+        const target = chats.find((chat) => chat.id === args.workspaceId) || savedTerminalWorkspaces.find((chat) => chat.id === args.workspaceId);
+        if (!target) throw new Error('Diesen Workspace gibt es nicht.');
+        const tabs = target.terminalTabs?.length ? target.terminalTabs : [{ id: target.id, title: target.title } as TerminalTab];
+        if (tabs.length >= 6) throw new Error('Der Workspace hat schon 6 Terminals.');
+        const server = findServer(args.server);
+        const tab: TerminalTab = args.manager
+          ? MANAGER_TAB(newId(), Boolean(target.vserver))
+          : {
+              id: newId(),
+              title: args.title || (args.command ? String(args.command).split(' ')[0] : `Terminal ${tabs.length + 1}`),
+              shellType: 'cmd',
+              ...(args.command ? { command: String(args.command) } : { blank: true }),
+              // In a V-Server workspace a tab without server runs on this PC.
+              ...(server ? { vserver: server } : target.vserver ? { location: 'local' as const } : {}),
+            };
+        const nextTabs = [...tabs, tab];
+        const updated: Chat = {
+          ...target,
+          terminalTabs: nextTabs,
+          terminalLayout: 'grid',
+          terminalGridSize: Math.min(6, nextTabs.length),
+          updatedAt: Date.now(),
+        };
+        setChats((current) => (current.some((chat) => chat.id === target.id) ? current.map((chat) => (chat.id === target.id ? updated : chat)) : [updated, ...current]));
+        selectChat(target.id);
+        return describeWorkspace(updated);
+      }
+      case 'open-workspace': {
+        const open = chats.find((chat) => chat.id === args.workspaceId);
+        if (open) selectChat(open.id);
+        else if (savedTerminalWorkspaces.some((chat) => chat.id === args.workspaceId)) rejoinTerminalWorkspace(args.workspaceId);
+        else throw new Error('Diesen Workspace gibt es nicht.');
+        return { ok: true };
+      }
+      case 'end-workspace':
+        endTerminalWorkspace(args.workspaceId);
+        return { ok: true };
+      case 'remove-tab': {
+        // Ends one terminal and takes its tab out of the workspace.
+        const target = chats.find((chat) => chat.terminalTabs?.some((tab) => tab.id === args.sessionId));
+        if (!target) return { ok: false };
+        const tab = target.terminalTabs!.find((item) => item.id === args.sessionId)!;
+        endTerminals({ ...target, terminalTabs: [tab] });
+        const rest = target.terminalTabs!.filter((item) => item.id !== args.sessionId);
+        if (rest.length === 0) {
+          endTerminalWorkspace(target.id);
+          return { ok: true };
+        }
+        setChats((current) =>
+          current.map((chat) =>
+            chat.id === target.id
+              ? {
+                  ...chat,
+                  terminalTabs: rest,
+                  activeTerminalTabId: chat.activeTerminalTabId === tab.id ? rest[0].id : chat.activeTerminalTabId,
+                  terminalGridSize: Math.min(6, Math.max(1, rest.length)),
+                  terminalLayout: rest.length > 1 ? chat.terminalLayout : 'single',
+                }
+              : chat,
+          ),
+        );
+        return { ok: true };
+      }
+      case 'layout': {
+        // grid/single and which terminal is in front.
+        const target = chats.find((chat) => chat.id === args.workspaceId);
+        if (!target) throw new Error('Workspace ist nicht offen (zuerst codeforge_open_workspace).');
+        setChats((current) =>
+          current.map((chat) =>
+            chat.id === target.id
+              ? {
+                  ...chat,
+                  ...(args.layout === 'grid' || args.layout === 'single' ? { terminalLayout: args.layout } : {}),
+                  ...(args.activeSessionId ? { activeTerminalTabId: args.activeSessionId } : {}),
+                }
+              : chat,
+          ),
+        );
+        selectChat(target.id);
+        return { ok: true };
+      }
+      case 'ui-snapshot':
+        return uiSnapshot();
+      case 'ui-click':
+        await uiClick(String(args.ref), args.button);
+        return uiSnapshot();
+      case 'ui-type':
+        await uiType(String(args.ref), String(args.text ?? ''), { submit: Boolean(args.submit), clear: Boolean(args.clear) });
+        return uiSnapshot();
+      case 'ui-key':
+        await uiKey(String(args.key));
+        return uiSnapshot();
+      default:
+        throw new Error(`Unbekannte Aktion: ${op}`);
+    }
+  };
+  const controlHandlerRef = useRef(handleControlRequest);
+  controlHandlerRef.current = handleControlRequest;
+
+  useEffect(() => window.agentWorkspace?.onControlRequest?.((request) => controlHandlerRef.current(request)), []);
+  useEffect(() => {
+    void window.agentWorkspace?.publishControlState?.(controlState());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedTerminalWorkspaces, agyAccounts, cliHarnesses, chats.length, selectedChatId]);
+
+  const endTerminalWorkspace = (chatId: string) => {
+    const chat = chats.find((item) => item.id === chatId) || savedTerminalWorkspaces.find((item) => item.id === chatId);
+    if (chat) endTerminals(chat);
+    setSavedTerminalWorkspaces((current) => current.filter((item) => item.id !== chatId));
+    setChats((current) => current.filter((item) => item.id !== chatId));
+    if (selectedChatId === chatId) selectChat(null);
   };
 
   const value = useMemo<AppContextType>(
@@ -3140,6 +3412,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       agyAccounts,
       setAgyAccounts,
       startAgyAccounts,
+      savedTerminalWorkspaces,
+      rejoinTerminalWorkspace,
+      endTerminalWorkspace,
       startVServerSession,
       startVServerSessions,
       apiProviders,
@@ -3247,6 +3522,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       agyAccounts,
       setAgyAccounts,
       startAgyAccounts,
+      savedTerminalWorkspaces,
+      rejoinTerminalWorkspace,
+      endTerminalWorkspace,
       startVServerSession,
       startVServerSessions,
       cliHarnesses,

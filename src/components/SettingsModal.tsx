@@ -10,6 +10,7 @@ import { HARNESS_ICONS, harnessIcon } from '../harnessIcons';
 import { isVideoPath, toFileUrl } from '../media';
 import { ApiProvidersSettings } from './ApiChat';
 import { AgyAccountsSettings } from './AgyAccounts';
+import { McpSettings } from './McpSettings';
 import type { CliHarness, ProviderId } from '../types';
 
 const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
@@ -409,6 +410,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               )}
 
               {!mobileMode && <AgyAccountsSettings onClose={onClose} />}
+
+              {!mobileMode && <McpSettings />}
 
               {!mobileMode && (
               <section>

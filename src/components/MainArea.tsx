@@ -35,14 +35,18 @@ import {
   Minimize2,
   Clipboard,
   Mic,
+  Monitor,
+  LogIn,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import InputArea from './InputArea';
 import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
 import { useDictation } from '../useDictation';
-import { useVoiceSettings } from '../voice';
+import { updateVoiceSettings, useVoiceSettings } from '../voice';
 import { AddVServerDialog, NewTabMenu, VServerPanel, useVServers } from './VServers';
+import { RunningSessionsPanel } from './RunningSessions';
 import { SftpBrowser } from './SftpBrowser';
 import { isVideoPath, toFileUrl } from '../media';
 import type { Chat, CliHarness, HomeAppTab, Message, ResponseDisplayMode, TerminalTab, VServerConnection } from '../types';
@@ -949,6 +953,67 @@ function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
 
 const startedTerminalTabs = new Set<string>();
 
+const TOOLBAR_BUTTONS = [
+  { key: 'showStartCommandButton', label: 'Start-Befehl' },
+  { key: 'showPrefixSuffixButton', label: 'Präfix/Suffix' },
+  { key: 'showSftpButton', label: 'SFTP (nur V-Server)' },
+  { key: 'showPasteButton', label: 'Einfügen' },
+  { key: 'showMicButton', label: 'Spracheingabe' },
+  { key: 'showGridButton', label: 'Grid' },
+  { key: 'showFullscreenButton', label: 'Vollbild' },
+  { key: 'showRestartButton', label: 'Neustarten' },
+] as const;
+
+// Picks which buttons the terminal toolbar shows. Also opens on right-click on the toolbar.
+function ToolbarButtonsMenu() {
+  const voice = useVoiceSettings();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const openMenu = () => setOpen(true);
+    window.addEventListener('codeforge:toolbar-menu', openMenu);
+    return () => window.removeEventListener('codeforge:toolbar-menu', openMenu);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setOpen((current) => !current)}
+        className={`p-1.5 rounded border transition-colors ${open ? 'bg-white/10 border-white/20 text-white' : 'bg-zinc-800 border-white/10 text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
+        title="Buttons ein-/ausblenden"
+      >
+        <SlidersHorizontal className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-50 w-56 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-md p-2 shadow-xl">
+          <div className="px-2 pb-1.5 pt-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Buttons anzeigen</div>
+          {TOOLBAR_BUTTONS.map((item) => (
+            <label key={item.key} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs text-zinc-300 hover:bg-white/5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={voice[item.key]}
+                onChange={(event) => updateVoiceSettings({ [item.key]: event.target.checked })}
+                className="accent-amber-500"
+              />
+              <span>{item.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const getAgentCommand = (provider: string) => {
   if (provider === 'antigravity') return 'agy';
   if (provider === 'anthropic') return 'claude';
@@ -1094,7 +1159,23 @@ function TerminalInstance({
       term.focus();
     }
 
-    // Start PTY session in backend
+    // Fits xterm to its box and tells the PTY; skipped while the box is hidden (0 size) so it keeps the last real size.
+    let lastSize = '';
+    const syncSize = () => {
+      const box = terminalRef.current;
+      if (!box || box.clientWidth < 20 || box.clientHeight < 20) return;
+      try {
+        fitAddon.fit();
+      } catch (e) {
+        return;
+      }
+      const size = `${term.cols}x${term.rows}`;
+      if (size === lastSize) return;
+      lastSize = size;
+      window.agentWorkspace.resizeShellSession({ chatId: tabId, cols: term.cols, rows: term.rows });
+    };
+
+    // Start PTY session in backend, already at the terminal's size.
     window.agentWorkspace.createShellSession({
       chatId: tabId,
       cwd: startPath,
@@ -1102,52 +1183,67 @@ function TerminalInstance({
       externalServer: !chat.vserver && !sshServer && !tab?.agyAccountId && externalServer.enabled ? externalServer : undefined,
       vserver: sshServer,
       agyAccountId: tab?.agyAccountId,
+      // On a V-Server the command runs inside the tmux session there instead of being typed.
+      startCommand: sshServer ? tab?.command : undefined,
+      // A hidden tab has no real size yet; the backend then uses its default.
+      ...(terminalRef.current.clientWidth >= 20 && terminalRef.current.clientHeight >= 20 ? { cols: term.cols, rows: term.rows } : {}),
+    }).then((result) => {
+      // Sizes measured while the PTY was still starting were dropped; send the current one again.
+      lastSize = '';
+      syncSize();
+      // A re-joined session is already running its program: typing the start command again would land in it.
+      if (result && result.resumed) startedTerminalTabs.add(tabId);
+      else typeStartCommand();
     });
 
-    // SSH login takes longer than a local shell before a command can be typed.
-    const commandDelay = sshServer ? 3500 : 1000;
-    if (tab?.command || tab?.blank) {
-      if (tab.command && !startedTerminalTabs.has(tabId)) {
+    const typeStartCommand = () => {
+      // SSH login takes longer than a local shell before a command can be typed.
+      const commandDelay = sshServer ? 3500 : 1000;
+      if (sshServer && tab?.command) {
         startedTerminalTabs.add(tabId);
-        const tabCommand = tab.command;
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
-        }, commandDelay);
+      } else if (tab?.command || tab?.blank) {
+        if (tab.command && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          const tabCommand = tab.command;
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: tabCommand + '\r' });
+          }, commandDelay);
+        }
+      } else if (sshServer) {
+        // Plain SSH session: no local start command.
+      } else if (chat.mode === 'standard') {
+        const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
+        const waitTime = platformWaitTimes[provider] || 5000;
+        if (!startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: agentCmd + '\r' });
+            
+            const initialPrompt = chat.messages.find(m => m.sender === 'user')?.text;
+            if (initialPrompt) {
+              setTimeout(() => {
+                window.agentWorkspace.writeToShellSession({ chatId: tabId, text: initialPrompt + '\r' });
+              }, waitTime);
+            }
+          }, 1000);
+        }
+      } else if (chat.harness) {
+        if (chat.harness.command && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          const harnessCommand = chat.harness.command;
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: harnessCommand + '\r' });
+          }, 1000);
+        }
+      } else {
+        if (terminalStartCommandEnabled && terminalStartCommand && !startedTerminalTabs.has(tabId)) {
+          startedTerminalTabs.add(tabId);
+          setTimeout(() => {
+            window.agentWorkspace.writeToShellSession({ chatId: tabId, text: terminalStartCommand + '\r' });
+          }, 1000);
+        }
       }
-    } else if (sshServer) {
-      // Plain SSH session: no local start command.
-    } else if (chat.mode === 'standard') {
-      const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
-      const waitTime = platformWaitTimes[provider] || 5000;
-      if (!startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: agentCmd + '\r' });
-          
-          const initialPrompt = chat.messages.find(m => m.sender === 'user')?.text;
-          if (initialPrompt) {
-            setTimeout(() => {
-              window.agentWorkspace.writeToShellSession({ chatId: tabId, text: initialPrompt + '\r' });
-            }, waitTime);
-          }
-        }, 1000);
-      }
-    } else if (chat.harness) {
-      if (chat.harness.command && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        const harnessCommand = chat.harness.command;
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: harnessCommand + '\r' });
-        }, 1000);
-      }
-    } else {
-      if (terminalStartCommandEnabled && terminalStartCommand && !startedTerminalTabs.has(tabId)) {
-        startedTerminalTabs.add(tabId);
-        setTimeout(() => {
-          window.agentWorkspace.writeToShellSession({ chatId: tabId, text: terminalStartCommand + '\r' });
-        }, 1000);
-      }
-    }
+    };
 
     // Handle incoming output from backend PTY
     const unsubscribe = window.agentWorkspace.onShellOutput(tabId, (payload: any) => {
@@ -1235,29 +1331,23 @@ function TerminalInstance({
       }
     });
 
-    // Handle window resize to adjust PTY rows/cols
-    const handleResize = () => {
-      try {
-        fitAddon.fit();
-        window.agentWorkspace.resizeShellSession({
-          chatId: tabId,
-          cols: term.cols,
-          rows: term.rows,
-        });
-      } catch (e) {
-        // ignore
-      }
-    };
-    window.addEventListener('resize', handleResize);
+    // Follow every size change of the terminal box (window, grid layout, sidebar), not only window resizes.
+    let resizeTimer = 0;
+    const observer = new ResizeObserver(() => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(syncSize, 50);
+    });
+    observer.observe(terminalRef.current);
 
-    const timer = setTimeout(handleResize, 100);
+    const timer = setTimeout(syncSize, 100);
 
     return () => {
       clearTimeout(timer);
+      window.clearTimeout(resizeTimer);
+      observer.disconnect();
       onDataDisposable.dispose();
       unsubscribe();
       term.dispose();
-      window.removeEventListener('resize', handleResize);
     };
   }, [tabId, startPath]);
 
@@ -1283,8 +1373,9 @@ function TerminalInstance({
 
   return (
     <div 
-      className={`w-full h-full ${active ? '' : 'hidden'}`} 
-      ref={terminalRef} 
+      className={`w-full h-full ${active ? '' : 'hidden'}`}
+      ref={terminalRef}
+      data-terminal-tab-id={tabId}
       onClick={() => xtermRef.current?.focus()}
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes('Files')) {
@@ -1657,7 +1748,13 @@ function TerminalChatView({ chat }: { chat: Chat }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div
+          className="flex items-center gap-3 shrink-0"
+          onContextMenu={(event) => {
+            event.preventDefault();
+            window.dispatchEvent(new Event('codeforge:toolbar-menu'));
+          }}
+        >
           {voice.showStartCommandButton && <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
             terminalStartCommandEnabled
               ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
@@ -1688,7 +1785,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             <span>Präfix/Suffix</span>
           </label>}
 
-          {activeServer && (
+          {activeServer && voice.showSftpButton && (
             <button
               onClick={() => setSftpServer(activeServer)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-sky-400/20 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-xs cursor-pointer select-none transition-colors duration-150"
@@ -1699,7 +1796,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             </button>
           )}
 
-          <button
+          {voice.showPasteButton && <button
             onClick={async () => {
               try {
                 const clipboardText = await navigator.clipboard.readText();
@@ -1715,7 +1812,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
           >
             <Clipboard className="w-3.5 h-3.5" />
             <span>Einfügen</span>
-          </button>
+          </button>}
 
           {voice.enabled && voice.showMicButton && <button
             onClick={toggleDictation}
@@ -1739,7 +1836,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
           <div className="h-4 w-px bg-white/10" />
 
-          <button
+          {voice.showGridButton && <button
             onClick={() => setChats((current) =>
               current.map((c) => (c.id === chat.id ? { ...c, terminalLayout: terminalLayout === 'grid' ? 'single' : 'grid' } : c))
             )}
@@ -1752,21 +1849,23 @@ function TerminalChatView({ chat }: { chat: Chat }) {
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Grid</span>
-          </button>
+          </button>}
 
-          <button
+          {voice.showFullscreenButton && <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-1.5 rounded bg-zinc-800 border border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
             title={isFullscreen ? 'Fullscreen beenden' : 'Fullscreen aktivieren'}
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          </button>
-          <button
+          </button>}
+          {voice.showRestartButton && <button
             onClick={handleRestart}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-800 border border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white text-[10px] uppercase font-bold tracking-wider transition-colors"
           >
             Neustarten
-          </button>
+          </button>}
+
+          <ToolbarButtonsMenu />
         </div>
       </div>
 
@@ -1834,7 +1933,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
 function HomeView() {
   const { cliHarnesses, startWorkspace, selectedProject, agyAccounts, startAgyAccounts } = useAppContext();
-  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver'>(false);
+  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver' | 'agy' | 'running'>(false);
   const [harnessId, setHarnessId] = useState(() => cliHarnesses[0]?.id || '');
   const [grid, setGrid] = useState(true);
   const [count, setCount] = useState(1);
@@ -1842,20 +1941,28 @@ function HomeView() {
   const [error, setError] = useState('');
   const [agyStarting, setAgyStarting] = useState(false);
   const [agyError, setAgyError] = useState('');
+  const savedServers = useVServers();
 
-  const handleStartAgy = async () => {
+  const runAgy = async (server?: VServerConnection) => {
+    setAgyStarting(true);
+    setAgyError('');
+    try {
+      await startAgyAccounts(undefined, server);
+    } catch (err) {
+      setAgyError(err instanceof Error ? err.message : 'Antigravity konnte nicht gestartet werden.');
+      setAgyStarting(false);
+      setPicking(false);
+    }
+  };
+
+  const handleStartAgy = () => {
     if (agyAccounts.length === 0) {
       setAgyError('Noch keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen unter "Antigravity Accounts" hinzu.');
       return;
     }
-    setAgyStarting(true);
-    setAgyError('');
-    try {
-      await startAgyAccounts();
-    } catch (err) {
-      setAgyError(err instanceof Error ? err.message : 'Antigravity konnte nicht gestartet werden.');
-      setAgyStarting(false);
-    }
+    // Without saved V-Servers there is nothing to choose: start on this PC.
+    if (savedServers.length === 0) void runAgy();
+    else setPicking('agy');
   };
 
   const handleStart = async () => {
@@ -1904,6 +2011,13 @@ function HomeView() {
               <span>V-Server</span>
             </button>
             <button
+              onClick={() => setPicking('running')}
+              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+            >
+              <LogIn className="w-4 h-4 text-white" />
+              <span>Laufende Sessions</span>
+            </button>
+            <button
               onClick={handleStartAgy}
               disabled={agyStarting}
               title={agyAccounts.length ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten` : 'Accounts in den Einstellungen anlegen'}
@@ -1927,6 +2041,44 @@ function HomeView() {
           <ApiChatSetup onCancel={() => setPicking(false)} />
         ) : picking === 'vserver' ? (
           <VServerPanel onCancel={() => setPicking(false)} />
+        ) : picking === 'running' ? (
+          <RunningSessionsPanel onCancel={() => setPicking(false)} />
+        ) : picking === 'agy' ? (
+          <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-4">
+            <div>
+              <div className="section-label">Antigravity starten auf</div>
+              <p className="text-xs text-zinc-500 mt-2">
+                {agyAccounts.length} Account{agyAccounts.length === 1 ? '' : 's'} nebeneinander. Auf einem V-Server muss agy installiert sein; jeder Account meldet sich dort einmal separat an.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => void runAgy()}
+                disabled={agyStarting}
+                className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-sm text-zinc-200 hover:bg-white/[0.07] disabled:opacity-50"
+              >
+                <Monitor className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span className="truncate">Dieser PC</span>
+              </button>
+              {savedServers.map((server) => (
+                <button
+                  key={server.id}
+                  onClick={() => void runAgy(server)}
+                  disabled={agyStarting}
+                  title={`${server.user ? `${server.user}@` : ''}${server.host}`}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-sm text-zinc-200 hover:bg-white/[0.07] disabled:opacity-50"
+                >
+                  <Server className="w-4 h-4 shrink-0 text-sky-400" />
+                  <span className="truncate">{server.name}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <button onClick={() => setPicking(false)} disabled={agyStarting} className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50">
+                Abbrechen
+              </button>
+            </div>
+          </section>
         ) : (
           <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-6">
             <div>

@@ -85,7 +85,24 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   createShellSession: (request) => ipcRenderer.invoke('shell:create', request),
   writeToShellSession: (request) => ipcRenderer.invoke('shell:write', request),
   killShellSession: (chatId) => ipcRenderer.invoke('shell:kill', chatId),
-  resizeShellSession: (request) => ipcRenderer.invoke('shell:resize', request),
+  listRunningSessions: (request) => ipcRenderer.invoke('sessions:list', request),
+  killRemoteSession: (request) => ipcRenderer.invoke('sessions:kill-remote', request),
+  // Agent control (MCP): requests from main that the UI answers, e.g. "start these accounts".
+  onControlRequest: (handler) => {
+    const listener = async (_event, { reqId, op, args }) => {
+      try {
+        const result = await handler({ op, args });
+        ipcRenderer.send('control:response', { reqId, ok: true, result });
+      } catch (error) {
+        ipcRenderer.send('control:response', { reqId, ok: false, error: error && error.message ? error.message : String(error) });
+      }
+    };
+    ipcRenderer.on('control:request', listener);
+    return () => ipcRenderer.removeListener('control:request', listener);
+  },
+  publishControlState: (state) => ipcRenderer.invoke('control:publish-state', state),
+  getMcpInfo: () => ipcRenderer.invoke('mcp:info'),
+  registerMcp: (request) => ipcRenderer.invoke('mcp:register', request),  resizeShellSession: (request) => ipcRenderer.invoke('shell:resize', request),
   getAgyAccountsStatus: (accountIds) => ipcRenderer.invoke('agy-accounts:status', accountIds),
   removeAgyAccountProfile: (accountId) => ipcRenderer.invoke('agy-accounts:remove-profile', accountId),
   onShellOutput: (chatId, callback) => {
