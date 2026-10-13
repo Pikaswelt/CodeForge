@@ -13,7 +13,7 @@
   <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Pikaswelt/CodeForge?style=flat-square&color=f59e0b" /></a>
   <a href="https://github.com/Pikaswelt/CodeForge/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Pikaswelt/CodeForge/total?style=flat-square" /></a>
   <a href="https://github.com/Pikaswelt/CodeForge/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Pikaswelt/CodeForge/ci.yml?branch=main&style=flat-square&label=CI" /></a>
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0078d4?style=flat-square" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Android-0078d4?style=flat-square" />
 </p>
 
 <p align="center">
@@ -69,6 +69,17 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - **Background-only themes** swap the wallpaper and keep the rest of the look.
 - Glass effects, transparency and corner radius are adjustable.
 
+### Android app
+- Install the **CodeForge Android** APK and work on your V-Server from your phone. The app runs nothing locally: every terminal, agent and file lives on the server.
+- Connects over **SSH directly** (no extra server software). Use the key from your PC, paste one, or let the phone **generate its own Ed25519 key** and add it to the server with your password in one tap.
+- Terminals run in **tmux**, exactly like on the desktop. They survive dead spots and a locked phone, reconnect automatically, and you can **continue a session started on the PC** (and the other way round) under *Laufende Sessions*.
+- Built for touch: extra-keys bar (Esc, Tab, Shift+Tab, Ctrl, Alt, arrows, ^C, …), a prompt box for long prompts or dictation, swipe to scroll, pinch to zoom, tappable links (e.g. the Antigravity login).
+- Quick start for Claude Code, Codex, Antigravity (including multiple **agy accounts**), your own CLI harnesses and plain shells. Live server stats on the home screen.
+- **SFTP file browser**: browse, open files on the phone, save to the phone, upload from the phone, rename, delete, new folder, edit text files, open a terminal in a folder.
+- **API chat** with your providers, optionally with a server project folder as context.
+- **Themes** like on the desktop, plus custom colours, animated gradients and **images or videos from your phone as wallpaper**.
+- **Take over from the PC**: on the home screen choose *Für Android exportieren* next to your V-Servers, copy the file to the phone and import it under *Vom PC übernehmen*.
+
 ### Automatic updates
 - CodeForge checks GitHub Releases on start and every six hours.
 - Updates download in the background and are verified with SHA-512.
@@ -98,6 +109,8 @@ sudo apt install ./CodeForge-<version>-amd64.deb
 ```
 
 With the `.deb` package, CodeForge downloads updates and opens them in your system installer.
+
+**Android:** download `CodeForge-Android-<version>.apk` from the release (or the *CodeForge-Android* artifact of the **Android APK** workflow run), open it on the phone and allow the installation from this source. Android 8.0 or newer. New versions install over the old one and keep your servers and settings.
 
 ### Requirements
 
@@ -141,7 +154,11 @@ npm run dev        # Vite dev server + Electron with hot reload
 npm run lint       # TypeScript type check
 npm run dist:win   # Build the Windows installer into release/
 npm run dist:linux # Build AppImage + .deb (run on Linux)
+npm run mobile:dev # Android UI in the browser (http://127.0.0.1:3001/?mobile) with a local SSH bridge
+npm run apk:build  # Debug APK (needs the Android SDK)
 ```
+
+The Android app lives in `src/mobile/` (UI) and `android/app/src/main/java/app/codeforge/desktop/` (native SSH plugin based on JSch). `npm run mobile:dev` starts `scripts/mobile-dev-bridge.mjs`, which serves the same plugin API with ssh2, so the phone UI can be developed against a real server in a desktop browser.
 
 ### Tech stack
 
@@ -174,6 +191,7 @@ src/
 2. Run `npm run dist:win`.
 3. Create a GitHub release `v<version>` and attach `CodeForge-Setup-<version>.exe`, its `.blockmap` and `latest.yml`.
 4. The **Linux release** workflow builds the AppImage and `.deb` on GitHub Actions and attaches them, together with `latest-linux.yml`.
+5. The **Android APK** workflow builds `CodeForge-Android-<version>.apk` and attaches it. To sign with your own key, add the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`; otherwise the project keystore is used. Switching keys later means uninstalling the app once.
 
 Installed apps pick up the new version automatically.
 
