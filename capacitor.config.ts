@@ -14,6 +14,11 @@ const config: CapacitorConfig = {
     hostname: 'localhost',
   },
   plugins: {
+    // Light status bar icons for the dark default themes; insets are exposed as CSS variables.
+    SystemBars: {
+      style: 'DARK',
+      insetsHandling: 'css',
+    },
     SplashScreen: {
       launchShowDuration: 1500,
       backgroundColor: '#111111',

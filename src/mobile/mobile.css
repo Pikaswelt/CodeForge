@@ -1,0 +1,304 @@
+@import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/700.css";
+@import "@fontsource/fira-code/400.css";
+@import "@fontsource/fira-code/700.css";
+
+@theme {
+  --font-sans: system-ui, "Roboto", "Segoe UI", sans-serif;
+  --color-cf-bg: var(--cf-bg);
+  --color-cf-surface: var(--cf-surface);
+  --color-cf-text: var(--cf-text);
+  --color-cf-muted: var(--cf-muted);
+  --color-cf-accent: var(--cf-accent);
+  --color-cf-line: var(--cf-line);
+  --color-cf-hover: var(--cf-hover);
+}
+
+:root {
+  /* Capacitor's SystemBars plugin sets --safe-area-inset-*; env() covers browsers. */
+  --sat: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sab: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --sal: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  --sar: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+  --cf-app-height: 100dvh;
+  --cf-keyboard: 0px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #111111;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+.cf-selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+button {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.cf-app {
+  position: fixed;
+  inset: 0;
+  height: var(--cf-app-height);
+  color: var(--cf-text);
+  background: var(--cf-bg);
+  overflow: hidden;
+}
+
+/* Wallpaper: theme gradient, optional image or video and a dimming scrim. */
+.cf-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.cf-backdrop-gradient {
+  position: absolute;
+  inset: -10%;
+  background-size: 220% 220%;
+}
+
+.cf-backdrop-gradient.animated {
+  animation: cf-drift 18s ease-in-out infinite;
+}
+
+.cf-backdrop-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@keyframes cf-drift {
+  0%,
+  100% {
+    background-position: 0% 40%;
+  }
+  50% {
+    background-position: 100% 60%;
+  }
+}
+
+.cf-glass {
+  background: color-mix(in srgb, var(--cf-surface) var(--cf-surface-alpha), transparent);
+  -webkit-backdrop-filter: blur(var(--cf-blur)) saturate(140%);
+  backdrop-filter: blur(var(--cf-blur)) saturate(140%);
+  border: 1px solid var(--cf-line);
+}
+
+.cf-card {
+  border-radius: var(--cf-radius);
+}
+
+.cf-chip {
+  border-radius: calc(var(--cf-radius) * 0.6);
+}
+
+.cf-accent-bg {
+  background: var(--cf-accent);
+  color: var(--cf-accent-contrast);
+}
+
+.cf-accent-text {
+  color: var(--cf-accent);
+}
+
+.cf-muted {
+  color: var(--cf-muted);
+}
+
+.cf-input {
+  width: 100%;
+  border-radius: calc(var(--cf-radius) * 0.6);
+  border: 1px solid var(--cf-line);
+  background: color-mix(in srgb, var(--cf-bg) 55%, transparent);
+  color: var(--cf-text);
+  padding: 0.7rem 0.85rem;
+  font-size: 16px; /* 16px stops Android from zooming into focused inputs */
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.cf-input:focus {
+  border-color: var(--cf-accent);
+}
+
+.cf-input::placeholder {
+  color: color-mix(in srgb, var(--cf-muted) 70%, transparent);
+}
+
+.cf-press {
+  transition: transform 0.12s ease, background-color 0.15s ease, opacity 0.15s;
+}
+
+.cf-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cf-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.cf-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cf-safe-top {
+  padding-top: calc(var(--sat) + 0.5rem);
+}
+
+.cf-safe-bottom {
+  padding-bottom: var(--sab);
+}
+
+/* Terminal */
+.cf-terminal-shell {
+  background: color-mix(in srgb, #000 var(--cf-terminal-alpha), transparent);
+}
+
+.cf-xterm {
+  position: absolute;
+  inset: 0;
+  padding: 6px 4px 2px 8px;
+  touch-action: none;
+}
+
+.cf-xterm .xterm,
+.cf-xterm .xterm-viewport,
+.cf-xterm .xterm-screen {
+  background-color: transparent !important;
+}
+
+.cf-xterm .xterm-viewport {
+  scrollbar-width: none;
+}
+
+.cf-xterm .xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.cf-key {
+  min-width: 2.6rem;
+  height: 2.35rem;
+  padding: 0 0.6rem;
+  border-radius: 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--cf-hover);
+  border: 1px solid var(--cf-line);
+}
+
+.cf-key.active {
+  background: var(--cf-accent);
+  color: var(--cf-accent-contrast);
+  border-color: transparent;
+}
+
+.cf-sheet-enter {
+  animation: cf-sheet-in 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes cf-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.cf-fade-in {
+  animation: cf-fade 0.2s ease-out;
+}
+
+@keyframes cf-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cf-pulse-dot {
+  animation: cf-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cf-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.cf-range {
+  width: 100%;
+  accent-color: var(--cf-accent);
+}
+
+.cf-markdown pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: color-mix(in srgb, #000 35%, transparent);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  margin: 0.4rem 0;
+}
+
+.cf-markdown code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.85em;
+}
+
+.cf-markdown p {
+  margin: 0.3rem 0;
+}
+
+/* In the terminal every row counts: the tab bar steps aside while the keyboard is open. */
+[data-keyboard="open"] .cf-hide-with-keyboard {
+  display: none;
+}
