@@ -34,6 +34,7 @@ const DiscordRPC = require('discord-rpc');
 const { setupUpdater } = require('./updater.cjs');
 const { setupWhisper } = require('./whisper.cjs');
 const sftp = require('./sftp.cjs');
+const { createSessionClient } = require('./session-client.cjs');
 let updater = null;
 const whisper = setupWhisper({ app, getWindow: () => mainWindow });
 
@@ -3267,11 +3268,97 @@ async function removeAgyAccountProfile(_event, accountId) {
   return true;
 }
 
-async function createShellSession(event, { chatId, cwd, shellType, externalServer, vserver, agyAccountId }) {
+// Terminal sessions live in the session host (session-host.cjs), so they keep running while
+// CodeForge is closed or updated. Falls back to an in-process PTY if the host cannot start.
+let sessionClient = null;
+function getSessionClient() {
+  if (!sessionClient) {
+    sessionClient = createSessionClient({
+      userDataDir: app.getPath('userData'),
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+  }
+  return sessionClient;
+}
+
+// chatId -> { vserver, tmuxName } for tabs whose session also lives in tmux on a V-Server.
+const remoteTmuxSessions = new Map();
+const SESSION_ID_PATTERN = /^[a-z0-9-]{1,80}$/i;
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+// V-Server tabs run inside tmux on the server: they survive a lost connection and a closed
+// CodeForge, and opening the tab again re-attaches. Antigravity accounts use one tmux session
+// per account (cf-agy-<id>), each with its own HOME so the agy logins stay separate.
+function buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand }) {
+  let inner = '';
+  if (agyAccountId) {
+    // The login profile runs first so PATH (e.g. ~/.local/bin) still finds agy; git/npm keep the real config.
+    const dir = `$R/.codeforge-agy/${agyAccountId}`;
+    inner += `R=$HOME; export GIT_CONFIG_GLOBAL=$R/.gitconfig NPM_CONFIG_USERCONFIG=$R/.npmrc; mkdir -p ${dir} && chmod 700 $R/.codeforge-agy; export HOME=${dir}; cd $R; `;
+  }
+  if (startCommand) inner += `${startCommand}; `;
+  inner += 'exec bash -i';
+  const script = [
+    `S=${tmuxName}`,
+    'if command -v tmux >/dev/null 2>&1; then',
+    // No status bar; mouse on so the wheel scrolls tmux's history (select text with Shift).
+    // `set -t` does not accept the exact-match "=name" form, so it gets the plain name.
+    '  if tmux has-session -t "=$S" 2>/dev/null || tmux new-session -d -s "$S" -x 200 -y 50 bash -lc ' + shellQuote(inner) + '; then',
+    '    tmux set -t "$S" status off >/dev/null 2>&1; tmux set -t "$S" mouse on >/dev/null 2>&1',
+    '    exec tmux attach -t "=$S"',
+    '  fi',
+    'fi',
+    `exec bash -lc ${shellQuote(inner)}`,
+  ].join('\n');
+  // Base64 keeps the script intact through Windows argument quoting and the remote login shell.
+  return `bash -c "$(echo ${Buffer.from(script).toString('base64')} | base64 -d)"`;
+}
+
+function runVServerCommand(vserver, remoteCommand, timeoutMs = 15000) {
+  return new Promise(async (resolve) => {
+    try {
+      const ssh = await buildVServerSshArgs(vserver);
+      // No terminal and no prompts: only works with a key, which saved V-Servers use.
+      const args = ssh.args.filter((arg) => arg !== '-t');
+      args.splice(args.length - 1, 0, '-o', 'BatchMode=yes');
+      execFile(ssh.command, [...args, remoteCommand], { windowsHide: true, timeout: timeoutMs }, (error, stdout) => {
+        resolve({ ok: !error, stdout: String(stdout || '') });
+      });
+    } catch (_) {
+      resolve({ ok: false, stdout: '' });
+    }
+  });
+}
+
+function sendShellOutput(event, chatId, payload) {
+  try {
+    if (!event.sender.isDestroyed()) event.sender.send(`shell:output:${chatId}`, payload);
+  } catch (_) {}
+}
+
+// Wraps a session-host session in the small PTY-like interface the rest of this file uses.
+function hostShellHandle(chatId, pid) {
+  const exitCallbacks = [];
+  return {
+    pid,
+    write: (data) => getSessionClient().write(chatId, data),
+    resize: (cols, rows) => getSessionClient().resize(chatId, cols, rows),
+    kill: () => getSessionClient().kill(chatId),
+    onExit: (callback) => exitCallbacks.push(callback),
+    _exited: (code) => exitCallbacks.splice(0).forEach((callback) => callback({ exitCode: code })),
+  };
+}
+
+async function createShellSession(event, { chatId, cwd, shellType, externalServer, vserver, agyAccountId, cols, rows, startCommand }) {
   console.log(`[Shell] Creating PTY session for chat: ${chatId}, requested cwd: ${cwd}, shellType: ${shellType}`);
-  if (activeShells.has(chatId)) {
+  // An in-process PTY (fallback) cannot replay its output; host sessions are re-joined below.
+  if (activeShells.has(chatId) && !activeShells.get(chatId).viaHost) {
     console.log(`[Shell] PTY Session already active for chat: ${chatId}`);
-    return;
+    return { resumed: true };
   }
 
   const isWin = process.platform === 'win32';
@@ -3286,9 +3373,14 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
       shell = ssh.command;
       args = ssh.args;
       cwd = app.getPath('home');
+      if (agyAccountId && !AGY_ACCOUNT_ID_PATTERN.test(String(agyAccountId))) throw new Error('Ungueltige Antigravity-Account-ID.');
+      if (!SESSION_ID_PATTERN.test(String(chatId))) throw new Error('Ungueltige Session-ID.');
+      const tmuxName = agyAccountId ? `cf-agy-${agyAccountId}` : `cf-t-${chatId}`;
+      args.push(buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand }));
+      remoteTmuxSessions.set(chatId, { vserver, tmuxName });
     } catch (error) {
-      event.sender.send(`shell:output:${chatId}`, { type: 'stderr', text: `\x1b[31m${error.message}\x1b[0m\r\n` });
-      return;
+      sendShellOutput(event, chatId, { type: 'stderr', text: `\x1b[31m${error.message}\x1b[0m\r\n` });
+      return { resumed: false };
     }
   } else {
     // Account tabs must run locally: their login lives in a folder on this PC.
@@ -3352,38 +3444,296 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
   }
   console.log(`[Shell] Spawning PTY ${shell} in ${spawnCwd}`);
 
+  // Full color support so CLIs like Claude Code render their colored UI.
+  env.TERM = 'xterm-256color';
+  env.COLORTERM = 'truecolor';
+  delete env.NO_COLOR;
+  // Start at the size the visible terminal has, so CLIs draw their UI for the right width.
+  const startCols = Number.isInteger(cols) && cols > 1 ? cols : 100;
+  const startRows = Number.isInteger(rows) && rows > 1 ? rows : 30;
+
   try {
-    // Full color support so CLIs like Claude Code render their colored UI.
-    env.TERM = 'xterm-256color';
-    env.COLORTERM = 'truecolor';
-    delete env.NO_COLOR;
+    const handle = hostShellHandle(chatId, 0);
+    handle.viaHost = true;
+    const remote = remoteTmuxSessions.get(chatId);
+    const result = await getSessionClient().create(
+      chatId,
+      {
+        file: shell,
+        args,
+        cwd: spawnCwd,
+        env,
+        cols: startCols,
+        rows: startRows,
+        meta: { vserverId: vserver?.id, agyAccountId: agyAccountId || undefined, tmuxName: vserver ? remote?.tmuxName : undefined },
+      },
+      (data) => sendShellOutput(event, chatId, { type: 'stdout', text: data }),
+      (code) => {
+        console.log(`[Shell CLOSE] host session ${chatId}, code: ${code}`);
+        if (activeShells.get(chatId) === handle) {
+          activeShells.delete(chatId);
+          agyShellAccounts.delete(chatId);
+        }
+        handle._exited(code);
+        sendShellOutput(event, chatId, { type: 'exit', code });
+      },
+    );
+    handle.pid = result.pid;
+    activeShells.set(chatId, handle);
+    if (agyAccountId) agyShellAccounts.set(chatId, agyAccountId);
+    console.log(`[Shell] Host session ${chatId} pid ${result.pid}${result.resumed ? ' (re-joined)' : ''}`);
+    return { resumed: result.resumed };
+  } catch (error) {
+    console.error(`[Shell] Session host unavailable, using in-process PTY: ${error.message}`);
+  }
+
+  try {
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-256color',
-      cols: 100,
-      rows: 30,
+      cols: startCols,
+      rows: startRows,
       cwd: spawnCwd,
       env: env,
       useConpty: true
     });
-    
+
     activeShells.set(chatId, ptyProcess);
     if (agyAccountId) agyShellAccounts.set(chatId, agyAccountId);
     console.log(`[Shell] Spawned PTY process PID: ${ptyProcess.pid}`);
 
     ptyProcess.onData((data) => {
-      event.sender.send(`shell:output:${chatId}`, { type: 'stdout', text: data });
+      sendShellOutput(event, chatId, { type: 'stdout', text: data });
     });
 
     ptyProcess.onExit(({ exitCode, signal }) => {
       console.log(`[Shell CLOSE] pid: ${ptyProcess.pid}, code: ${exitCode}, signal: ${signal}`);
       activeShells.delete(chatId);
       agyShellAccounts.delete(chatId);
-      event.sender.send(`shell:output:${chatId}`, { type: 'exit', code: exitCode });
+      sendShellOutput(event, chatId, { type: 'exit', code: exitCode });
     });
   } catch (err) {
     console.error(`[Shell SPAWN CRITICAL] ${err.message}`);
-    event.sender.send(`shell:output:${chatId}`, { type: 'stderr', text: `PTY Spawn error: ${err.message}` });
+    sendShellOutput(event, chatId, { type: 'stderr', text: `PTY Spawn error: ${err.message}` });
   }
+  return { resumed: false };
+}
+
+// ---------- Agent control (MCP) ----------
+// The MCP server (mcp-server.cjs, started by Claude Code / agy) reads and writes terminals through
+// the session host directly. Everything that needs the UI (start sessions, open workspaces) goes
+// through this control pipe to the renderer, so the agent's actions show up in CodeForge.
+
+const controlRequests = new Map();
+let controlSeq = 0;
+
+function sessionHostDir() {
+  return path.join(app.getPath('userData'), 'session-host');
+}
+
+function controlToken() {
+  const dir = sessionHostDir();
+  const tokenFile = path.join(dir, 'token');
+  fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(tokenFile)) fs.writeFileSync(tokenFile, crypto.randomBytes(24).toString('hex'), { mode: 0o600 });
+  return fs.readFileSync(tokenFile, 'utf8').trim();
+}
+
+function askRenderer(op, args, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      reject(new Error('Das CodeForge-Fenster ist nicht offen.'));
+      return;
+    }
+    const reqId = ++controlSeq;
+    const timer = setTimeout(() => {
+      controlRequests.delete(reqId);
+      reject(new Error('CodeForge hat nicht rechtzeitig geantwortet.'));
+    }, timeoutMs);
+    controlRequests.set(reqId, { resolve, reject, timer });
+    mainWindow.webContents.send('control:request', { reqId, op, args: args || {} });
+  });
+}
+
+function handleControlResponse(_event, { reqId, ok, result, error } = {}) {
+  const pending = controlRequests.get(reqId);
+  if (!pending) return;
+  controlRequests.delete(reqId);
+  clearTimeout(pending.timer);
+  if (ok) pending.resolve(result);
+  else pending.reject(new Error(error || 'Fehler in CodeForge.'));
+}
+
+// The renderer publishes workspaces, accounts and servers so the MCP server can describe them
+// even while CodeForge is closed.
+function publishControlState(_event, state) {
+  try {
+    fs.mkdirSync(sessionHostDir(), { recursive: true });
+    fs.writeFileSync(path.join(sessionHostDir(), 'control-state.json'), JSON.stringify({ ...state, updatedAt: Date.now() }));
+  } catch (error) {
+    console.error(`[Control] state not saved: ${error.message}`);
+  }
+  return true;
+}
+
+// The window as JPEG (base64), scaled to at most 1400px wide, for codeforge_screenshot.
+async function captureWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Das CodeForge-Fenster ist nicht offen.');
+  let image = await mainWindow.webContents.capturePage();
+  const { width } = image.getSize();
+  if (width > 1400) image = image.resize({ width: 1400, quality: 'good' });
+  return { mimeType: 'image/jpeg', data: image.toJPEG(80).toString('base64') };
+}
+
+function controlPipePath() {
+  const hash = crypto.createHash('sha1').update(path.resolve(app.getPath('userData')).toLowerCase()).digest('hex').slice(0, 12);
+  const user = String(process.env.USERNAME || process.env.USER || 'user').replace(/[^a-z0-9_-]/gi, '_');
+  return process.platform === 'win32' ? `\\\\.\\pipe\\codeforge-control-${user}-${hash}` : path.join(sessionHostDir(), 'control.sock');
+}
+
+function startControlServer() {
+  const net = require('node:net');
+  const token = controlToken();
+  const pipePath = controlPipePath();
+  if (process.platform !== 'win32') {
+    try {
+      fs.unlinkSync(pipePath);
+    } catch (_) {}
+  }
+  const server = net.createServer((socket) => {
+    socket.setEncoding('utf8');
+    let authed = false;
+    let pending = '';
+    const reply = (message) => {
+      if (!socket.destroyed) socket.write(JSON.stringify(message) + '\n');
+    };
+    socket.on('data', (chunk) => {
+      pending += chunk;
+      let index;
+      while ((index = pending.indexOf('\n')) >= 0) {
+        const line = pending.slice(0, index);
+        pending = pending.slice(index + 1);
+        let message;
+        try {
+          message = JSON.parse(line);
+        } catch (_) {
+          continue;
+        }
+        if (!authed) {
+          if (message.op === 'hello' && message.token === token) {
+            authed = true;
+            reply({ ok: true, hello: true });
+          } else {
+            socket.destroy();
+          }
+          continue;
+        }
+        const work = message.op === 'screenshot' ? captureWindow() : askRenderer(message.op, message.args, message.timeoutMs);
+        work
+          .then((result) => reply({ id: message.id, ok: true, result }))
+          .catch((error) => reply({ id: message.id, ok: false, error: error.message }));
+      }
+    });
+    socket.on('error', () => {});
+  });
+  server.on('error', (error) => console.error(`[Control] pipe failed: ${error.message}`));
+  server.listen(pipePath);
+  try {
+    fs.writeFileSync(
+      path.join(sessionHostDir(), 'control.json'),
+      JSON.stringify({ pipe: pipePath, exe: process.execPath, packaged: app.isPackaged, pid: process.pid }),
+    );
+  } catch (_) {}
+}
+
+// Copies the MCP server with what it needs next to the session host, outside the install folder,
+// so Claude Code / agy keep a stable path across CodeForge updates.
+function installMcpFiles() {
+  const dir = path.join(sessionHostDir(), 'mcp');
+  fs.mkdirSync(dir, { recursive: true });
+  for (const name of ['mcp-server.cjs', 'session-client.cjs', 'session-host.cjs']) {
+    const source = fs.readFileSync(path.join(__dirname, name), 'utf8');
+    const target = path.join(dir, name);
+    if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8') !== source) fs.writeFileSync(target, source);
+  }
+  const headlessSource = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@xterm', 'headless')
+    : path.dirname(require.resolve('@xterm/headless/package.json'));
+  const version = JSON.parse(fs.readFileSync(path.join(headlessSource, 'package.json'), 'utf8')).version;
+  const headlessTarget = path.join(dir, 'node_modules', '@xterm', 'headless');
+  let installed = '';
+  try {
+    installed = JSON.parse(fs.readFileSync(path.join(headlessTarget, 'package.json'), 'utf8')).version;
+  } catch (_) {}
+  if (installed !== version) {
+    fs.rmSync(headlessTarget, { recursive: true, force: true });
+    fs.cpSync(headlessSource, headlessTarget, { recursive: true });
+  }
+  return path.join(dir, 'mcp-server.cjs');
+}
+
+async function getMcpCommand() {
+  const script = installMcpFiles();
+  const node = await findExecutable('node');
+  const args = [script, '--data', app.getPath('userData')];
+  if (node) return { command: node.split(/\r?\n/)[0].trim(), args, env: {} };
+  return { command: process.execPath, args, env: { ELECTRON_RUN_AS_NODE: '1' } };
+}
+
+function runCli(command, args, env) {
+  return new Promise((resolve) => {
+    execFile(command, args, { windowsHide: true, timeout: 60000, env: { ...process.env, ...env }, shell: process.platform === 'win32' }, (error, stdout, stderr) => {
+      resolve({ ok: !error, output: `${stdout || ''}${stderr || ''}`.trim() || (error ? error.message : '') });
+    });
+  });
+}
+
+function quoteCliArg(value) {
+  return process.platform === 'win32' ? `"${String(value).replace(/"/g, '\\"')}"` : value;
+}
+
+// Registers the CodeForge MCP server with Claude Code (user scope) or agy. For agy it is added to
+// the normal login and to every saved Antigravity account on this PC (each has its own HOME).
+async function registerMcp(_event, { target, accountIds = [] } = {}) {
+  const mcp = await getMcpCommand();
+  const envFlags = (flag) => Object.entries(mcp.env).flatMap(([key, value]) => [flag, `${key}=${value}`]);
+  const commandArgs = [mcp.command, ...mcp.args].map(quoteCliArg);
+  if (target === 'claude') {
+    const claude = await findExecutable('claude');
+    if (!claude) return { ok: false, output: 'Claude Code (claude) wurde nicht gefunden.' };
+    await runCli('claude', ['mcp', 'remove', '-s', 'user', 'codeforge'], {});
+    return runCli('claude', ['mcp', 'add', '-s', 'user', ...envFlags('-e'), 'codeforge', '--', ...commandArgs], {});
+  }
+  if (target === 'agy') {
+    const agyPath = path.join(app.getPath('home'), 'AppData', 'Local', 'agy', 'bin', 'agy.exe');
+    const agy = fs.existsSync(agyPath) ? agyPath : await findExecutable('agy');
+    if (!agy) return { ok: false, output: 'agy wurde nicht gefunden.' };
+    const agyArgs = ['mcp', 'add', ...envFlags('--env'), 'codeforge', '--', ...commandArgs];
+    const results = [await runCli(quoteCliArg(agy), agyArgs, {})];
+    for (const accountId of Array.isArray(accountIds) ? accountIds.slice(0, 16) : []) {
+      const env = {};
+      try {
+        applyAgyAccountEnv(env, accountId);
+      } catch (_) {
+        continue;
+      }
+      results.push(await runCli(quoteCliArg(agy), agyArgs, env));
+    }
+    return { ok: results.every((item) => item.ok), output: results.map((item) => item.output).filter(Boolean).join('\n') };
+  }
+  return { ok: false, output: 'Unbekanntes Ziel.' };
+}
+
+// Running sessions for the "Laufende Sessions" view: local host sessions plus the
+// CodeForge tmux sessions on each given V-Server.
+async function listRunningSessions(_event, { vservers = [] } = {}) {
+  const local = await getSessionClient().list();
+  const remote = await Promise.all(
+    (Array.isArray(vservers) ? vservers.slice(0, 20) : []).map(async (vserver) => {
+      const result = await runVServerCommand(vserver, "tmux ls -F '#S' 2>/dev/null | grep '^cf-' || true", 12000);
+      return { id: vserver.id, reachable: result.ok, sessions: result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) };
+    }),
+  );
+  return { local: local.map((item) => ({ id: item.id, meta: item.meta || {} })), remote };
 }
 
 function writeToShellSession(_event, { chatId, text }) {
@@ -3413,12 +3763,20 @@ function resizeShellSession(_event, { chatId, cols, rows }) {
 
 function killShellSession(_event, chatId) {
   console.log(`[Shell KILL] chat: ${chatId}`);
+  // Closing a V-Server tab also ends its tmux session on the server.
+  const remote = remoteTmuxSessions.get(chatId);
+  if (remote) {
+    remoteTmuxSessions.delete(chatId);
+    void runVServerCommand(remote.vserver, `tmux kill-session -t '=${remote.tmuxName}' 2>/dev/null || true`);
+  }
   const ptyProcess = activeShells.get(chatId);
   if (ptyProcess) {
     ptyProcess.kill();
     activeShells.delete(chatId);
     return true;
   }
+  // Not opened in this window (e.g. after a restart) but maybe still running in the host.
+  getSessionClient().kill(chatId);
   return false;
 }
 
@@ -3865,6 +4223,16 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('shell:create', createShellSession);
   ipcMain.handle('shell:write', writeToShellSession);
   ipcMain.handle('shell:kill', (_event, chatId) => killShellSession(_event, chatId));
+  ipcMain.handle('sessions:list', listRunningSessions);
+  ipcMain.on('control:response', handleControlResponse);
+  ipcMain.handle('control:publish-state', publishControlState);
+  ipcMain.handle('mcp:info', async () => getMcpCommand());
+  ipcMain.handle('mcp:register', registerMcp);
+  ipcMain.handle('sessions:kill-remote', async (_event, { vserver, tmuxName } = {}) => {
+    if (!vserver || !/^cf-[a-z0-9-]{1,90}$/i.test(String(tmuxName || ''))) return false;
+    const result = await runVServerCommand(vserver, `tmux kill-session -t '=${tmuxName}' 2>/dev/null || true`);
+    return result.ok;
+  });
   ipcMain.handle('shell:resize', resizeShellSession);
   ipcMain.handle('agy-accounts:status', getAgyAccountsStatus);
   ipcMain.handle('agy-accounts:remove-profile', removeAgyAccountProfile);
@@ -3946,6 +4314,12 @@ ipcMain.handle('device:status', () => {
   });
 
   createWindow();
+  try {
+    startControlServer();
+    installMcpFiles();
+  } catch (error) {
+    console.error(`[Control] setup failed: ${error.message}`);
+  }
   updater = setupUpdater({ app, mainWindow });
   updater.initializeAutoUpdates();
 

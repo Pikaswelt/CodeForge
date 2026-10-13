@@ -202,6 +202,8 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
     createShellSession: (request: any) => invoke('shell:create', request),
     writeToShellSession: (request: any) => invoke('shell:write', request),
     killShellSession: (chatId: string) => invoke('shell:kill', chatId),
+    listRunningSessions: (request: any) => invoke('sessions:list', request),
+    killRemoteSession: (request: any) => invoke('sessions:kill-remote', request),
     resizeShellSession: (request: any) => invoke('shell:resize', request),
     getAgyAccountsStatus: (accountIds: string[]) => invoke('agy-accounts:status', accountIds),
     removeAgyAccountProfile: (accountId: string) => invoke('agy-accounts:remove-profile', accountId),

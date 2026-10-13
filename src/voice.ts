@@ -11,6 +11,12 @@ export type VoiceSettings = {
   showMicButton: boolean;
   showStartCommandButton: boolean;
   showPrefixSuffixButton: boolean;
+  // Other buttons in the terminal toolbar.
+  showSftpButton: boolean;
+  showPasteButton: boolean;
+  showGridButton: boolean;
+  showFullscreenButton: boolean;
+  showRestartButton: boolean;
   language: string;
   model: 'base' | 'small';
   prefix: string;
@@ -27,6 +33,11 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   showMicButton: true,
   showStartCommandButton: true,
   showPrefixSuffixButton: true,
+  showSftpButton: true,
+  showPasteButton: true,
+  showGridButton: true,
+  showFullscreenButton: true,
+  showRestartButton: true,
   language: 'de',
   model: 'base',
   prefix: '',
@@ -149,7 +160,70 @@ export function registerVoiceTarget(target: VoiceTarget) {
   };
 }
 
-const currentTarget = () => targets[targets.length - 1]?.target;
+// The place the user last clicked that takes text: a terminal ([data-terminal-tab-id]) or an
+// input field. Dictation goes there; the views' registered targets are only the fallback.
+let lastTextTarget: HTMLElement | null = null;
+
+function textTargetOf(node: EventTarget | null): HTMLElement | null {
+  if (!(node instanceof Element)) return null;
+  const terminal = node.closest<HTMLElement>('[data-terminal-tab-id]');
+  if (terminal) return terminal;
+  const field = node.closest<HTMLElement>('textarea, input, [contenteditable="true"], [contenteditable=""]');
+  if (!field) return null;
+  if (field instanceof HTMLInputElement && !['text', 'search', 'url', 'email'].includes(field.type)) return null;
+  if ((field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && (field.disabled || field.readOnly)) return null;
+  return field;
+}
+
+if (typeof window !== 'undefined') {
+  const remember = (event: Event) => {
+    const target = textTargetOf(event.target);
+    if (target) lastTextTarget = target;
+  };
+  window.addEventListener('pointerdown', remember, true);
+  window.addEventListener('focusin', remember, true);
+}
+
+// Inserts at the caret and tells React about the new value (controlled inputs ignore plain .value writes).
+function insertIntoField(field: HTMLElement, text: string) {
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+    const start = field.selectionStart ?? field.value.length;
+    const end = field.selectionEnd ?? field.value.length;
+    const next = field.value.slice(0, start) + text + field.value.slice(end);
+    const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(field, next);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    const caret = start + text.length;
+    try {
+      field.setSelectionRange(caret, caret);
+    } catch {
+      // input types without selection
+    }
+    return;
+  }
+  field.focus();
+  document.execCommand('insertText', false, text);
+}
+
+function clickedTarget(): VoiceTarget | undefined {
+  const element = lastTextTarget;
+  // Gone or hidden (e.g. a terminal tab in the background): use the view's own target.
+  if (!element || !element.isConnected || element.getClientRects().length === 0) return undefined;
+  const tabId = element.dataset.terminalTabId;
+  if (tabId) {
+    return {
+      insert: (text) => void window.agentWorkspace?.writeToShellSession({ chatId: tabId, text }),
+      submit: () => void window.agentWorkspace?.writeToShellSession({ chatId: tabId, text: '\r' }),
+    };
+  }
+  return {
+    insert: (text) => insertIntoField(element, text),
+    submit: () =>
+      element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true })),
+  };
+}
+
+const currentTarget = () => clickedTarget() || targets[targets.length - 1]?.target;
 
 // ---------- whisper status ----------
 

@@ -1397,3 +1397,15 @@
 .xterm-viewport, .xterm-screen, .xterm, .xterm-viewport-wrapper {
   background-color: transparent !important;
 }
+
+/* No visible scrollbar in terminals; the mouse wheel still scrolls the history. */
+.xterm-viewport {
+  scrollbar-width: none !important;
+}
+.xterm-viewport::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+}
+.xterm .xterm-scrollable-element > .scrollbar {
+  display: none !important;
+}
