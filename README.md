@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><strong>Download for Windows &amp; Linux</strong></a>
+  <a href="https://github.com/Pikaswelt/CodeForge/releases/latest"><strong>Download for Windows, Linux &amp; Android</strong></a>
   ·
   <a href="#features">Features</a>
   ·

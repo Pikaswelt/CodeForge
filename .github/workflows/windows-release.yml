@@ -1,0 +1,46 @@
+name: Windows release
+
+# Builds the Windows installer for every published release and attaches it together with
+# latest.yml and the blockmap, which the in-app updater reads.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build, for example v2.8.6
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+      - run: npx electron-builder --win --publish never
+
+      - name: Upload to release
+        shell: bash
+        run: |
+          gh release upload "$TAG" \
+            release/*.exe \
+            release/*.exe.blockmap \
+            release/latest.yml \
+            --clobber
