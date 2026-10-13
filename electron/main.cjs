@@ -4256,6 +4256,29 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('whisper:transcribe', whisper.transcribe);
   ipcMain.handle('whisper:warm-up', (_event, model) => whisper.warmUp(model));
   ipcMain.handle('ssh:import-key', importSshKey);
+  // Writes the file the Android app imports ("Vom PC uebernehmen"): V-Servers with their keys
+  // (only keys from CodeForge's own key folder), plus the settings the renderer passes in.
+  ipcMain.handle('vservers:export-android', async (_event, payload = {}) => {
+    const keyDir = path.join(app.getPath('userData'), 'ssh-keys');
+    const servers = (Array.isArray(payload.servers) ? payload.servers : []).slice(0, 50).map((server) => {
+      const item = { id: String(server.id || ''), name: String(server.name || ''), host: String(server.host || ''), port: Number(server.port || 22), user: String(server.user || '') };
+      const keyPath = path.resolve(String(server.keyPath || ''));
+      if (payload.includeKeys && server.keyPath && keyPath.startsWith(keyDir + path.sep) && fs.existsSync(keyPath)) {
+        item.privateKey = fs.readFileSync(keyPath, 'utf8');
+        item.keyName = String(server.keyName || path.basename(keyPath));
+      }
+      return item;
+    });
+    const data = { type: 'codeforge-mobile-export', version: 1, exportedAt: Date.now(), servers, ...(payload.settings && typeof payload.settings === 'object' ? payload.settings : {}) };
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Fuer CodeForge Android exportieren',
+      defaultPath: path.join(app.getPath('downloads'), 'codeforge-android.json'),
+      filters: [{ name: 'CodeForge-Export', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return { saved: false };
+    fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
+    return { saved: true, path: result.filePath, keys: servers.filter((item) => item.privateKey).length };
+  });
   ipcMain.handle('ssh:remove-key', removeSshKey);
 
   // SFTP file access for saved V-Servers (see sftp.cjs).

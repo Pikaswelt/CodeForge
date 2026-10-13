@@ -1,5 +1,5 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
-import type { VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
+import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
 
 type NativeTabBounds = {
   x: number;
@@ -178,6 +178,7 @@ declare global {
       onWhisperProgress(callback: (payload: { type: 'progress' | 'done' | 'error'; label?: string; percent?: number; received?: number; total?: number; error?: string }) => void): () => void;
       importSshKey(input: { sourcePath: string; name?: string }): Promise<{ keyPath: string; keyName: string }>;
       removeSshKey(keyPath: string): Promise<boolean>;
+      exportForAndroid?(payload: { servers: VServer[]; includeKeys: boolean; settings: Record<string, unknown> }): Promise<{ saved: boolean; path?: string; keys?: number }>;
       sftpConnect(input: { vserver: VServerConnection; secret?: string }): Promise<{ home: string }>;
       sftpList(input: { vserver: VServerConnection; path: string }): Promise<{ path: string; entries: SftpEntry[] }>;
       sftpDisconnect(id: string): Promise<boolean>;
