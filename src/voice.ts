@@ -25,8 +25,8 @@ export type VoiceSettings = {
 export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   enabled: true,
   showMicButton: true,
-  showStartCommandButton: true,
-  showPrefixSuffixButton: true,
+  showStartCommandButton: false,
+  showPrefixSuffixButton: false,
   language: 'de',
   model: 'base',
   prefix: '',
