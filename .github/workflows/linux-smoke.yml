@@ -42,15 +42,19 @@ jobs:
         run: |
           echo -n "apparmor_restrict_unprivileged_userns: "; cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo "(fehlt)"
           echo -n "unprivileged_userns_clone: "; cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo "(fehlt)"
-          ls -l node_modules/electron/dist/chrome-sandbox 2>/dev/null || echo "kein chrome-sandbox"
-          ls -l "$(dirname "$(readlink -f node_modules/.bin/electron)")" | head -5
+          if unshare -Ur true 2>/dev/null; then echo "User-Namespaces: nutzbar"; else echo "User-Namespaces: gesperrt"; fi
 
       - name: Start CodeForge and wait for the UI
         run: |
           export DISPLAY=:99
           Xvfb :99 -screen 0 1440x900x24 > xvfb.log 2>&1 &
           sleep 2
-          npx electron . --user-data-dir="$RUNNER_TEMP/codeforge-profile" > smoke.log 2>&1 &
+          # The packaged AppImage does exactly this in its AppRun: it probes 'unshare -Ur true' and
+          # adds --no-sandbox when user namespaces are unavailable (Ubuntu 24.04 blocks them). Without
+          # that flag Chromium aborts before any app code runs, which says nothing about CodeForge.
+          FLAGS=""
+          if ! unshare -Ur true 2>/dev/null; then FLAGS="--no-sandbox"; fi
+          npx electron $FLAGS . --user-data-dir="$RUNNER_TEMP/codeforge-profile" > smoke.log 2>&1 &
           APP_PID=$!
           loaded=0
           for _ in $(seq 1 60); do
@@ -63,18 +67,7 @@ jobs:
           cat smoke.log
           echo "--- xvfb.log ---"
           cat xvfb.log
-          if [ "$loaded" != "1" ]; then
-            echo "Ohne Flag nicht gestartet - Kontrolllauf mit --no-sandbox:"
-            npx electron --no-sandbox . --user-data-dir="$RUNNER_TEMP/codeforge-profile-2" > smoke-nosandbox.log 2>&1 &
-            CONTROL_PID=$!
-            for _ in $(seq 1 30); do
-              if grep -q '\[Start\] CodeForge UI geladen' smoke-nosandbox.log; then echo "Kontrolllauf: UI geladen"; break; fi
-              sleep 2
-            done
-            kill "$CONTROL_PID" 2>/dev/null || true
-            cat smoke-nosandbox.log
-            echo "Die Oberflaeche ist nicht gestartet."; exit 1
-          fi
+          if [ "$loaded" != "1" ]; then echo "Die Oberflaeche ist nicht gestartet."; exit 1; fi
           if grep -qiE 'FATAL|Cannot open display|SUID sandbox helper is not configured' smoke.log; then
             echo "Startfehler im Log."; exit 1
           fi

@@ -29,36 +29,6 @@ const { spawn, execFile } = require('node:child_process');
 const pty = require('node-pty');
 const fs = require('node:fs');
 const path = require('node:path');
-
-// Chromium's sandbox needs unprivileged user namespaces. Ubuntu 24.04 (AppArmor) and some Debian
-// setups block them, and an AppImage cannot carry a SUID sandbox helper - CodeForge would die before
-// the first window. Only in that exact case the sandbox is switched off; CODEFORGE_KEEP_SANDBOX=1
-// keeps it on for debugging.
-function applyLinuxSandboxFallback() {
-  if (process.platform !== 'linux' || process.env.CODEFORGE_KEEP_SANDBOX === '1') return;
-  const readFlag = (file) => {
-    try { return fs.readFileSync(file, 'utf8').trim(); } catch (_) { return ''; }
-  };
-  const restricted =
-    readFlag('/proc/sys/kernel/apparmor_restrict_unprivileged_userns') === '1' ||
-    readFlag('/proc/sys/kernel/unprivileged_userns_clone') === '0';
-  if (!restricted) return;
-  // Chromium needs one of two sandboxes: the SUID helper (root and mode 4755, which an AppImage can
-  // never ship) or unprivileged user namespaces. Without the first it tries the second and aborts
-  // when that is blocked too - the crash seen on Ubuntu 24.04.
-  let helperUsable = false;
-  try {
-    const helper = fs.statSync(path.join(path.dirname(process.execPath), 'chrome-sandbox'));
-    helperUsable = helper.uid === 0 && (helper.mode & 0o4000) !== 0;
-  } catch (_) {
-    helperUsable = false;
-  }
-  if (helperUsable) return;
-  app.commandLine.appendSwitch('no-sandbox');
-  console.warn('[Start] Keine nutzbare Chromium-Sandbox (kein root-4755-Helfer und User-Namespaces gesperrt): Sandbox deaktiviert.');
-}
-applyLinuxSandboxFallback();
-
 const crypto = require('node:crypto');
 const DiscordRPC = require('discord-rpc');
 const { setupUpdater, fetchReleaseNotes } = require('./updater.cjs');
