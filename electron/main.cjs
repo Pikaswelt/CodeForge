@@ -43,15 +43,19 @@ function applyLinuxSandboxFallback() {
     readFlag('/proc/sys/kernel/apparmor_restrict_unprivileged_userns') === '1' ||
     readFlag('/proc/sys/kernel/unprivileged_userns_clone') === '0';
   if (!restricted) return;
-  let helperIsSetuid = false;
+  // Chromium needs one of two sandboxes: the SUID helper (root and mode 4755, which an AppImage can
+  // never ship) or unprivileged user namespaces. Without the first it tries the second and aborts
+  // when that is blocked too - the crash seen on Ubuntu 24.04.
+  let helperUsable = false;
   try {
-    helperIsSetuid = (fs.statSync(path.join(path.dirname(process.execPath), 'chrome-sandbox')).mode & 0o4000) !== 0;
+    const helper = fs.statSync(path.join(path.dirname(process.execPath), 'chrome-sandbox'));
+    helperUsable = helper.uid === 0 && (helper.mode & 0o4000) !== 0;
   } catch (_) {
-    helperIsSetuid = false;
+    helperUsable = false;
   }
-  if (helperIsSetuid && !process.env.APPIMAGE) return;
+  if (helperUsable) return;
   app.commandLine.appendSwitch('no-sandbox');
-  console.warn('[Start] Keine unprivilegierten User-Namespaces: Chromium-Sandbox deaktiviert.');
+  console.warn('[Start] Keine nutzbare Chromium-Sandbox (kein root-4755-Helfer und User-Namespaces gesperrt): Sandbox deaktiviert.');
 }
 applyLinuxSandboxFallback();
 
