@@ -6,8 +6,29 @@ import { randomUUID, randomInt } from 'node:crypto';
 import { networkInterfaces, hostname } from 'node:os';
 import path, { extname, join } from 'node:path';
 import dgram from 'node:dgram';
-import { WebSocketServer } from 'ws';
-import pty from 'node-pty';
+
+// "ws" (WebSocket sync) and "node-pty" (local shells) are optional at start: a fresh Linux
+// server that only ran the setup script usually has plain Node.js and no npm packages yet.
+// Missing pieces are reported instead of stopping the process, so the API, pairing mode and
+// file/media routes keep working.
+let webSocketModule = null;
+try {
+  webSocketModule = await import('ws');
+} catch {
+  console.warn('Hinweis: npm-Paket "ws" fehlt - WebSocket-Sync ist deaktiviert (npm install ws).');
+}
+
+let ptyModule = null;
+async function loadPty() {
+  if (!ptyModule) {
+    try {
+      ptyModule = (await import('node-pty')).default;
+    } catch {
+      throw new Error('node-pty ist nicht installiert. Auf dem Server nachinstallieren: npm install node-pty');
+    }
+  }
+  return ptyModule;
+}
 
 let pairingMode = false;
 let pairingCode = '';
@@ -678,12 +699,13 @@ const server = createServer((req, res) => {
 });
 
 // -- WebSocket IPC Server (Sync Server) --
-const wss = new WebSocketServer({ server });
+const wss = webSocketModule?.WebSocketServer ? new webSocketModule.WebSocketServer({ server }) : null;
 const handlers = new Map();
 const activeShells = new Map();
 const activeTerminalProcesses = new Map();
 
 function broadcast(msg, excludeWs = null, targetWs = null) {
+  if (!wss) return;
   const data = JSON.stringify(msg);
   for (const client of wss.clients) {
     if (client !== excludeWs && client.readyState === 1 && (!targetWs || client === targetWs)) {
@@ -692,7 +714,7 @@ function broadcast(msg, excludeWs = null, targetWs = null) {
   }
 }
 
-wss.on('connection', (ws, req) => {
+wss?.on('connection', (ws, req) => {
   const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const wsToken = urlObj.searchParams.get('token') || req.headers['authorization']?.replace(/^Bearer /i, '').trim() || '';
   const isWsAuthorized = TOKEN && wsToken === TOKEN;
@@ -775,6 +797,7 @@ handlers.set('shell:create', async (event, { chatId, cwd, shellType }) => {
   }
 
   try {
+    const pty = await loadPty();
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-color',
       cols: 100,

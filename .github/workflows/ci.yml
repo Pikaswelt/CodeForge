@@ -16,5 +16,8 @@ jobs:
           cache: npm
       # Native modules (node-pty) and the Electron binary are not needed for type checking and the web build.
       - run: npm ci --ignore-scripts
+      # The setup scripts and the command the app prints for a Linux server embed the remote
+      # server; this check keeps those copies complete and LF-only.
+      - run: node scripts/check-remote-server-embedding.mjs
       - run: npx tsc --noEmit
       - run: npx vite build

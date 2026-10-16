@@ -61,6 +61,15 @@ fi
 
 chmod +x "$INSTALL_DIR/codeforge-remote-server.mjs"
 
+# Laufzeit-Abhaengigkeiten des Servers. Der Server startet auch ohne sie (API, Kopplung und
+# Dateizugriff laufen weiter), aber WebSocket-Sync und lokale Terminals brauchen diese Pakete.
+if [ ! -d "$INSTALL_DIR/node_modules/ws" ] || [ ! -d "$INSTALL_DIR/node_modules/node-pty" ]; then
+  echo "  Installiere Server-Abhaengigkeiten (ws, node-pty)..."
+  apt-get install -y -qq build-essential python3 2>/dev/null || true
+  ( cd "$INSTALL_DIR" && npm install --no-audit --no-fund --omit=dev ws node-pty >/dev/null 2>&1 ) || \
+    echo "  WARNUNG: ws/node-pty fehlen - Terminals und Sync bleiben deaktiviert."
+fi
+
 # CLI Tool mitkopieren
 if [ -f "$SCRIPT_DIR/codeforge-cli.mjs" ]; then
   cp "$SCRIPT_DIR/codeforge-cli.mjs" "$INSTALL_DIR/"

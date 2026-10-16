@@ -122,6 +122,8 @@
     "deb": {
       "depends": [
         "libgtk-3-0",
+        "libnotify4",
+        "libgbm1",
         "libnss3",
         "libxss1",
         "libxtst6",
