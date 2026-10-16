@@ -13,7 +13,7 @@
 import { createServer } from 'node:http';
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import { execFile, execFileSync } from 'node:child_process';
-import { createReadStream, existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { WebSocketServer } from 'ws';
@@ -190,6 +190,95 @@ function serveStatic(req, res) {
   createReadStream(filePath).pipe(res);
 }
 
+// ---------- wallpapers ----------
+// Random SFW anime wallpapers (at least 4K) from wallhaven.cc. The API sends no CORS headers,
+// so the server downloads each image once and serves it from its own cache.
+const WALLPAPER_DIR = resolve(process.env.CODEFORGE_WALLPAPER_DIR || '/var/cache/codeforge-web/wallpapers');
+const WALLPAPER_SEARCH =
+  'https://wallhaven.cc/api/v1/search?categories=010&purity=100&atleast=3840x2160&ratios=16x9,16x10&sorting=random';
+const WALLPAPER_MAX_BYTES = 8 * 1024 * 1024;
+const WALLPAPER_KEEP = 30;
+const WALLPAPER_FILE_PATTERN = /^[a-z0-9]{1,16}\.(jpg|png)$/;
+let wallpaperQueue = [];
+let nextWallpaper = null;
+
+function cachedWallpapers() {
+  try {
+    return readdirSync(WALLPAPER_DIR)
+      .filter((file) => WALLPAPER_FILE_PATTERN.test(file))
+      .map((file) => ({ file, mtime: statSync(join(WALLPAPER_DIR, file)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);
+  } catch {
+    return [];
+  }
+}
+
+async function downloadWallpaper() {
+  if (wallpaperQueue.length === 0) {
+    const response = await fetch(WALLPAPER_SEARCH, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new Error(`wallhaven search: HTTP ${response.status}`);
+    const { data = [] } = await response.json();
+    wallpaperQueue = data.filter(
+      (item) => item.purity === 'sfw' && item.file_size <= WALLPAPER_MAX_BYTES && /^https:\/\/w\.wallhaven\.cc\//.test(item.path),
+    );
+  }
+  const item = wallpaperQueue.shift();
+  if (!item) throw new Error('wallhaven search: no results');
+  const file = `${item.id}${extname(item.path)}`;
+  if (!WALLPAPER_FILE_PATTERN.test(file)) throw new Error(`unexpected wallpaper name ${file}`);
+  const target = join(WALLPAPER_DIR, file);
+  if (!existsSync(target)) {
+    const response = await fetch(item.path, { signal: AbortSignal.timeout(60000) });
+    if (!response.ok) throw new Error(`wallhaven image: HTTP ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > WALLPAPER_MAX_BYTES) throw new Error('wallhaven image too large');
+    mkdirSync(WALLPAPER_DIR, { recursive: true });
+    writeFileSync(`${target}.tmp`, bytes);
+    renameSync(`${target}.tmp`, target);
+    for (const old of cachedWallpapers().slice(WALLPAPER_KEEP)) rmSync(join(WALLPAPER_DIR, old.file), { force: true });
+  }
+  return { file, source: item.url };
+}
+
+// Hands out the wallpaper downloaded in advance and starts loading the one after it, so a
+// page load never waits for a 4K download. Falls back to the cache when wallhaven fails.
+async function takeWallpaper() {
+  const current = nextWallpaper || downloadWallpaper();
+  nextWallpaper = downloadWallpaper();
+  nextWallpaper.catch(() => {
+    nextWallpaper = null;
+  });
+  try {
+    return await current;
+  } catch (error) {
+    console.warn(`[Wallpaper] ${error.message}`);
+    const cached = cachedWallpapers();
+    if (cached.length === 0) throw error;
+    return { file: cached[Math.floor(Math.random() * cached.length)].file, source: '' };
+  }
+}
+
+async function serveWallpaper(req, res, pathname) {
+  if (pathname === '/api/wallpaper/next') {
+    try {
+      const { file, source } = await takeWallpaper();
+      return send(res, 200, JSON.stringify({ url: `/api/wallpaper/${file}`, source }), { 'content-type': 'application/json' });
+    } catch {
+      return send(res, 503, 'No wallpaper available');
+    }
+  }
+  const file = pathname.slice('/api/wallpaper/'.length);
+  const filePath = join(WALLPAPER_DIR, file);
+  if (!WALLPAPER_FILE_PATTERN.test(file) || !existsSync(filePath)) return send(res, 404, 'Not found');
+  res.writeHead(200, {
+    ...SECURITY_HEADERS,
+    'content-type': CONTENT_TYPES[extname(file)],
+    'cache-control': 'private, max-age=31536000, immutable',
+  });
+  if (req.method === 'HEAD') return res.end();
+  createReadStream(filePath).pipe(res);
+}
+
 const server = createServer(async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
   try {
@@ -198,6 +287,8 @@ const server = createServer(async (req, res) => {
     console.warn(`[Auth] HTTP ${req.url} rejected: ${error.message}`);
     return send(res, 403, 'Forbidden');
   }
+  const { pathname } = new URL(req.url || '/', 'http://localhost');
+  if (pathname.startsWith('/api/wallpaper/')) return serveWallpaper(req, res, pathname);
   serveStatic(req, res);
 });
 
@@ -277,6 +368,10 @@ async function createShell(conn, { chatId, cwd, agyAccountId, cols, rows, reatta
       'set', '-s', 'escape-time', '10',
     ]).catch(() => {});
   }
+  // xterm.js renders tmux's scroll-region updates wrongly (scrolling the history leaves stale
+  // lines behind), so tmux redraws instead. Set once per tmux server, before clients attach.
+  const { stdout: overrides } = await tmux(['show', '-s', 'terminal-overrides']).catch(() => ({ stdout: '' }));
+  if (!overrides.includes('csr@')) await tmux(['set', '-as', 'terminal-overrides', ',xterm-256color:csr@']).catch(() => {});
   const term = pty.spawn('tmux', ['attach-session', '-t', `=${name}`], {
     name: 'xterm-256color',
     cols: Math.max(20, Math.min(500, Number(cols) || 120)),

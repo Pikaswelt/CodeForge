@@ -1397,3 +1397,21 @@
 .xterm-viewport, .xterm-screen, .xterm, .xterm-viewport-wrapper {
   background-color: transparent !important;
 }
+
+/* Terminal history lives in tmux, so xterm's own scrollbar only takes space. */
+.xterm .xterm-viewport {
+  scrollbar-width: none;
+}
+.xterm .xterm-viewport::-webkit-scrollbar,
+.xterm .xterm-scrollable-element > .scrollbar {
+  display: none;
+}
+
+/* Wallpapers range from dark to very bright; a stronger scrim keeps text readable. */
+.wallpaper-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.55)),
+    radial-gradient(circle at center, transparent, rgb(0 0 0 / 0.35));
+}
