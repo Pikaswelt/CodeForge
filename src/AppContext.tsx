@@ -18,6 +18,10 @@ import type {
   Automation,
   Chat,
   AgyAccount,
+  MultiLaunchConfig,
+  MultiLaunchSlot,
+  TerminalTab,
+  VServer,
   CliHarness,
   CliStatus,
   CodexPluginInfo,
@@ -39,6 +43,7 @@ import type {
   WallpaperMode,
   WorkDisplayMode,
 } from './types';
+import { DEFAULT_MULTI_LAUNCH_CONFIG } from './types';
 
 export type Theme = string;
 export type CustomTheme = {
@@ -370,6 +375,9 @@ interface AppContextType {
   agyAccounts: AgyAccount[];
   setAgyAccounts: React.Dispatch<React.SetStateAction<AgyAccount[]>>;
   startAgyAccounts(accountIds?: string[]): Promise<void>;
+  multiLaunchConfig: MultiLaunchConfig;
+  setMultiLaunchConfig: React.Dispatch<React.SetStateAction<MultiLaunchConfig>>;
+  startMultiLaunch(configOverride?: MultiLaunchConfig): Promise<void>;
   startVServerSession(server: VServerConnection): Promise<void>;
   startVServerSessions(servers: VServerConnection[]): Promise<void>;
   apiProviders: ApiProviderConfig[];
@@ -433,7 +441,7 @@ function hasHomeAppRunFile(app: HomeApp) {
   );
 }
 
-export const MAX_AGY_ACCOUNTS = 6;
+export const MAX_AGY_ACCOUNTS = 8;
 
 function newId() {
   return crypto.randomUUID();
@@ -773,6 +781,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ]),
   );
   const [agyAccounts, setAgyAccounts] = useState<AgyAccount[]>(() => readStorage('agyAccounts', []));
+  const [multiLaunchConfig, setMultiLaunchConfig] = useState<MultiLaunchConfig>(() =>
+    readStorage('multiLaunchConfig', DEFAULT_MULTI_LAUNCH_CONFIG),
+  );
   const [terminalPrefixSuffixEnabled, setTerminalPrefixSuffixEnabled] = useState(() =>
     readStorage('terminalPrefixSuffixEnabled', false),
   );
@@ -890,6 +901,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('terminalStartCommand', terminalStartCommand), [terminalStartCommand]);
   useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
   useEffect(() => writeStorage('agyAccounts', agyAccounts), [agyAccounts]);
+  useEffect(() => writeStorage('multiLaunchConfig', multiLaunchConfig), [multiLaunchConfig]);
   // CodeForge Web: the accounts live on the server (shared with the codeforge CLI), not in this browser.
   const agyAccountsLoaded = useRef(false);
   useEffect(() => {
@@ -2207,9 +2219,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         vserver,
       })),
       activeTerminalTabId: chatId,
-      // The grid shows at most four terminals; more servers stay reachable as tabs.
-      terminalLayout: connections.length > 1 && connections.length <= 4 ? 'grid' : 'single',
-      terminalGridSize: connections.length > 1 && connections.length <= 4 ? connections.length : undefined,
+      // The grid shows at most eight terminals; more servers stay reachable as tabs.
+      terminalLayout: connections.length > 1 && connections.length <= 8 ? 'grid' : 'single',
+      terminalGridSize: connections.length > 1 && connections.length <= 8 ? connections.length : undefined,
       messages: [],
     };
     setChats((current) => [chat, ...current]);
@@ -2221,7 +2233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startWorkspace = async ({ harnessId, grid, count }: { harnessId: string; grid: boolean; count: number }) => {
     const projectForRun = await ensureRunnableProject();
     const harness = cliHarnesses.find((item) => item.id === harnessId) || cliHarnesses[0];
-    const size = Math.max(1, Math.min(4, Math.round(count) || 1));
+    const size = Math.max(1, Math.min(8, Math.round(count) || 1));
     const chatId = newId();
     const label = harness?.name || 'Terminal';
     const chat: Chat = {
@@ -2267,6 +2279,83 @@ export function AppProvider({ children }: { children: ReactNode }) {
       activeTerminalTabId: chatId,
       terminalLayout: accounts.length > 1 ? 'grid' : 'single',
       terminalGridSize: accounts.length,
+      messages: [],
+    };
+    setChats((current) => [chat, ...current]);
+    selectChat(chat.id);
+  };
+
+  const startMultiLaunch = async (configOverride?: MultiLaunchConfig) => {
+    const config = configOverride || multiLaunchConfig;
+    if (config.mode === 'default') {
+      await startAgyAccounts();
+      return;
+    }
+
+    const slots = config.slots || [];
+    if (slots.length === 0) {
+      throw new Error('Keine Slots konfiguriert. Bitte Start-Button anpassen.');
+    }
+
+    let savedServers: VServer[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem('agentWorkspace.vservers') || '[]');
+      if (Array.isArray(parsed)) savedServers = parsed;
+    } catch {}
+
+    const projectForRun = await ensureRunnableProject();
+    const chatId = newId();
+    const activeSlots = slots.slice(0, 8);
+    const title = config.buttonLabel?.trim() || (activeSlots.length === 1 ? activeSlots[0].name : 'Multi-Agent Workspace');
+
+    const terminalTabs: TerminalTab[] = activeSlots.map((slot, index) => {
+      const tabId = index === 0 ? chatId : newId();
+      const isLocal = slot.targetType !== 'vserver';
+      const server = !isLocal && slot.vserverId ? savedServers.find((s) => s.id === slot.vserverId) : undefined;
+
+      let cmd = slot.command?.trim();
+      if (!cmd) {
+        if (slot.tool === 'claude') cmd = 'claude';
+        else if (slot.tool === 'agy') cmd = 'agy';
+      }
+
+      let agyAccountId: string | undefined = undefined;
+      if (isLocal && slot.tool === 'agy') {
+        if (slot.agyAccountId) {
+          agyAccountId = slot.agyAccountId;
+        } else if (agyAccounts[index]) {
+          agyAccountId = agyAccounts[index].id;
+        }
+      }
+
+      return {
+        id: tabId,
+        title: slot.name?.trim() || `Terminal ${index + 1}`,
+        shellType: 'cmd' as const,
+        command: cmd,
+        location: isLocal ? ('local' as const) : undefined,
+        vserver: server ? {
+          id: server.id,
+          name: server.name,
+          host: server.host,
+          port: server.port,
+          user: server.user,
+          keyPath: server.keyPath,
+        } : undefined,
+        agyAccountId,
+      };
+    });
+
+    const chat: Chat = {
+      id: chatId,
+      title,
+      updatedAt: Date.now(),
+      folderId: projectForRun.id,
+      mode: 'terminal',
+      terminalTabs,
+      activeTerminalTabId: chatId,
+      terminalLayout: terminalTabs.length > 1 ? (config.layout || 'grid') : 'single',
+      terminalGridSize: terminalTabs.length,
       messages: [],
     };
     setChats((current) => [chat, ...current]);
@@ -3159,6 +3248,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       agyAccounts,
       setAgyAccounts,
       startAgyAccounts,
+      multiLaunchConfig,
+      setMultiLaunchConfig,
+      startMultiLaunch,
       startVServerSession,
       startVServerSessions,
       apiProviders,
@@ -3266,6 +3358,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       agyAccounts,
       setAgyAccounts,
       startAgyAccounts,
+      multiLaunchConfig,
+      startMultiLaunch,
       startVServerSession,
       startVServerSessions,
       cliHarnesses,

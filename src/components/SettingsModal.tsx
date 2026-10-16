@@ -76,6 +76,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setTerminalStartPath,
     cliHarnesses,
     setCliHarnesses,
+    terminalPrefixSuffixEnabled,
+    setTerminalPrefixSuffixEnabled,
     terminalPrefix,
     setTerminalPrefix,
     terminalSuffix,
@@ -482,9 +484,20 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
               {!mobileMode && (
               <section>
-                <div className="section-label flex items-center gap-2">
-                  <Terminal className="w-3.5 h-3.5" />
-                  Terminal-Präfix & Suffix
+                <div className="section-label flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-3.5 h-3.5" />
+                    Terminal-Präfix & Suffix
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={terminalPrefixSuffixEnabled}
+                      onChange={(event) => setTerminalPrefixSuffixEnabled(event.target.checked)}
+                      className="rounded bg-white/5 border-white/10 text-orange-500 focus:ring-0"
+                    />
+                    <span>Aktivieren</span>
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div>
@@ -511,7 +524,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   </div>
                 </div>
                 <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Fügt vor und nach jeder eingegebenen Nachricht automatisch diesen Text ein, wenn die Option im Terminal-Tab aktiv ist.
+                  Fügt vor und nach jeder eingegebenen Nachricht automatisch diesen Text ein, wenn aktiviert.
                 </p>
               </section>
               )}

@@ -315,8 +315,6 @@ export function VoiceSettingsSection() {
         <div className="section-label">Buttons im Terminal / Chat anzeigen</div>
         <div className="mt-3 space-y-2">
           <Toggle label="Spracheingabe-Button" checked={settings.showMicButton} onChange={(value) => set({ showMicButton: value })} />
-          <Toggle label="Start-Befehl-Button" checked={settings.showStartCommandButton} onChange={(value) => set({ showStartCommandButton: value })} />
-          <Toggle label="Praefix/Suffix-Button" checked={settings.showPrefixSuffixButton} onChange={(value) => set({ showPrefixSuffixButton: value })} />
         </div>
       </section>
     </div>

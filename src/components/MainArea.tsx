@@ -1332,7 +1332,7 @@ function TerminalInstance({
 
   return (
     <div 
-      className={`w-full h-full ${active ? '' : 'hidden'}`} 
+      className={`w-full h-full touch-none ${active ? '' : 'hidden'}`} 
       ref={terminalRef} 
       onClick={() => xtermRef.current?.focus()}
       onDragOver={(event) => {
@@ -1365,10 +1365,6 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     setChats,
     theme,
     terminalTransparency,
-    terminalStartCommandEnabled,
-    setTerminalStartCommandEnabled,
-    terminalPrefixSuffixEnabled,
-    setTerminalPrefixSuffixEnabled,
     openBrowserTab,
     cliHarnesses,
     mobileMode,
@@ -1383,7 +1379,17 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const terminalLayout = currentChat.terminalLayout || 'single';
   // Phones and tablets stack grid terminals in one scrollable column.
   const stacked = useCompactLayout() || mobileMode;
-  const gridSize = Math.max(1, Math.min(6, currentChat.terminalGridSize || 4));
+  const gridSize = Math.max(1, Math.min(8, currentChat.terminalGridSize || Math.min(8, tabs.length) || 4));
+  const gridLayoutClass =
+    gridSize <= 1
+      ? 'grid-cols-1 grid-rows-1'
+      : gridSize === 2
+        ? 'grid-cols-2 grid-rows-1'
+        : gridSize <= 4
+          ? 'grid-cols-2 grid-rows-2'
+          : gridSize <= 6
+            ? 'grid-cols-3 grid-rows-2'
+            : 'grid-cols-4 grid-rows-2';
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
   const activeServer = tabs.find((tab) => tab.id === activeTabId)?.vserver ?? currentChat.vserver;
@@ -1474,10 +1480,12 @@ function TerminalChatView({ chat }: { chat: Chat }) {
       current.map((c) => {
         if (c.id === chat.id) {
           const oldTabs = c.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
+          const newTabs = [...oldTabs, newTab];
           return {
             ...c,
-            terminalTabs: [...oldTabs, newTab],
+            terminalTabs: newTabs,
             activeTerminalTabId: newTabId,
+            terminalGridSize: c.terminalLayout === 'grid' ? Math.min(8, Math.max(newTabs.length, c.terminalGridSize || 0)) : c.terminalGridSize,
           };
         }
         return c;
@@ -1710,36 +1718,6 @@ function TerminalChatView({ chat }: { chat: Chat }) {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          {voice.showStartCommandButton && <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
-            terminalStartCommandEnabled
-              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
-              : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
-          }`}>
-            <input
-              type="checkbox"
-              checked={terminalStartCommandEnabled}
-              onChange={(e) => setTerminalStartCommandEnabled(e.target.checked)}
-              className="sr-only"
-            />
-            <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalStartCommandEnabled ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
-            <span>Start-Befehl</span>
-          </label>}
-
-          {voice.showPrefixSuffixButton && <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
-            terminalPrefixSuffixEnabled
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-medium'
-              : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
-          }`}>
-            <input
-              type="checkbox"
-              checked={terminalPrefixSuffixEnabled}
-              onChange={(e) => setTerminalPrefixSuffixEnabled(e.target.checked)}
-              className="sr-only"
-            />
-            <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalPrefixSuffixEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-            <span>Präfix/Suffix</span>
-          </label>}
-
           {activeServer && (
             <button
               onClick={() => setSftpServer(activeServer)}
@@ -1793,14 +1771,22 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
           <button
             onClick={() => setChats((current) =>
-              current.map((c) => (c.id === chat.id ? { ...c, terminalLayout: terminalLayout === 'grid' ? 'single' : 'grid' } : c))
+              current.map((c) => {
+                if (c.id !== chat.id) return c;
+                const nextLayout = terminalLayout === 'grid' ? 'single' : 'grid';
+                return {
+                  ...c,
+                  terminalLayout: nextLayout,
+                  terminalGridSize: nextLayout === 'grid' ? Math.min(8, Math.max(tabs.length, c.terminalGridSize || 4)) : c.terminalGridSize,
+                };
+              })
             )}
             className={`p-1.5 rounded border transition-colors flex items-center gap-1 ${
               terminalLayout === 'grid'
                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
                 : 'bg-zinc-800 border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white'
             }`}
-            title={terminalLayout === 'grid' ? 'Grid-Layout deaktivieren' : '4-Spalten Grid-Layout aktivieren'}
+            title={terminalLayout === 'grid' ? 'Grid-Layout deaktivieren' : 'Grid-Layout aktivieren (bis zu 8 Terminals)'}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Grid</span>
@@ -1824,7 +1810,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
       <div className="flex-1 min-h-0 w-full relative">
         {terminalLayout === 'grid' ? (
-          <div className={stacked ? 'flex h-full w-full flex-col gap-3 overflow-y-auto' : `grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : gridSize <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3 grid-rows-2'}`}>
+          <div className={stacked ? 'flex h-full w-full flex-col gap-3 overflow-y-auto' : `grid gap-3 h-full w-full ${gridLayoutClass}`}>
             {tabs.slice(0, gridSize).map((tab) => (
               <div key={tab.id} className={`border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col min-h-0 ${stacked ? 'h-[60vh] min-h-[280px] shrink-0' : 'h-full'}`}>
                 <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
@@ -2028,8 +2014,8 @@ function HomeView() {
 
             <div>
               <div className="section-label">Anzahl Terminals</div>
-              <div className="grid grid-cols-4 gap-2 mt-3">
-                {[1, 2, 3, 4].map((value) => (
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mt-3">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
                   <button
                     key={value}
                     onClick={() => setCount(value)}
@@ -2982,10 +2968,6 @@ function estimateCommandCount(output: string, testSignals: number) {
 function WorkspaceView() {
   const {
     startTerminalChat,
-    terminalStartCommandEnabled,
-    setTerminalStartCommandEnabled,
-    terminalPrefixSuffixEnabled,
-    setTerminalPrefixSuffixEnabled,
   } = useAppContext();
   return (
     <main className="flex-1 overflow-y-auto custom-scrollbar px-8 py-10">
@@ -3005,38 +2987,6 @@ function WorkspaceView() {
             <p className="text-xs text-zinc-500 max-w-sm mb-6 leading-relaxed">
               Öffne ein Terminal direkt in der App. Du kannst Befehle eingeben und der Agent führt sie aus.
             </p>
-
-            <div className="flex items-center gap-3 mb-6">
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
-                terminalStartCommandEnabled
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
-                  : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={terminalStartCommandEnabled}
-                  onChange={(e) => setTerminalStartCommandEnabled(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalStartCommandEnabled ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
-                <span>Start-Befehl</span>
-              </label>
-
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
-                terminalPrefixSuffixEnabled
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-medium'
-                  : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={terminalPrefixSuffixEnabled}
-                  onChange={(e) => setTerminalPrefixSuffixEnabled(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalPrefixSuffixEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-                <span>Präfix/Suffix</span>
-              </label>
-            </div>
 
             <button
               onClick={startTerminalChat}
