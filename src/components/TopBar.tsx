@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Check,
   Folder,
+  ImagePlus,
   Minus,
   PanelLeftClose,
   PanelLeftOpen,
@@ -16,6 +17,8 @@ import { useAppContext } from '../AppContext';
 import AccountMenu from './AccountMenu';
 import AppLogo from './AppLogo';
 import { openUpdateWindow } from './UpdateModal';
+import { useCompactLayout } from '../useCompactLayout';
+import { isWebBuild, requestNextWallpaper } from '../wallpaper';
 
 export default function TopBar({
   onSettingsClick,
@@ -26,6 +29,9 @@ export default function TopBar({
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 }) {
+  const compact = useCompactLayout();
+  // The browser version has no app window to control and updates by itself.
+  const isWeb = isWebBuild();
   const {
     selectedProject,
     addProject,
@@ -173,7 +179,7 @@ export default function TopBar({
         </button>
         <div className="flex items-center gap-2 pr-2 text-zinc-200">
           <AppLogo className="w-5 h-5" />
-          <span className="text-[12px] font-semibold tracking-wide">CodeForge</span>
+          <span className="hidden sm:inline text-[12px] font-semibold tracking-wide">CodeForge</span>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -193,17 +199,18 @@ export default function TopBar({
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
+        {!compact && (
         <div className="flex items-center gap-1 text-[13px]">
           {menuButton('Datei', [
             { label: 'Home', action: () => selectChat(null) },
             { label: 'Projektordner oeffnen...', action: addProject },
-            { label: 'App schliessen', action: () => window.agentWorkspace?.closeWindow() },
+            ...(isWeb ? [] : [{ label: 'App schliessen', action: () => window.agentWorkspace?.closeWindow() }]),
           ])}
           {menuButton('Bearbeiten', [
             { label: 'Aktuellen Chat loeschen', action: confirmClearChat },
             { label: 'Einstellungen', action: () => setMenu('account'), keepMenu: true },
           ])}
-          {menuButton('Ansicht', [
+          {!isWeb && menuButton('Ansicht', [
             {
               label: 'Fenster maximieren / wiederherstellen',
               action: () => window.agentWorkspace?.maximizeWindow(),
@@ -231,7 +238,7 @@ export default function TopBar({
               action: () => window.agentWorkspace?.openExternal('https://opencode.ai/docs/'),
             },
           ])}
-          <button
+          {!isWeb && <button
             onClick={handleUpdateClick}
             disabled={updateStatus.status === 'checking' || updateStatus.status === 'downloading'}
             className={`px-1.5 py-1 hover:bg-white/5 hover:text-white rounded transition-colors flex items-center gap-1.5 cursor-pointer select-none text-[13px] ${
@@ -241,20 +248,26 @@ export default function TopBar({
           >
             {getUpdateDot()}
             {getUpdateLabel()}
-          </button>
+          </button>}
         </div>
+        )}
       </div>
 
       <div className="app-no-drag flex items-center gap-2">
         <button
           onClick={addProject}
-          className="flex items-center gap-2 max-w-72 px-2.5 py-1 hover:bg-white/5 rounded text-xs transition-colors"
+          className="flex items-center gap-2 max-w-[40vw] sm:max-w-72 px-2.5 py-1 hover:bg-white/5 rounded text-xs transition-colors"
           title={selectedProject?.path || 'Projektordner auswaehlen'}
         >
           <Folder className="w-3.5 h-3.5 fill-[#dcb85d] text-[#dcb85d] shrink-0" />
           <span className="truncate">{selectedProject?.title || 'Projekt oeffnen'}</span>
           {selectedProject && <Check className="w-3 h-3 text-emerald-400" />}
         </button>
+        {isWeb && (
+          <button onClick={requestNextWallpaper} className="p-1.5 hover:bg-white/5 rounded" title="Neues Hintergrundbild">
+            <ImagePlus className="w-3.5 h-3.5" />
+          </button>
+        )}
         <div className="relative">
           <button
             onClick={() => setMenu(menu === 'account' ? null : 'account')}
@@ -270,7 +283,7 @@ export default function TopBar({
             />
           )}
         </div>
-        <div className="flex items-center ml-1">
+        {!isWeb && <div className="flex items-center ml-1">
           <button onClick={() => window.agentWorkspace?.minimizeWindow()} className="window-control">
             <Minus className="w-4 h-4" />
           </button>
@@ -280,7 +293,7 @@ export default function TopBar({
           <button onClick={() => window.agentWorkspace?.closeWindow()} className="window-control hover:!bg-red-500 hover:!text-white">
             <X className="w-4 h-4" />
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );

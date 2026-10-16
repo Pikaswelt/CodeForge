@@ -15,6 +15,7 @@ import UpdateModal from './components/UpdateModal';
 import { VoiceIndicator, VoiceInstallModal } from './components/VoiceSettings';
 import { syncWakeMode } from './voice';
 import { useCompactLayout } from './useCompactLayout';
+import { isWebBuild, useWallpaper } from './wallpaper';
 
 // Modals and widgets load on demand to keep startup fast.
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
@@ -127,12 +128,16 @@ function AppLayout() {
     'glass-apple-light': 'text-zinc-800'
   }[baseThemeId] || 'text-zinc-300';
 
+  // The wallpaper shows unless the theme brings its own background media.
+  const wallpaper = useWallpaper(isWebBuild() && !backdropTheme);
   const isGlassTheme = baseThemeId.startsWith('glass-apple-');
-  const hasTransparency = sidebarTransparency > 0 || surfaceTransparency > 0 || isGlassTheme;
+  // Glass themes and the wallpaper need see-through panels; these are the defaults then.
+  const seeThrough = isGlassTheme || Boolean(wallpaper);
+  const hasTransparency = sidebarTransparency > 0 || surfaceTransparency > 0 || seeThrough;
 
   const shellStyle = {
-    '--theme-sidebar-alpha': String(1 - (isGlassTheme && sidebarTransparency === 0 ? 35 : sidebarTransparency) / 100),
-    '--theme-surface-alpha': String(1 - (isGlassTheme && surfaceTransparency === 0 ? 45 : surfaceTransparency) / 100),
+    '--theme-sidebar-alpha': String(1 - (seeThrough && sidebarTransparency === 0 ? 35 : sidebarTransparency) / 100),
+    '--theme-surface-alpha': String(1 - (seeThrough && surfaceTransparency === 0 ? 45 : surfaceTransparency) / 100),
     '--glass-blur': `${glassBlurStrength}px`,
     '--glass-saturation': `${glassSaturation}%`,
     '--app-radius': `${appBorderRadius}px`,
@@ -182,10 +187,24 @@ function AppLayout() {
     <div
       data-theme={cssTheme}
       data-transparency={hasTransparency ? 'on' : 'off'}
-      className={`relative h-screen w-screen ${customTheme ? '' : bgClass} ${textClass} font-sans overflow-hidden transition-colors duration-300`}
+      className={`relative h-[100dvh] w-screen ${customTheme || wallpaper ? '' : bgClass} ${textClass} font-sans overflow-hidden transition-colors duration-300`}
       style={shellStyle}
     >
       {backdropTheme && <ThemeBackdrop theme={backdropTheme} />}
+      {wallpaper && (
+        <div className="theme-backdrop bg-black" aria-hidden="true">
+          <motion.img
+            key={wallpaper}
+            className="theme-media-backdrop"
+            src={wallpaper}
+            alt=""
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6 }}
+          />
+          <div className="wallpaper-scrim" />
+        </div>
+      )}
       <div className="relative z-10 flex h-full w-full flex-col">
         <TopBar
           onSettingsClick={() => setShowSettings(true)}
