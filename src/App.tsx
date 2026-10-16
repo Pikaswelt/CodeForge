@@ -5,7 +5,9 @@
 
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wifi } from 'lucide-react';
+import { Sparkles, Wifi } from 'lucide-react';
+import AppLogo from './components/AppLogo';
+import NewsPopup from './components/NewsPopup';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
@@ -16,6 +18,7 @@ import { VoiceIndicator, VoiceInstallModal } from './components/VoiceSettings';
 import { syncWakeMode } from './voice';
 import { useCompactLayout } from './useCompactLayout';
 import { isWebBuild, useWallpaper } from './wallpaper';
+import type { UpdateSpotlight } from './types';
 
 // Modals and widgets load on demand to keep startup fast.
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
@@ -393,17 +396,116 @@ function IntroScreen({ onComplete }: { onComplete: () => void }) {
   );
 }
 
+// Only on the first start after an update: the new version number, then the changelog.
+function VersionIntro({ version, onComplete }: { version: string; onComplete: () => void }) {
+  React.useEffect(() => {
+    const timer = setTimeout(onComplete, 3400);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.7, ease: 'easeInOut' }}
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black text-white selection:bg-white/10"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.82, y: 18 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+        className="flex flex-col items-center"
+      >
+        <AppLogo className="h-16 w-16" />
+        <div className="mt-6 text-[11px] font-semibold uppercase tracking-[0.45em] text-zinc-500">CodeForge</div>
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45, duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-3 font-mono text-4xl font-extrabold tracking-widest text-zinc-100 sm:text-5xl"
+          style={{ textShadow: '0 0 50px rgba(100,210,255,0.28)' }}
+        >
+          v{version}
+        </motion.div>
+        <motion.div
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: 96, opacity: 0.45 }}
+          transition={{ delay: 0.9, duration: 0.9, ease: 'easeInOut' }}
+          className="my-5 h-[1px] bg-white"
+        />
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.25, duration: 0.8 }}
+          className="flex items-center gap-2 text-[11px] uppercase tracking-[0.3em] text-zinc-400"
+        >
+          <Sparkles className="h-3.5 w-3.5 text-amber-300/80" />
+          Update installiert
+        </motion.div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function App() {
+  const [spotlight, setSpotlight] = useState<UpdateSpotlight | null>(null);
+  const [ready, setReady] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
+  const [showNews, setShowNews] = useState(false);
+
+  // The desktop app knows whether this start follows an update. Without the bridge (web preview) the
+  // normal start screen stays.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const value = await window.agentWorkspace?.getUpdateSpotlight?.();
+        if (!cancelled && value) setSpotlight(value);
+      } catch (_) {
+        // Kein Grund den Start zu verzoegern.
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const updated = Boolean(spotlight?.justUpdated && spotlight.version);
+  const version = spotlight?.version || '';
+
+  const finishIntro = () => {
+    setShowIntro(false);
+    if (updated) setShowNews(true);
+  };
+
+  // Only once the changelog was really shown is the version remembered, so the animation comes
+  // again when the app is closed during it.
+  const closeNews = () => {
+    setShowNews(false);
+    void window.agentWorkspace?.markUpdateSeen?.(spotlight?.version);
+  };
 
   return (
     <AppProvider>
-      <AnimatePresence mode="wait">
-        {showIntro ? (
-          <IntroScreen key="intro" onComplete={() => setShowIntro(false)} />
-        ) : (
-          <AppLayout key="layout" />
-        )}
+      {!ready ? (
+        <div className="fixed inset-0 bg-black" />
+      ) : (
+        <AnimatePresence mode="wait">
+          {showIntro ? (
+            updated ? (
+              <VersionIntro key="version-intro" version={version} onComplete={finishIntro} />
+            ) : (
+              <IntroScreen key="intro" onComplete={finishIntro} />
+            )
+          ) : (
+            <AppLayout key="layout" />
+          )}
+        </AnimatePresence>
+      )}
+      <AnimatePresence>
+        {showNews && <NewsPopup key="news" version={version} onClose={closeNews} />}
       </AnimatePresence>
     </AppProvider>
   );

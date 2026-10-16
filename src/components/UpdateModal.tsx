@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCircle2, Download, Loader2, RefreshCw, X, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Loader2, RefreshCw, Sparkles, X, XCircle } from 'lucide-react';
 import type { UpdateStatus } from '../electron.d';
+import { ReleaseBody, formatReleaseDate, useReleaseNotes } from './ReleaseNotes';
 
 // Update window: opens only when the user starts a check with openUpdateWindow
 // and shows every step until install.
@@ -46,6 +47,10 @@ export default function UpdateModal() {
     };
   }, []);
 
+  // The changes always come from the GitHub release of the version being offered.
+  const notes = useReleaseNotes(status?.availableVersion || status?.currentVersion || '', 1, open && Boolean(status));
+  const noteHead = notes.current || notes.releases[0] || null;
+
   if (!open || !status) return null;
 
   const current = status.status;
@@ -63,7 +68,7 @@ export default function UpdateModal() {
   return (
     <AnimatePresence>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[450] grid place-items-center bg-black/60 backdrop-blur-sm">
-        <motion.div initial={{ scale: 0.96, y: 10 }} animate={{ scale: 1, y: 0 }} className="w-[460px] rounded-2xl border border-white/10 bg-[#161316] p-6 shadow-2xl">
+        <motion.div initial={{ scale: 0.96, y: 10 }} animate={{ scale: 1, y: 0 }} className="max-h-[92vh] w-[460px] overflow-y-auto rounded-2xl border border-white/10 bg-[#161316] p-6 shadow-2xl custom-scrollbar">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-xl border border-amber-400/20 bg-amber-400/10">
@@ -107,6 +112,35 @@ export default function UpdateModal() {
           )}
 
           <div className="mt-5 text-sm text-zinc-300">{installing ? 'CodeForge wird beendet und installiert...' : status.message}</div>
+
+          {!installing && current !== 'error' && (
+            <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-black/30">
+              <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-amber-300/80">
+                <Sparkles className="h-3.5 w-3.5" />
+                {upToDate ? 'Was zuletzt neu war' : 'Was sich aendert'}
+              </div>
+              <div className="max-h-52 overflow-y-auto px-3 py-2.5 custom-scrollbar">
+                {notes.loading ? (
+                  <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Aenderungen werden geladen ...
+                  </div>
+                ) : notes.error ? (
+                  <p className="text-[11px] leading-5 text-zinc-500">{notes.error}</p>
+                ) : noteHead ? (
+                  <>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-medium text-zinc-200">v{noteHead.version}</span>
+                      <span className="text-[10px] text-zinc-600">{formatReleaseDate(noteHead.publishedAt)}</span>
+                    </div>
+                    <ReleaseBody body={noteHead.body} compact />
+                  </>
+                ) : (
+                  <p className="text-[11px] text-zinc-500">Keine Aenderungen notiert.</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {current === 'downloading' && (
             <div className="mt-3">

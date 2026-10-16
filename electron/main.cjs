@@ -31,7 +31,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const DiscordRPC = require('discord-rpc');
-const { setupUpdater } = require('./updater.cjs');
+const { setupUpdater, fetchReleaseNotes } = require('./updater.cjs');
 const { setupWhisper } = require('./whisper.cjs');
 const sftp = require('./sftp.cjs');
 const { createSessionClient } = require('./session-client.cjs');
@@ -3739,6 +3739,36 @@ function isOwnerPc() {
   }
 }
 
+// ---------- What's new after an update ----------
+// The first start after an update shows a short version animation and then the changelog taken from
+// the GitHub release. The version that was already presented is remembered in the app data
+// directory, so the animation appears exactly once per version and never on a fresh install.
+function spotlightFile() {
+  return path.join(app.getPath('userData'), 'version-spotlight.json');
+}
+
+function updateSpotlight() {
+  const version = app.getVersion();
+  let seenVersion = '';
+  try {
+    seenVersion = String(JSON.parse(fs.readFileSync(spotlightFile(), 'utf8')).seenVersion || '');
+  } catch (_) {
+    seenVersion = '';
+  }
+  // Reading only: React mounts effects twice in development, so the marker is written once the
+  // changelog was really shown (markUpdateSeen), never here.
+  return { version, previousVersion: seenVersion, justUpdated: Boolean(seenVersion) && seenVersion !== version };
+}
+
+function markUpdateSeen(version) {
+  const value = String(version || app.getVersion());
+  try {
+    fs.mkdirSync(path.dirname(spotlightFile()), { recursive: true });
+    fs.writeFileSync(spotlightFile(), JSON.stringify({ seenVersion: value, seenAt: new Date().toISOString() }, null, 2), 'utf8');
+  } catch (_) {}
+  return value;
+}
+
 // ---------- MCP servers: inspect, start and stop ----------
 // The servers Claude Code, Cursor or Codex spawn from their config files can be started here for a
 // look: CodeForge speaks the MCP handshake itself, lists the tools an agent would get and keeps the
@@ -4477,6 +4507,9 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('control:publish-state', publishControlState);
   ipcMain.handle('mcp:info', async () => getMcpCommand());
   ipcMain.handle('mcp:register', registerMcp);
+  ipcMain.handle('updates:notes', async (_event, request = {}) => fetchReleaseNotes(request || {}));
+  ipcMain.handle('updates:spotlight', () => updateSpotlight());
+  ipcMain.handle('updates:mark-seen', (_event, version) => markUpdateSeen(version));
   ipcMain.handle('mcp:own', async () => ownMcpServer());
   ipcMain.handle('mcp:sessions', () => [...mcpSessions.values()].map(describeMcpSession));
   ipcMain.handle('mcp:start', startMcpServer);

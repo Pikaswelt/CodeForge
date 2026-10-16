@@ -359,6 +359,29 @@ export type McpStartResult = {
   error?: string;
 };
 
+// The changelog of a release, taken from the GitHub release so it is written only once.
+export type ReleaseNote = {
+  version: string;
+  title: string;
+  publishedAt: string;
+  body: string;
+  url: string;
+  prerelease: boolean;
+};
+
+export type ReleaseNotesAnswer = {
+  releases: ReleaseNote[];
+  current: ReleaseNote | null;
+};
+
+// Tells the renderer whether this start follows an update, so the version animation and the
+// changelog popup appear exactly once.
+export type UpdateSpotlight = {
+  version: string;
+  previousVersion: string;
+  justUpdated: boolean;
+};
+
 export type MobileConnectionType = 'vps' | 'ssh';
 
 export type MobileConnectionConfig = {

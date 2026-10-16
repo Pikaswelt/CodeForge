@@ -1,5 +1,5 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
-import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
+import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
 
 type NativeTabBounds = {
   x: number;
@@ -62,6 +62,9 @@ declare global {
       selectCodexPluginFolder(): Promise<string | null>;
       getSystemStatus(): Promise<CliStatus>;
       getUpdateStatus(): Promise<UpdateStatus>;
+      getReleaseNotes?(request?: { version?: string; limit?: number }): Promise<ReleaseNotesAnswer>;
+      getUpdateSpotlight?(): Promise<UpdateSpotlight>;
+      markUpdateSeen?(version?: string): Promise<string>;
       checkForUpdates(input?: { manual?: boolean }): Promise<UpdateStatus>;
       installUpdate(): Promise<boolean>;
       onUpdateStatus(callback: (status: UpdateStatus) => void): () => void;

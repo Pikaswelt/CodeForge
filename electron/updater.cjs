@@ -352,4 +352,42 @@ Log 'done'
   };
 }
 
-module.exports = { setupUpdater };
+// ---------- Changelog ----------
+// The changes shown in the app are always the ones from the GitHub release, so a release note is
+// never written twice. Cached in memory: the GitHub API allows only a few requests per hour.
+const RELEASES_API = `https://api.github.com/repos/${UPDATE_OWNER}/${UPDATE_REPO}/releases`;
+const RELEASES_CACHE_MS = 10 * 60 * 1000;
+let releasesCache = { at: 0, value: [] };
+
+async function fetchReleaseNotes({ version = '', limit = 6 } = {}) {
+  const now = Date.now();
+  if (now - releasesCache.at > RELEASES_CACHE_MS) {
+    const response = await fetch(`${RELEASES_API}?per_page=20`, {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'CodeForge' },
+    });
+    if (!response.ok) throw new Error(`GitHub antwortete mit ${response.status}.`);
+    const payload = await response.json();
+    releasesCache = {
+      at: now,
+      value: (Array.isArray(payload) ? payload : [])
+        .filter((release) => release && !release.draft && release.tag_name)
+        .map((release) => ({
+          version: String(release.tag_name).replace(/^v/i, ''),
+          title: release.name || release.tag_name,
+          publishedAt: release.published_at || '',
+          body: release.body || '',
+          url: release.html_url || '',
+          prerelease: Boolean(release.prerelease),
+        })),
+    };
+  }
+
+  const wanted = String(version || '').replace(/^v/i, '');
+  const count = Math.max(1, Math.min(20, Number(limit) || 6));
+  return {
+    releases: releasesCache.value.slice(0, count),
+    current: wanted ? releasesCache.value.find((item) => item.version === wanted) || null : null,
+  };
+}
+
+module.exports = { setupUpdater, fetchReleaseNotes };
