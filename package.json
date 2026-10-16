@@ -1,7 +1,8 @@
 {
   "name": "codeforge-desktop",
+  "desktopName": "codeforge-desktop.desktop",
   "private": true,
-  "version": "2.10.1",
+  "version": "2.10.2",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "CodeForge <info@codeforge.app>",
   "type": "module",
@@ -95,6 +96,7 @@
       ],
       "icon": "assets/codeforge.png",
       "category": "Development",
+      "syncDesktopName": true,
       "artifactName": "CodeForge-${version}-${arch}.${ext}",
       "synopsis": "Desktop workspace for AI coding agents",
       "maintainer": "Pikaswelt <info@codeforge.app>"
@@ -122,6 +124,8 @@
     "deb": {
       "depends": [
         "libgtk-3-0",
+        "libnotify4",
+        "libgbm1",
         "libnss3",
         "libxss1",
         "libxtst6",

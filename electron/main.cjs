@@ -3070,6 +3070,14 @@ async function findItunesArtwork(term) {
 
 const activeTerminalProcesses = new Map();
 
+// The Way macros are a Windows feature: they run action.cmd through cmd.exe. On other platforms
+// the old code spawned a binary that does not exist, so the call never returned.
+function requireWindowsActions() {
+  if (process.platform !== 'win32') {
+    throw new Error('Aktionen (action.cmd) werden nur unter Windows unterstuetzt.');
+  }
+}
+
 async function runTerminalCommand(event, { id, command, cwd }) {
   return new Promise((resolve) => {
     const env = { ...process.env };
@@ -3126,7 +3134,15 @@ async function buildVServerSshArgs(vserver) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('V-Server: Port ist ungueltig.');
   if (keyPath && !fs.existsSync(keyPath)) throw new Error('V-Server: Key-Datei fehlt. Bitte Key neu hochladen.');
   const ssh = await findExecutable('ssh');
-  if (!ssh) throw new Error('OpenSSH wurde nicht gefunden. Installiere den Windows-OpenSSH-Client (Einstellungen > Apps > Optionale Features).');
+  if (!ssh) {
+    throw new Error(
+      process.platform === 'win32'
+        ? 'OpenSSH wurde nicht gefunden. Installiere den Windows-OpenSSH-Client (Einstellungen > Apps > Optionale Features).'
+        : process.platform === 'darwin'
+          ? 'OpenSSH (ssh) wurde nicht gefunden. Installiere es z.B. mit: brew install openssh'
+          : 'OpenSSH (ssh) wurde nicht gefunden. Installiere es z.B. mit: sudo apt install openssh-client',
+    );
+  }
   const args = ['-p', String(port), '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30', '-o', 'ConnectTimeout=15'];
   if (keyPath) args.push('-i', keyPath, '-o', 'IdentitiesOnly=yes');
   args.push('-t', `${user ? `${user}@` : ''}${host}`);
@@ -4292,12 +4308,20 @@ ipcMain.handle('device:status', () => {
       title: 'Desktop-App als Tab hinzufuegen',
       defaultPath: app.getPath('desktop'),
       properties: ['openFile'],
-      filters: [
-        process.platform === 'win32'
-          ? { name: 'Apps und Verknuepfungen', extensions: ['exe', 'lnk', 'cmd', 'bat'] }
-          : { name: 'Apps', extensions: ['app', 'sh', 'command'] },
-        { name: 'Alle Dateien', extensions: ['*'] },
-      ],
+      filters: process.platform === 'win32'
+        ? [
+            { name: 'Apps und Verknuepfungen', extensions: ['exe', 'lnk', 'cmd', 'bat'] },
+            { name: 'Alle Dateien', extensions: ['*'] },
+          ]
+        : process.platform === 'darwin'
+          ? [
+              { name: 'Apps', extensions: ['app', 'sh', 'command'] },
+              { name: 'Alle Dateien', extensions: ['*'] },
+            ]
+          : [
+              { name: 'Alle Dateien', extensions: ['*'] },
+              { name: 'Programme und Starter', extensions: ['desktop', 'sh', 'run', 'bin', 'AppImage'] },
+            ],
     });
     return result.canceled ? null : result.filePaths[0];
   });
@@ -4431,6 +4455,7 @@ ipcMain.handle('device:status', () => {
   };
 
   ipcMain.handle('actions:list', async (_event, dirPath) => {
+    requireWindowsActions();
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
       dirPath = defaultActionsDir();
     }
@@ -4465,7 +4490,7 @@ ipcMain.handle('device:status', () => {
   });
 
   ipcMain.handle('actions:play', async (_event, dirPath, name) => {
-    if (process.platform !== 'win32') throw new Error('Aktionen (action.cmd) laufen nur unter Windows.');
+    requireWindowsActions();
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
       dirPath = defaultActionsDir();
     }
@@ -4491,6 +4516,7 @@ ipcMain.handle('device:status', () => {
       child.stderr.on('data', (data) => {
         errorOut += data.toString();
       });
+
       
       child.on('close', (code) => {
         if (code === 0) {
@@ -4503,7 +4529,7 @@ ipcMain.handle('device:status', () => {
   });
 
   ipcMain.handle('actions:record', async (_event, dirPath, name) => {
-    if (process.platform !== 'win32') throw new Error('Aktionen (action.cmd) laufen nur unter Windows.');
+    requireWindowsActions();
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
       dirPath = defaultActionsDir();
     }
@@ -4534,6 +4560,7 @@ ipcMain.handle('device:status', () => {
   });
 
   ipcMain.handle('actions:remove', async (_event, dirPath, name) => {
+    requireWindowsActions();
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
       dirPath = defaultActionsDir();
     }
