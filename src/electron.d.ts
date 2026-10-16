@@ -154,7 +154,8 @@ declare global {
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;
       cancelTerminalCommand(id: string): Promise<boolean>;
       onTerminalOutput(id: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
-      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection; agyAccountId?: string; cols?: number; rows?: number; startCommand?: string }): Promise<{ resumed: boolean } | void>;
+      // CodeForge Web re-attaches running sessions and reports that with skipStartCommand.
+      createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection; agyAccountId?: string; cols?: number; rows?: number; startCommand?: string }): Promise<{ resumed?: boolean; reattached?: boolean; skipStartCommand?: boolean } | void>;
       listRunningSessions(request: { vservers: VServerConnection[] }): Promise<{
         local: { id: string; meta: { vserverId?: string; agyAccountId?: string; tmuxName?: string } }[];
         remote: { id: string; reachable: boolean; sessions: string[] }[];
@@ -164,6 +165,9 @@ declare global {
       publishControlState?(state: unknown): Promise<boolean>;
       getMcpInfo?(): Promise<{ command: string; args: string[]; env: Record<string, string> }>;
       registerMcp?(request: { target: 'claude' | 'agy'; accountIds?: string[] }): Promise<{ ok: boolean; output: string }>;
+      listAgyAccounts?(): Promise<{ id: string; name: string }[]>;
+      saveAgyAccounts?(accounts: { id: string; name: string }[]): Promise<{ id: string; name: string }[]>;
+      isWeb?: boolean;
       getAgyAccountsStatus(accountIds: string[]): Promise<{ id: string; profileExists: boolean; email: string }[]>;
       removeAgyAccountProfile(accountId: string): Promise<boolean>;
       writeToShellSession(request: { chatId: string; text: string }): Promise<boolean>;

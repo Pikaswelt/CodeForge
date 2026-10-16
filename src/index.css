@@ -1409,3 +1409,12 @@
 .xterm .xterm-scrollable-element > .scrollbar {
   display: none !important;
 }
+
+/* Wallpapers range from dark to very bright; a stronger scrim keeps text readable. */
+.wallpaper-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.55)),
+    radial-gradient(circle at center, transparent, rgb(0 0 0 / 0.35));
+}

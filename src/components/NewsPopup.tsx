@@ -2,7 +2,6 @@ import { motion } from 'motion/react';
 import { Megaphone, Sparkles, X, Zap, Smartphone, Terminal, Wifi } from 'lucide-react';
 import AppLogo from './AppLogo';
 
-const NEWS_STORAGE_KEY = 'agentWorkspace.newsPopupDismissed';
 const CURRENT_VERSION = '2.1.0';
 
 const NEWS_ITEMS = [
@@ -158,19 +157,3 @@ export default function NewsPopup({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function shouldShowNewsPopup(): boolean {
-  try {
-    const dismissed = localStorage.getItem(NEWS_STORAGE_KEY);
-    return dismissed !== CURRENT_VERSION;
-  } catch {
-    return true;
-  }
-}
-
-export function dismissNewsPopup(): void {
-  try {
-    localStorage.setItem(NEWS_STORAGE_KEY, CURRENT_VERSION);
-  } catch {
-    // localStorage may be unavailable
-  }
-}

@@ -147,6 +147,37 @@ export type AgyAccount = {
   name: string;
 };
 
+export type MultiLaunchSlot = {
+  id: string;
+  name: string;
+  tool: 'agy' | 'claude' | 'custom';
+  command?: string;
+  agyAccountId?: string;
+  targetType: 'local' | 'vserver';
+  vserverId?: string;
+};
+
+export type MultiLaunchConfig = {
+  mode: 'default' | 'custom';
+  buttonLabel?: string;
+  layout?: 'grid' | 'single';
+  slots: MultiLaunchSlot[];
+};
+
+export const DEFAULT_MULTI_LAUNCH_CONFIG: MultiLaunchConfig = {
+  mode: 'default',
+  buttonLabel: 'Antigravity starten',
+  layout: 'grid',
+  slots: [
+    { id: 'slot-1', name: 'Antigravity 1', tool: 'agy', command: 'agy', targetType: 'local' },
+    { id: 'slot-2', name: 'Antigravity 2', tool: 'agy', command: 'agy', targetType: 'local' },
+    { id: 'slot-3', name: 'Antigravity 3', tool: 'agy', command: 'agy', targetType: 'local' },
+    { id: 'slot-4', name: 'Antigravity 4', tool: 'agy', command: 'agy', targetType: 'local' },
+    { id: 'slot-5', name: 'Antigravity 5', tool: 'agy', command: 'agy', targetType: 'local' },
+    { id: 'slot-6', name: 'Claude Code', tool: 'claude', command: 'claude', targetType: 'local' },
+  ],
+};
+
 export type CliHarness = {
   id: string;
   name: string;

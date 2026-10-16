@@ -43,8 +43,10 @@ import { useAppContext } from '../AppContext';
 import InputArea from './InputArea';
 import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
+import { MultiLaunchPanel } from './MultiLaunchPanel';
 import { useDictation } from '../useDictation';
 import { updateVoiceSettings, useVoiceSettings } from '../voice';
+import { useCompactLayout } from '../useCompactLayout';
 import { AddVServerDialog, NewTabMenu, VServerPanel, useVServers } from './VServers';
 import { RunningSessionsPanel } from './RunningSessions';
 import { SftpBrowser } from './SftpBrowser';
@@ -179,8 +181,13 @@ function LibraryView() {
   });
   const mobileCount = libraryProjects.filter((folder) => isMobileProject(folder.path)).length;
   const bannerMedia = libraryStyle.bannerMedia;
-  const bannerIsVideo = Boolean(bannerMedia) && isVideoPath(bannerMedia);
-  const bannerImageUrl = bannerMedia ? (bannerIsVideo ? '' : toFileUrl(bannerMedia)) : libraryBannerUrl;
+  const bannerIsVideo = Boolean(bannerMedia) && bannerMedia !== 'anime' && isVideoPath(bannerMedia);
+  const bannerImageUrl = bannerMedia === 'anime'
+    ? libraryBannerUrl
+    : bannerMedia
+      ? (bannerIsVideo ? '' : toFileUrl(bannerMedia))
+      : '';
+  const hasBanner = Boolean(bannerImageUrl || bannerIsVideo);
   const libraryVars = {
     ...(libraryStyle.pageBackground ? { '--lib-bg': libraryStyle.pageBackground } : {}),
     ...(libraryStyle.cardBackground ? { '--lib-card': libraryStyle.cardBackground } : {}),
@@ -192,7 +199,7 @@ function LibraryView() {
     <main className="library-shell flex-1 overflow-y-auto custom-scrollbar px-8 py-8" style={libraryVars}>
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <section
-          className={`library-hero ${libraryBannerBackgroundEnabled ? 'with-banner-image' : ''}`}
+          className={`library-hero ${libraryBannerBackgroundEnabled && hasBanner ? 'with-banner-image' : ''}`}
           style={libraryBannerBackgroundEnabled && bannerImageUrl ? { backgroundImage: `url("${bannerImageUrl}")` } : undefined}
         >
           {libraryBannerBackgroundEnabled && bannerIsVideo && (
@@ -1176,7 +1183,7 @@ function TerminalInstance({
     };
 
     // Start PTY session in backend, already at the terminal's size.
-    window.agentWorkspace.createShellSession({
+    const shellCreated = window.agentWorkspace.createShellSession({
       chatId: tabId,
       cwd: startPath,
       shellType,
@@ -1187,18 +1194,12 @@ function TerminalInstance({
       startCommand: sshServer ? tab?.command : undefined,
       // A hidden tab has no real size yet; the backend then uses its default.
       ...(terminalRef.current.clientWidth >= 20 && terminalRef.current.clientHeight >= 20 ? { cols: term.cols, rows: term.rows } : {}),
-    }).then((result) => {
-      // Sizes measured while the PTY was still starting were dropped; send the current one again.
-      lastSize = '';
-      syncSize();
-      // A re-joined session is already running its program: typing the start command again would land in it.
-      if (result && result.resumed) startedTerminalTabs.add(tabId);
-      else typeStartCommand();
     });
 
-    const typeStartCommand = () => {
+    const runStartCommands = () => {
       // SSH login takes longer than a local shell before a command can be typed.
       const commandDelay = sshServer ? 3500 : 1000;
+      // On a V-Server the command runs inside the tmux session there instead of being typed.
       if (sshServer && tab?.command) {
         startedTerminalTabs.add(tabId);
       } else if (tab?.command || tab?.blank) {
@@ -1218,7 +1219,7 @@ function TerminalInstance({
           startedTerminalTabs.add(tabId);
           setTimeout(() => {
             window.agentWorkspace.writeToShellSession({ chatId: tabId, text: agentCmd + '\r' });
-            
+
             const initialPrompt = chat.messages.find(m => m.sender === 'user')?.text;
             if (initialPrompt) {
               setTimeout(() => {
@@ -1244,6 +1245,21 @@ function TerminalInstance({
         }
       }
     };
+
+    // The backend reports a re-joined (desktop) or re-attached (CodeForge Web) session;
+    // its program is already running and must not be started a second time.
+    Promise.resolve(shellCreated)
+      .then((result) => {
+        // Sizes measured while the PTY was still starting were dropped; send the current one again.
+        lastSize = '';
+        syncSize();
+        if (result && (result.resumed || result.skipStartCommand)) {
+          startedTerminalTabs.add(tabId);
+          return;
+        }
+        runStartCommands();
+      })
+      .catch(() => runStartCommands());
 
     // Handle incoming output from backend PTY
     const unsubscribe = window.agentWorkspace.onShellOutput(tabId, (payload: any) => {
@@ -1339,6 +1355,38 @@ function TerminalInstance({
     });
     observer.observe(terminalRef.current);
 
+    // xterm.js has no touch scrolling, so vertical swipes become wheel events. With tmux
+    // mouse mode on they scroll the session history; a plain tap still focuses the terminal.
+    const touchTarget = terminalRef.current;
+    let lastTouchY: number | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches.length === 1 ? event.touches[0].clientY : null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (lastTouchY === null || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const deltaY = lastTouchY - touch.clientY;
+      if (Math.abs(deltaY) < 4) return;
+      lastTouchY = touch.clientY;
+      event.preventDefault();
+      term.element?.dispatchEvent(
+        new WheelEvent('wheel', {
+          deltaY: deltaY * 2,
+          deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+    const onTouchEnd = () => {
+      lastTouchY = null;
+    };
+    touchTarget?.addEventListener('touchstart', onTouchStart, { passive: true });
+    touchTarget?.addEventListener('touchmove', onTouchMove, { passive: false });
+    touchTarget?.addEventListener('touchend', onTouchEnd);
+
     const timer = setTimeout(syncSize, 100);
 
     return () => {
@@ -1348,6 +1396,9 @@ function TerminalInstance({
       onDataDisposable.dispose();
       unsubscribe();
       term.dispose();
+      touchTarget?.removeEventListener('touchstart', onTouchStart);
+      touchTarget?.removeEventListener('touchmove', onTouchMove);
+      touchTarget?.removeEventListener('touchend', onTouchEnd);
     };
   }, [tabId, startPath]);
 
@@ -1373,7 +1424,7 @@ function TerminalInstance({
 
   return (
     <div 
-      className={`w-full h-full ${active ? '' : 'hidden'}`}
+      className={`w-full h-full touch-none ${active ? '' : 'hidden'}`}
       ref={terminalRef}
       data-terminal-tab-id={tabId}
       onClick={() => xtermRef.current?.focus()}
@@ -1413,6 +1464,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     setTerminalPrefixSuffixEnabled,
     openBrowserTab,
     cliHarnesses,
+    mobileMode,
   } = useAppContext();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -1422,7 +1474,19 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const tabs = currentChat.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
   const activeTabId = currentChat.activeTerminalTabId || chat.id;
   const terminalLayout = currentChat.terminalLayout || 'single';
-  const gridSize = Math.max(1, Math.min(6, currentChat.terminalGridSize || 4));
+  // Phones and tablets stack grid terminals in one scrollable column.
+  const stacked = useCompactLayout() || mobileMode;
+  const gridSize = Math.max(1, Math.min(8, currentChat.terminalGridSize || Math.min(8, tabs.length) || 4));
+  const gridLayoutClass =
+    gridSize <= 1
+      ? 'grid-cols-1 grid-rows-1'
+      : gridSize === 2
+        ? 'grid-cols-2 grid-rows-1'
+        : gridSize <= 4
+          ? 'grid-cols-2 grid-rows-2'
+          : gridSize <= 6
+            ? 'grid-cols-3 grid-rows-2'
+            : 'grid-cols-4 grid-rows-2';
 
   const startPath = terminalStartPath || selectedProject?.path || undefined;
   const activeServer = tabs.find((tab) => tab.id === activeTabId)?.vserver ?? currentChat.vserver;
@@ -1513,10 +1577,12 @@ function TerminalChatView({ chat }: { chat: Chat }) {
       current.map((c) => {
         if (c.id === chat.id) {
           const oldTabs = c.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
+          const newTabs = [...oldTabs, newTab];
           return {
             ...c,
-            terminalTabs: [...oldTabs, newTab],
+            terminalTabs: newTabs,
             activeTerminalTabId: newTabId,
+            terminalGridSize: c.terminalLayout === 'grid' ? Math.min(8, Math.max(newTabs.length, c.terminalGridSize || 0)) : c.terminalGridSize,
           };
         }
         return c;
@@ -1838,14 +1904,22 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
           {voice.showGridButton && <button
             onClick={() => setChats((current) =>
-              current.map((c) => (c.id === chat.id ? { ...c, terminalLayout: terminalLayout === 'grid' ? 'single' : 'grid' } : c))
+              current.map((c) => {
+                if (c.id !== chat.id) return c;
+                const nextLayout = terminalLayout === 'grid' ? 'single' : 'grid';
+                return {
+                  ...c,
+                  terminalLayout: nextLayout,
+                  terminalGridSize: nextLayout === 'grid' ? Math.min(8, Math.max(tabs.length, c.terminalGridSize || 4)) : c.terminalGridSize,
+                };
+              })
             )}
             className={`p-1.5 rounded border transition-colors flex items-center gap-1 ${
               terminalLayout === 'grid'
                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
                 : 'bg-zinc-800 border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white'
             }`}
-            title={terminalLayout === 'grid' ? 'Grid-Layout deaktivieren' : '4-Spalten Grid-Layout aktivieren'}
+            title={terminalLayout === 'grid' ? 'Grid-Layout deaktivieren' : 'Grid-Layout aktivieren (bis zu 8 Terminals)'}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Grid</span>
@@ -1871,12 +1945,24 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
       <div className="flex-1 min-h-0 w-full relative">
         {terminalLayout === 'grid' ? (
-          <div className={`grid gap-3 h-full w-full ${gridSize <= 2 ? `${gridSize === 2 ? 'grid-cols-2' : 'grid-cols-1'} grid-rows-1` : gridSize <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3 grid-rows-2'}`}>
+          <div className={stacked ? 'flex h-full w-full flex-col gap-3 overflow-y-auto' : `grid gap-3 h-full w-full ${gridLayoutClass}`}>
             {tabs.slice(0, gridSize).map((tab) => (
-              <div key={tab.id} className="border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col h-full min-h-0">
+              <div key={tab.id} className={`border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col min-h-0 ${stacked ? 'h-[60vh] min-h-[280px] shrink-0' : 'h-full'}`}>
                 <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
-                  <span className="font-semibold text-zinc-300">{tab.title}</span>
-                  <span className="uppercase text-[8px] bg-white/5 px-1.5 py-0.5 rounded font-mono border border-white/5">{tab.shellType || 'cmd'}</span>
+                  <div className="flex items-center gap-1.5 truncate">
+                    {tab.location !== 'local' && (tab.vserver || chat.vserver) && (
+                      <Server className="w-3 h-3 text-sky-400 shrink-0" />
+                    )}
+                    <span className="font-semibold text-zinc-300 truncate">{tab.title}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {tab.command && (
+                      <span className="text-[8px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.2 rounded truncate max-w-[90px]">
+                        {tab.command}
+                      </span>
+                    )}
+                    <span className="uppercase text-[8px] bg-white/5 px-1.5 py-0.5 rounded font-mono border border-white/5">{tab.shellType || 'cmd'}</span>
+                  </div>
                 </div>
                 <div className="flex-1 min-h-0 relative">
                   <TerminalInstance
@@ -1890,7 +1976,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 </div>
               </div>
             ))}
-            {tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
+            {!stacked && tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
               <div key={`empty-${i}`} className="border border-dashed border-white/5 rounded-lg flex flex-col items-center justify-center bg-black/10">
                 <span className="text-[10px] text-zinc-600 uppercase font-mono">Kein Tab</span>
                 <button
@@ -1932,8 +2018,16 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 }
 
 function HomeView() {
-  const { cliHarnesses, startWorkspace, selectedProject, agyAccounts, startAgyAccounts } = useAppContext();
-  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver' | 'agy' | 'running'>(false);
+  const {
+    cliHarnesses,
+    startWorkspace,
+    selectedProject,
+    agyAccounts,
+    startAgyAccounts,
+    multiLaunchConfig,
+    startMultiLaunch,
+  } = useAppContext();
+  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver' | 'agy' | 'running' | 'multilaunch'>(false);
   const [harnessId, setHarnessId] = useState(() => cliHarnesses[0]?.id || '');
   const [grid, setGrid] = useState(true);
   const [count, setCount] = useState(1);
@@ -1963,6 +2057,21 @@ function HomeView() {
     // Without saved V-Servers there is nothing to choose: start on this PC.
     if (savedServers.length === 0) void runAgy();
     else setPicking('agy');
+  };
+
+  const handleStartMulti = async () => {
+    if (multiLaunchConfig.mode === 'default' && agyAccounts.length === 0) {
+      setAgyError('Noch keine Antigravity-Accounts angelegt. Lege sie in den Einstellungen an oder passe den Button auf "Individuell" an.');
+      return;
+    }
+    setAgyStarting(true);
+    setAgyError('');
+    try {
+      await startMultiLaunch();
+    } catch (err) {
+      setAgyError(err instanceof Error ? err.message : 'Multi-Launch konnte nicht gestartet werden.');
+      setAgyStarting(false);
+    }
   };
 
   const handleStart = async () => {
@@ -2017,15 +2126,40 @@ function HomeView() {
               <LogIn className="w-4 h-4 text-white" />
               <span>Laufende Sessions</span>
             </button>
-            <button
-              onClick={handleStartAgy}
-              disabled={agyStarting}
-              title={agyAccounts.length ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten` : 'Accounts in den Einstellungen anlegen'}
-              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 disabled:opacity-50"
-            >
-              {agyStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4 text-white" />}
-              <span>Antigravity starten{agyAccounts.length ? ` (${agyAccounts.length})` : ''}</span>
-            </button>
+            <div className="inline-flex items-stretch rounded-xl bg-orange-500/10 border border-orange-500/25 p-0.5 hover:border-orange-500/40 transition-colors">
+              <button
+                onClick={() => {
+                  // In "Standard" the split button keeps the familiar flow: pick PC or V-Server.
+                  if (multiLaunchConfig.mode === 'custom') void handleStartMulti();
+                  else handleStartAgy();
+                }}
+                disabled={agyStarting}
+                title={
+                  multiLaunchConfig.mode === 'custom'
+                    ? `${multiLaunchConfig.buttonLabel || 'Antigravity starten'} (${multiLaunchConfig.slots.length} Terminals)`
+                    : agyAccounts.length
+                      ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten`
+                      : 'Accounts in den Einstellungen anlegen oder Button anpassen'
+                }
+                className="primary-button !py-3 !px-6 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-transform duration-200 disabled:opacity-50 !rounded-lg"
+              >
+                {agyStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4 text-white" />}
+                <span>
+                  {multiLaunchConfig.buttonLabel || 'Antigravity starten'}
+                  {multiLaunchConfig.mode === 'custom'
+                    ? ` (${multiLaunchConfig.slots.length})`
+                    : agyAccounts.length ? ` (${agyAccounts.length})` : ''}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPicking('multilaunch')}
+                className="px-2.5 flex items-center justify-center text-orange-300/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors border-l border-orange-500/20"
+                title="Start-Button anpassen (Aktionen, V-Server, Claude Code, Agy frei belegen)"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
+            </div>
             {agyError && (
               <div className="w-full text-center text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">
                 {agyError}{' '}
@@ -2037,6 +2171,8 @@ function HomeView() {
               </div>
             )}
           </div>
+        ) : picking === 'multilaunch' ? (
+          <MultiLaunchPanel onCancel={() => setPicking(false)} onStart={() => { setPicking(false); void handleStartMulti(); }} />
         ) : picking === 'chat' ? (
           <ApiChatSetup onCancel={() => setPicking(false)} />
         ) : picking === 'vserver' ? (
@@ -2128,8 +2264,8 @@ function HomeView() {
 
             <div>
               <div className="section-label">Anzahl Terminals</div>
-              <div className="grid grid-cols-4 gap-2 mt-3">
-                {[1, 2, 3, 4].map((value) => (
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mt-3">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
                   <button
                     key={value}
                     onClick={() => setCount(value)}
@@ -3082,10 +3218,6 @@ function estimateCommandCount(output: string, testSignals: number) {
 function WorkspaceView() {
   const {
     startTerminalChat,
-    terminalStartCommandEnabled,
-    setTerminalStartCommandEnabled,
-    terminalPrefixSuffixEnabled,
-    setTerminalPrefixSuffixEnabled,
   } = useAppContext();
   return (
     <main className="flex-1 overflow-y-auto custom-scrollbar px-8 py-10">
@@ -3105,38 +3237,6 @@ function WorkspaceView() {
             <p className="text-xs text-zinc-500 max-w-sm mb-6 leading-relaxed">
               Öffne ein Terminal direkt in der App. Du kannst Befehle eingeben und der Agent führt sie aus.
             </p>
-
-            <div className="flex items-center gap-3 mb-6">
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
-                terminalStartCommandEnabled
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
-                  : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={terminalStartCommandEnabled}
-                  onChange={(e) => setTerminalStartCommandEnabled(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalStartCommandEnabled ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
-                <span>Start-Befehl</span>
-              </label>
-
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
-                terminalPrefixSuffixEnabled
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-medium'
-                  : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={terminalPrefixSuffixEnabled}
-                  onChange={(e) => setTerminalPrefixSuffixEnabled(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalPrefixSuffixEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-                <span>Präfix/Suffix</span>
-              </label>
-            </div>
 
             <button
               onClick={startTerminalChat}

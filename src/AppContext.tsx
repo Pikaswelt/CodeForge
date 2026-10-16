@@ -19,6 +19,9 @@ import type {
   Chat,
   TerminalTab,
   AgyAccount,
+  MultiLaunchConfig,
+  MultiLaunchSlot,
+  VServer,
   CliHarness,
   CliStatus,
   CodexPluginInfo,
@@ -41,6 +44,7 @@ import type {
   WorkDisplayMode,
 } from './types';
 import { uiClick, uiKey, uiSnapshot, uiType } from './uiControl';
+import { DEFAULT_MULTI_LAUNCH_CONFIG } from './types';
 
 export type Theme = string;
 export type CustomTheme = {
@@ -375,6 +379,9 @@ interface AppContextType {
   savedTerminalWorkspaces: Chat[];
   rejoinTerminalWorkspace(chatId: string): void;
   endTerminalWorkspace(chatId: string): void;
+  multiLaunchConfig: MultiLaunchConfig;
+  setMultiLaunchConfig: React.Dispatch<React.SetStateAction<MultiLaunchConfig>>;
+  startMultiLaunch(configOverride?: MultiLaunchConfig): Promise<void>;
   startVServerSession(server: VServerConnection): Promise<void>;
   startVServerSessions(servers: VServerConnection[]): Promise<void>;
   apiProviders: ApiProviderConfig[];
@@ -419,6 +426,58 @@ function writeStorage(key: string, value: unknown) {
   localStorage.setItem(`${STORAGE_PREFIX}.${key}`, JSON.stringify(value));
 }
 
+function getInitialLibrarySettings(): {
+  bannerBackgroundEnabled: boolean;
+  libraryStyle: LibraryStyle;
+} {
+  const MIGRATION_KEY = 'agentWorkspace.libraryBannerMigrated';
+  let isMigrated = false;
+  try {
+    isMigrated = Boolean(localStorage.getItem(MIGRATION_KEY));
+  } catch {}
+
+  const storedBannerEnabled = readStorage<boolean | null>('libraryBannerBackgroundEnabled', null);
+  const storedLibraryStyle = readStorage<Partial<LibraryStyle>>('libraryStyle', {});
+
+  if (!isMigrated) {
+    try {
+      // Check if user is an existing user who previously had data in CodeForge
+      const hasAnyExistingData = Boolean(
+        localStorage.getItem('agentWorkspace.setup') !== null ||
+        localStorage.getItem('agentWorkspace.folders') !== null ||
+        localStorage.getItem('agentWorkspace.chats') !== null ||
+        localStorage.getItem('agentWorkspace.provider') !== null ||
+        localStorage.getItem('agentWorkspace.theme') !== null ||
+        localStorage.getItem('agentWorkspace.libraryProjects') !== null ||
+        localStorage.getItem('agentWorkspace.libraryApps') !== null ||
+        storedBannerEnabled !== null ||
+        localStorage.getItem('agentWorkspace.libraryStyle') !== null
+      );
+
+      localStorage.setItem(MIGRATION_KEY, 'true');
+
+      if (hasAnyExistingData) {
+        // Existing user: preserve the anime banner if they didn't have custom media set
+        if (!storedLibraryStyle.bannerMedia) {
+          storedLibraryStyle.bannerMedia = 'anime';
+          writeStorage('libraryStyle', {
+            ...DEFAULT_LIBRARY_STYLE,
+            ...storedLibraryStyle,
+          });
+        }
+      }
+    } catch {}
+  }
+
+  return {
+    bannerBackgroundEnabled: storedBannerEnabled ?? true,
+    libraryStyle: {
+      ...DEFAULT_LIBRARY_STYLE,
+      ...storedLibraryStyle,
+    },
+  };
+}
+
 function projectName(projectPath: string) {
   return projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath;
 }
@@ -438,7 +497,7 @@ function hasHomeAppRunFile(app: HomeApp) {
   );
 }
 
-export const MAX_AGY_ACCOUNTS = 6;
+export const MAX_AGY_ACCOUNTS = 8;
 
 // Claude Code without permission prompts; it reaches all terminals through the codeforge MCP server.
 const MANAGER_TAB = (id: string, inServerWorkspace: boolean): TerminalTab => ({
@@ -655,13 +714,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readStorage<HomeApp[]>('libraryApps', []).filter((app) => app.kind !== 'web' && !app.url),
   );
   const [libraryTags, setLibraryTags] = useState<string[]>(() => readStorage('libraryTags', []));
-  const [libraryBannerBackgroundEnabled, setLibraryBannerBackgroundEnabledState] = useState(() =>
-    readStorage('libraryBannerBackgroundEnabled', true),
+  const [initialLibrarySettings] = useState(() => getInitialLibrarySettings());
+  const [libraryBannerBackgroundEnabled, setLibraryBannerBackgroundEnabledState] = useState(
+    initialLibrarySettings.bannerBackgroundEnabled,
   );
-  const [libraryStyle, setLibraryStyle] = useState<LibraryStyle>(() => ({
-    ...DEFAULT_LIBRARY_STYLE,
-    ...readStorage<Partial<LibraryStyle>>('libraryStyle', {}),
-  }));
+  const [libraryStyle, setLibraryStyle] = useState<LibraryStyle>(
+    initialLibrarySettings.libraryStyle,
+  );
   const [homeTabs, setHomeTabs] = useState<HomeAppTab[]>([]);
   const [activeHomeTabId, setActiveHomeTabId] = useState<string | null>(null);
   const [plugins, setPlugins] = useState<string[]>(() => readStorage('plugins', []));
@@ -789,6 +848,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ]),
   );
   const [agyAccounts, setAgyAccounts] = useState<AgyAccount[]>(() => readStorage('agyAccounts', []));
+  const [multiLaunchConfig, setMultiLaunchConfig] = useState<MultiLaunchConfig>(() =>
+    readStorage('multiLaunchConfig', DEFAULT_MULTI_LAUNCH_CONFIG),
+  );
   const [terminalPrefixSuffixEnabled, setTerminalPrefixSuffixEnabled] = useState(() =>
     readStorage('terminalPrefixSuffixEnabled', false),
   );
@@ -916,6 +978,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('terminalStartCommand', terminalStartCommand), [terminalStartCommand]);
   useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
   useEffect(() => writeStorage('agyAccounts', agyAccounts), [agyAccounts]);
+  useEffect(() => writeStorage('multiLaunchConfig', multiLaunchConfig), [multiLaunchConfig]);
+  // CodeForge Web: the accounts live on the server (shared with the codeforge CLI), not in this browser.
+  const agyAccountsLoaded = useRef(false);
+  useEffect(() => {
+    const workspace = window.agentWorkspace;
+    if (!workspace?.isWeb || !workspace.listAgyAccounts) return;
+    workspace
+      .listAgyAccounts()
+      .then((accounts) => {
+        agyAccountsLoaded.current = true;
+        setAgyAccounts(accounts);
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    const workspace = window.agentWorkspace;
+    if (!workspace?.isWeb || !workspace.saveAgyAccounts || !agyAccountsLoaded.current) return;
+    const timer = setTimeout(() => void workspace.saveAgyAccounts?.(agyAccounts).catch(() => {}), 500);
+    return () => clearTimeout(timer);
+  }, [agyAccounts]);
   useEffect(() => writeStorage('terminalPrefixSuffixEnabled', terminalPrefixSuffixEnabled), [terminalPrefixSuffixEnabled]);
   useEffect(() => writeStorage('terminalPrefix', terminalPrefix), [terminalPrefix]);
   useEffect(() => writeStorage('terminalSuffix', terminalSuffix), [terminalSuffix]);
@@ -2214,9 +2296,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         vserver,
       })),
       activeTerminalTabId: chatId,
-      // The grid shows at most four terminals; more servers stay reachable as tabs.
-      terminalLayout: connections.length > 1 && connections.length <= 4 ? 'grid' : 'single',
-      terminalGridSize: connections.length > 1 && connections.length <= 4 ? connections.length : undefined,
+      // The grid shows at most eight terminals; more servers stay reachable as tabs.
+      terminalLayout: connections.length > 1 && connections.length <= 8 ? 'grid' : 'single',
+      terminalGridSize: connections.length > 1 && connections.length <= 8 ? connections.length : undefined,
       messages: [],
     };
     setChats((current) => [chat, ...current]);
@@ -2228,7 +2310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startWorkspace = async ({ harnessId, grid, count }: { harnessId: string; grid: boolean; count: number }) => {
     const projectForRun = await ensureRunnableProject();
     const harness = cliHarnesses.find((item) => item.id === harnessId) || cliHarnesses[0];
-    const size = Math.max(1, Math.min(4, Math.round(count) || 1));
+    const size = Math.max(1, Math.min(8, Math.round(count) || 1));
     const chatId = newId();
     const label = harness?.name || 'Terminal';
     const chat: Chat = {
@@ -2291,6 +2373,83 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setChats((current) => [chat, ...current]);
     selectChat(chat.id);
     return chat;
+  };
+
+  const startMultiLaunch = async (configOverride?: MultiLaunchConfig) => {
+    const config = configOverride || multiLaunchConfig;
+    if (config.mode === 'default') {
+      await startAgyAccounts();
+      return;
+    }
+
+    const slots = config.slots || [];
+    if (slots.length === 0) {
+      throw new Error('Keine Slots konfiguriert. Bitte Start-Button anpassen.');
+    }
+
+    let savedServers: VServer[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem('agentWorkspace.vservers') || '[]');
+      if (Array.isArray(parsed)) savedServers = parsed;
+    } catch {}
+
+    const projectForRun = await ensureRunnableProject();
+    const chatId = newId();
+    const activeSlots = slots.slice(0, 8);
+    const title = config.buttonLabel?.trim() || (activeSlots.length === 1 ? activeSlots[0].name : 'Multi-Agent Workspace');
+
+    const terminalTabs: TerminalTab[] = activeSlots.map((slot, index) => {
+      const tabId = index === 0 ? chatId : newId();
+      const isLocal = slot.targetType !== 'vserver';
+      const server = !isLocal && slot.vserverId ? savedServers.find((s) => s.id === slot.vserverId) : undefined;
+
+      let cmd = slot.command?.trim();
+      if (!cmd) {
+        if (slot.tool === 'claude') cmd = 'claude';
+        else if (slot.tool === 'agy') cmd = 'agy';
+      }
+
+      let agyAccountId: string | undefined = undefined;
+      if (isLocal && slot.tool === 'agy') {
+        if (slot.agyAccountId) {
+          agyAccountId = slot.agyAccountId;
+        } else if (agyAccounts[index]) {
+          agyAccountId = agyAccounts[index].id;
+        }
+      }
+
+      return {
+        id: tabId,
+        title: slot.name?.trim() || `Terminal ${index + 1}`,
+        shellType: 'cmd' as const,
+        command: cmd,
+        location: isLocal ? ('local' as const) : undefined,
+        vserver: server ? {
+          id: server.id,
+          name: server.name,
+          host: server.host,
+          port: server.port,
+          user: server.user,
+          keyPath: server.keyPath,
+        } : undefined,
+        agyAccountId,
+      };
+    });
+
+    const chat: Chat = {
+      id: chatId,
+      title,
+      updatedAt: Date.now(),
+      folderId: projectForRun.id,
+      mode: 'terminal',
+      terminalTabs,
+      activeTerminalTabId: chatId,
+      terminalLayout: terminalTabs.length > 1 ? (config.layout || 'grid') : 'single',
+      terminalGridSize: terminalTabs.length,
+      messages: [],
+    };
+    setChats((current) => [chat, ...current]);
+    selectChat(chat.id);
   };
 
   const startApiChat = async (projectId: string | null) => {
@@ -3415,6 +3574,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savedTerminalWorkspaces,
       rejoinTerminalWorkspace,
       endTerminalWorkspace,
+      multiLaunchConfig,
+      setMultiLaunchConfig,
+      startMultiLaunch,
       startVServerSession,
       startVServerSessions,
       apiProviders,
@@ -3525,6 +3687,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savedTerminalWorkspaces,
       rejoinTerminalWorkspace,
       endTerminalWorkspace,
+      multiLaunchConfig,
+      startMultiLaunch,
       startVServerSession,
       startVServerSessions,
       cliHarnesses,

@@ -131,8 +131,8 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
         )}
       </div>
       {error && <div className="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
-      <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-        "Antigravity starten" auf Home oeffnet fuer jeden Account ein eigenes agy-Terminal (bis zu {MAX_AGY_ACCOUNTS}). Jeder Account hat einen
+      <p className="text-[11px] leading-4 text-zinc-500 mt-2">
+        Der Start-Button auf Home oeffnet fuer jeden Account ein eigenes agy-Terminal (bis zu {MAX_AGY_ACCOUNTS}) oder kann frei belegt werden (z. B. 5x Agy + Claude Code, Aufteilung auf PC und V-Server). Jeder Account hat einen
         eigenen Login-Ordner auf diesem PC; beim ersten Start fragt agy einmal nach dem Google-Login, danach bleibt er gespeichert.
       </p>
     </section>

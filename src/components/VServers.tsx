@@ -206,8 +206,8 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
           </button>
         </div>
       )}
-      {sorted.length > 4 && (
-        <p className="text-[11px] text-zinc-600">Ab fuenf Servern oeffnen sich die Terminals als Tabs statt im Grid.</p>
+      {sorted.length > 8 && (
+        <p className="text-[11px] text-zinc-600">Ab neun Servern oeffnen sich die Terminals als Tabs statt im Grid.</p>
       )}
 
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
