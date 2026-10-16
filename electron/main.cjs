@@ -29,6 +29,32 @@ const { spawn, execFile } = require('node:child_process');
 const pty = require('node-pty');
 const fs = require('node:fs');
 const path = require('node:path');
+
+// Chromium's sandbox needs unprivileged user namespaces. Ubuntu 24.04 (AppArmor) and some Debian
+// setups block them, and an AppImage cannot carry a SUID sandbox helper - CodeForge would die before
+// the first window. Only in that exact case the sandbox is switched off; CODEFORGE_KEEP_SANDBOX=1
+// keeps it on for debugging.
+function applyLinuxSandboxFallback() {
+  if (process.platform !== 'linux' || process.env.CODEFORGE_KEEP_SANDBOX === '1') return;
+  const readFlag = (file) => {
+    try { return fs.readFileSync(file, 'utf8').trim(); } catch (_) { return ''; }
+  };
+  const restricted =
+    readFlag('/proc/sys/kernel/apparmor_restrict_unprivileged_userns') === '1' ||
+    readFlag('/proc/sys/kernel/unprivileged_userns_clone') === '0';
+  if (!restricted) return;
+  let helperIsSetuid = false;
+  try {
+    helperIsSetuid = (fs.statSync(path.join(path.dirname(process.execPath), 'chrome-sandbox')).mode & 0o4000) !== 0;
+  } catch (_) {
+    helperIsSetuid = false;
+  }
+  if (helperIsSetuid && !process.env.APPIMAGE) return;
+  app.commandLine.appendSwitch('no-sandbox');
+  console.warn('[Start] Keine unprivilegierten User-Namespaces: Chromium-Sandbox deaktiviert.');
+}
+applyLinuxSandboxFallback();
+
 const crypto = require('node:crypto');
 const DiscordRPC = require('discord-rpc');
 const { setupUpdater, fetchReleaseNotes } = require('./updater.cjs');
@@ -651,6 +677,11 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
+  // One clear line in the log once the UI is really there - the Linux smoke test waits for it.
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log(`[Start] CodeForge UI geladen auf ${process.platform} (v${app.getVersion()})`);
+  });
+
   // Never open popups as extra app windows; web links go to Chrome instead.
   mainWindow.webContents.setWindowOpenHandler((details) => {
     if (/^https?:\/\//i.test(details.url)) {
@@ -985,6 +1016,27 @@ function nativeTabInfo(tabId) {
   return nativeAppTabs.get(String(tabId || '')) || {};
 }
 
+// Embedding a foreign window is a Windows API. Linux and macOS get the app in its own window
+// instead of a tab that could never show anything.
+function launchAppInOwnWindow(targetPath, previous = {}) {
+  if (previous.pid) {
+    try {
+      process.kill(previous.pid, 0);
+      return { pid: previous.pid };
+    } catch (_) {
+      // Not running any more: start it fresh below.
+    }
+  }
+  try {
+    const child = spawn(targetPath, [], { detached: true, stdio: 'ignore', cwd: path.dirname(targetPath) });
+    child.on('error', () => {});
+    child.unref();
+    return { pid: child.pid || 0 };
+  } catch (_) {
+    return { pid: 0 };
+  }
+}
+
 async function attachNativeTab(_event, input = {}) {
   const tabId = String(input.tabId || '').trim();
   const targetPath = String(input.path || '').trim();
@@ -992,6 +1044,19 @@ async function attachNativeTab(_event, input = {}) {
   if (!targetPath) throw new Error('App-Pfad fehlt.');
   if (!fs.existsSync(targetPath)) throw new Error('Die App wurde auf diesem Pfad nicht gefunden.');
   const previous = nativeTabInfo(tabId);
+  if (process.platform !== 'win32') {
+    const launched = launchAppInOwnWindow(targetPath, previous);
+    if (launched.pid) nativeAppTabs.set(tabId, { path: targetPath, pid: launched.pid, hwnd: '' });
+    return {
+      ok: false,
+      launched: Boolean(launched.pid),
+      pid: launched.pid,
+      hwnd: '',
+      message: launched.pid
+        ? `Unter ${process.platform === 'darwin' ? 'macOS' : 'Linux'} startet die App in einem eigenen Fenster.`
+        : 'Die App konnte nicht gestartet werden.',
+    };
+  }
   const payload = {
     action: 'attach',
     path: targetPath,
@@ -1024,6 +1089,13 @@ async function moveNativeTab(_event, input = {}) {
 async function detachNativeTab(_event, tabId) {
   const key = String(tabId || '').trim();
   const previous = nativeTabInfo(key);
+  if (process.platform !== 'win32') {
+    if (previous.pid) {
+      try { process.kill(previous.pid, 'SIGTERM'); } catch (_) {}
+    }
+    nativeAppTabs.delete(key);
+    return { ok: true, pid: previous.pid || 0, hwnd: '', message: 'App-Fenster beendet.' };
+  }
   if (!previous.hwnd) return { ok: true, pid: previous.pid || 0, hwnd: '', message: 'Kein Fenster eingebettet.' };
   const result = await runNativeWindowScript({
     action: 'detach',
@@ -4378,9 +4450,15 @@ ipcMain.handle('device:status', () => {
     return shell.openPath(targetPath);
   });
 
+  // The macros are Windows batch files (action.cmd). Elsewhere the folder is still listed so the UI
+  // can show what is there, but playing or recording them is refused with a clear message.
+  const defaultActionsDir = () => {
+    try { return path.join(app.getPath('documents'), 'Way'); } catch (_) { return path.join(app.getPath('home'), 'Way'); }
+  };
+
   ipcMain.handle('actions:list', async (_event, dirPath) => {
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
-      dirPath = 'C:\\Users\\Chris\\OneDrive\\Dokumente\\Way';
+      dirPath = defaultActionsDir();
     }
     if (!fs.existsSync(dirPath)) {
       return [];
@@ -4413,8 +4491,9 @@ ipcMain.handle('device:status', () => {
   });
 
   ipcMain.handle('actions:play', async (_event, dirPath, name) => {
+    if (process.platform !== 'win32') throw new Error('Aktionen (action.cmd) laufen nur unter Windows.');
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
-      dirPath = 'C:\\Users\\Chris\\OneDrive\\Dokumente\\Way';
+      dirPath = defaultActionsDir();
     }
     if (typeof name !== 'string' || !name.trim()) {
       throw new Error('Ungueltiger Action-Name.');
@@ -4431,6 +4510,8 @@ ipcMain.handle('device:status', () => {
         cwd: dirPath,
         shell: false
       });
+      // Without this listener a spawn that never starts would leave the promise pending forever.
+      child.on('error', (error) => reject(new Error(`Aktion konnte nicht gestartet werden: ${error.message}`)));
       
       let errorOut = '';
       child.stderr.on('data', (data) => {
@@ -4448,8 +4529,9 @@ ipcMain.handle('device:status', () => {
   });
 
   ipcMain.handle('actions:record', async (_event, dirPath, name) => {
+    if (process.platform !== 'win32') throw new Error('Aktionen (action.cmd) laufen nur unter Windows.');
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
-      dirPath = 'C:\\Users\\Chris\\OneDrive\\Dokumente\\Way';
+      dirPath = defaultActionsDir();
     }
     if (typeof name !== 'string' || !name.trim()) {
       throw new Error('Ungueltiger Action-Name.');
@@ -4465,6 +4547,7 @@ ipcMain.handle('device:status', () => {
         cwd: dirPath,
         shell: true
       });
+      child.on('error', (error) => reject(new Error(`Aufnahme konnte nicht gestartet werden: ${error.message}`)));
       
       child.on('close', (code) => {
         if (code === 0) {
@@ -4478,7 +4561,7 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('actions:remove', async (_event, dirPath, name) => {
     if (typeof dirPath !== 'string' || !dirPath.trim()) {
-      dirPath = 'C:\\Users\\Chris\\OneDrive\\Dokumente\\Way';
+      dirPath = defaultActionsDir();
     }
     if (typeof name !== 'string' || !name.trim()) {
       throw new Error('Ungueltiger Action-Name.');

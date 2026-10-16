@@ -1,0 +1,62 @@
+name: Linux smoke test
+
+# Boots the built app on real Linux under a virtual display. The 24.04 runner restricts unprivileged
+# user namespaces, which is exactly the case the sandbox fallback in electron/main.cjs exists for, so
+# this job proves the window still opens there. It waits for the "[Start] CodeForge UI geladen" line
+# that electron/main.cjs prints once the renderer has loaded.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  boot:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Build the renderer
+        run: npm run build
+
+      - name: Install the GUI libraries Electron needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgbm1 libnss3 libgtk-3-0 libxss1 libxtst6 libasound2t64 \
+            || sudo apt-get install -y xvfb libgbm1 libnss3 libgtk-3-0 libxss1 libxtst6 libasound2
+
+      - name: Start CodeForge and wait for the UI
+        run: |
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1440x900x24 > xvfb.log 2>&1 &
+          sleep 2
+          npx electron . --user-data-dir="$RUNNER_TEMP/codeforge-profile" > smoke.log 2>&1 &
+          APP_PID=$!
+          loaded=0
+          for _ in $(seq 1 60); do
+            if grep -q '\[Start\] CodeForge UI geladen' smoke.log; then loaded=1; break; fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then echo "CodeForge exited early"; break; fi
+            sleep 2
+          done
+          kill "$APP_PID" 2>/dev/null || true
+          echo "--- smoke.log ---"
+          cat smoke.log
+          echo "--- xvfb.log ---"
+          cat xvfb.log
+          if [ "$loaded" != "1" ]; then echo "Die Oberflaeche ist nicht gestartet."; exit 1; fi
+          if grep -qiE 'FATAL|Cannot open display|SUID sandbox helper is not configured' smoke.log; then
+            echo "Startfehler im Log."; exit 1
+          fi

@@ -835,7 +835,7 @@ function WebHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
 
 function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState<'idle' | 'starting' | 'embedded' | 'failed'>('idle');
+  const [status, setStatus] = useState<'idle' | 'starting' | 'embedded' | 'launched' | 'failed'>('idle');
   const [message, setMessage] = useState('App wird in den Tab eingebettet...');
 
   const readBounds = () => {
@@ -860,6 +860,12 @@ function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
         dpr: window.devicePixelRatio || 1,
       });
       if (!result?.ok) {
+        // Linux and macOS start the app in its own window; there is nothing to embed.
+        if (result?.launched) {
+          setStatus('launched');
+          setMessage(result.message || 'Die App laeuft in einem eigenen Fenster.');
+          return;
+        }
         setStatus('failed');
         setMessage(result?.message || 'Die App konnte nicht in den Tab eingebettet werden.');
         return;
@@ -931,7 +937,7 @@ function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
             <div className="mt-4 text-sm font-medium text-white">{tab.name}</div>
             <div className="mt-2 text-xs leading-5 text-zinc-500">{message}</div>
             <div className="mt-3 break-all font-mono text-[11px] leading-5 text-zinc-600">{tab.path}</div>
-            {status === 'failed' && (
+            {(status === 'failed' || status === 'launched') && (
               <div className="mt-5 flex justify-center gap-2">
                 <button onClick={() => void attach()} className="secondary-button">
                   <RotateCw className="h-4 w-4" />

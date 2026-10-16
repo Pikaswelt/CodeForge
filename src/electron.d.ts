@@ -9,6 +9,7 @@ type NativeTabBounds = {
 };
 
 type NativeTabResult = {
+  launched?: boolean;
   ok: boolean;
   pid: number;
   hwnd: string;
