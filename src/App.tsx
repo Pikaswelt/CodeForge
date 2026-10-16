@@ -354,54 +354,13 @@ function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppC
   );
 }
 
-function IntroScreen({ onComplete }: { onComplete: () => void }) {
+// Every start opens with the version. After an update it stays a moment longer, then the changelog
+// popup follows.
+function VersionIntro({ version, updated, onComplete }: { version: string; updated: boolean; onComplete: () => void }) {
   React.useEffect(() => {
-    const timer = setTimeout(onComplete, 3000);
+    const timer = setTimeout(onComplete, updated ? 3400 : 2900);
     return () => clearTimeout(timer);
-  }, [onComplete]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.8, ease: 'easeInOut' }}
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black text-white selection:bg-white/10"
-    >
-      <div className="text-center">
-        <motion.h1
-          initial={{ opacity: 0, y: 20, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-          className="text-4xl sm:text-6xl font-extrabold tracking-widest uppercase mb-2 font-mono text-zinc-100"
-          style={{ textShadow: '0 0 40px rgba(255,255,255,0.15)' }}
-        >
-          Fancy Servers
-        </motion.h1>
-        <motion.div
-          initial={{ width: 0, opacity: 0 }}
-          animate={{ width: '80px', opacity: 0.5 }}
-          transition={{ delay: 0.5, duration: 1, ease: 'easeInOut' }}
-          className="h-[1px] bg-white mx-auto my-4"
-        />
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.6 }}
-          transition={{ delay: 0.8, duration: 0.8 }}
-          className="text-xs uppercase tracking-[0.3em] text-zinc-400 font-medium"
-        >
-          Loading CodeForge
-        </motion.p>
-      </div>
-    </motion.div>
-  );
-}
-
-// Only on the first start after an update: the new version number, then the changelog.
-function VersionIntro({ version, onComplete }: { version: string; onComplete: () => void }) {
-  React.useEffect(() => {
-    const timer = setTimeout(onComplete, 3400);
-    return () => clearTimeout(timer);
-  }, [onComplete]);
+  }, [onComplete, updated]);
 
   return (
     <motion.div
@@ -433,15 +392,17 @@ function VersionIntro({ version, onComplete }: { version: string; onComplete: ()
           transition={{ delay: 0.9, duration: 0.9, ease: 'easeInOut' }}
           className="my-5 h-[1px] bg-white"
         />
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.25, duration: 0.8 }}
-          className="flex items-center gap-2 text-[11px] uppercase tracking-[0.3em] text-zinc-400"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-amber-300/80" />
-          Update installiert
-        </motion.div>
+        {updated && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.25, duration: 0.8 }}
+            className="flex items-center gap-2 text-[11px] uppercase tracking-[0.3em] text-zinc-400"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-300/80" />
+            Update installiert
+          </motion.div>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -453,8 +414,8 @@ export default function App() {
   const [showIntro, setShowIntro] = useState(true);
   const [showNews, setShowNews] = useState(false);
 
-  // The desktop app knows whether this start follows an update. Without the bridge (web preview) the
-  // normal start screen stays.
+  // The desktop app knows whether this start follows an update; the version itself comes from the
+  // build, so the animation works on every platform.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -473,7 +434,7 @@ export default function App() {
   }, []);
 
   const updated = Boolean(spotlight?.justUpdated && spotlight.version);
-  const version = spotlight?.version || '';
+  const version = spotlight?.version || __APP_VERSION__;
 
   const finishIntro = () => {
     setShowIntro(false);
@@ -494,11 +455,7 @@ export default function App() {
       ) : (
         <AnimatePresence mode="wait">
           {showIntro ? (
-            updated ? (
-              <VersionIntro key="version-intro" version={version} onComplete={finishIntro} />
-            ) : (
-              <IntroScreen key="intro" onComplete={finishIntro} />
-            )
+            <VersionIntro key="version-intro" version={version} updated={updated} onComplete={finishIntro} />
           ) : (
             <AppLayout key="layout" />
           )}
