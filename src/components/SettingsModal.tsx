@@ -1,15 +1,17 @@
 import type { UpdateStatus } from '../electron.d';
 import { VoiceSettingsSection } from './VoiceSettings';
 import { openUpdateWindow } from './UpdateModal';
-import { CheckCircle2, Download, Mic, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, RefreshCw, Settings, Smartphone, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { CheckCircle2, Download, Mic, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, RefreshCw, Settings, SlidersHorizontal, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DEFAULT_LIBRARY_STYLE, useAppContext } from '../AppContext';
 import TutorialModal from './TutorialModal';
 import { HARNESS_ICONS, harnessIcon } from '../harnessIcons';
 import { isVideoPath, toFileUrl } from '../media';
+import libraryBannerUrl from '../../assets/library-banner.png';
 import { ApiProvidersSettings } from './ApiChat';
 import { AgyAccountsSettings } from './AgyAccounts';
+import { MultiLaunchPanel } from './MultiLaunchPanel';
 import type { CliHarness, ProviderId } from '../types';
 
 const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
@@ -84,7 +86,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setTerminalSuffix,
     terminalTriggerWords,
     setTerminalTriggerWords,
+    multiLaunchConfig,
+    agyAccounts,
   } = useAppContext();
+  const [showMultiLaunch, setShowMultiLaunch] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'voice' | 'appearance'>('general');
   const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null);
   const [statusNotice, setStatusNotice] = useState('');
@@ -109,6 +114,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   });
   const [updateBusy, setUpdateBusy] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const libraryFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePickLibraryBanner = async () => {
+    if (window.agentWorkspace && !(window.agentWorkspace as any).isWeb && window.agentWorkspace.selectThemeBackground) {
+      const mediaPath = await selectThemeBackground();
+      if (mediaPath) {
+        setLibraryStyle((current) => ({ ...current, bannerMedia: mediaPath }));
+      }
+      return;
+    }
+    libraryFileInputRef.current?.click();
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -411,6 +428,33 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               )}
 
               {!mobileMode && <AgyAccountsSettings onClose={onClose} />}
+
+              {!mobileMode && (
+                <section className="rounded-xl border border-white/10 bg-white/[0.02] p-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/25 flex items-center justify-center text-orange-400">
+                        <SlidersHorizontal className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-sm font-semibold text-white block">Multi-Start Button</span>
+                        <span className="text-xs text-zinc-400">
+                          {multiLaunchConfig.mode === 'custom'
+                            ? `Individuell: "${multiLaunchConfig.buttonLabel || 'Antigravity starten'}" (${multiLaunchConfig.slots.length} Terminals)`
+                            : `Standard: "${multiLaunchConfig.buttonLabel || 'Antigravity starten'}" (${agyAccounts.length} Accounts)`}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMultiLaunch(true)}
+                      className="px-3.5 py-1.5 rounded-lg border border-orange-500/30 bg-orange-500/15 text-orange-200 hover:bg-orange-500/25 text-xs font-medium transition-colors"
+                    >
+                      Button anpassen
+                    </button>
+                  </div>
+                </section>
+              )}
 
               {!mobileMode && (
               <section>
@@ -978,27 +1022,83 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   />
                 </label>
                 <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
-                  <div className="flex items-center gap-2">
+                  <div className="text-xs font-medium text-zinc-300">Banner-Design</div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
-                      onClick={async () => {
-                        const mediaPath = await selectThemeBackground();
-                        if (mediaPath) setLibraryStyle((current) => ({ ...current, bannerMedia: mediaPath }));
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5"
+                      type="button"
+                      onClick={() => setLibraryStyle((current) => ({ ...current, bannerMedia: '' }))}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        !libraryStyle.bannerMedia
+                          ? 'border-amber-400/50 bg-amber-400/10 text-amber-300'
+                          : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                      }`}
                     >
-                      {isVideoPath(libraryStyle.bannerMedia) ? <Video className="w-4 h-4" /> : <Image className="w-4 h-4" />}
-                      Banner-Bild/-Video waehlen
+                      Kein Banner (Clean)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLibraryStyle((current) => ({ ...current, bannerMedia: 'anime' }))}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        libraryStyle.bannerMedia === 'anime'
+                          ? 'border-amber-400/50 bg-amber-400/10 text-amber-300'
+                          : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Anime-Banner
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePickLibraryBanner}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        libraryStyle.bannerMedia && libraryStyle.bannerMedia !== 'anime'
+                          ? 'border-amber-400/50 bg-amber-400/10 text-amber-300'
+                          : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                      }`}
+                    >
+                      {isVideoPath(libraryStyle.bannerMedia) ? <Video className="w-3.5 h-3.5" /> : <Image className="w-3.5 h-3.5" />}
+                      Eigenes Bild/Video waehlen
                     </button>
                     {libraryStyle.bannerMedia && (
                       <button
+                        type="button"
                         onClick={() => setLibraryStyle((current) => ({ ...current, bannerMedia: '' }))}
-                        className="min-w-0 truncate text-xs text-zinc-500 hover:text-red-300"
-                        title={libraryStyle.bannerMedia}
+                        className="text-xs text-zinc-500 hover:text-red-300"
+                        title="Banner entfernen"
                       >
-                        {libraryStyle.bannerMedia.split(/[\\/]/).at(-1)} entfernen
+                        Entfernen
                       </button>
                     )}
                   </div>
+
+                  <input
+                    type="file"
+                    ref={libraryFileInputRef}
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        if (typeof reader.result === 'string') {
+                          setLibraryStyle((current) => ({ ...current, bannerMedia: reader.result as string }));
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+
+                  {libraryStyle.bannerMedia && libraryStyle.bannerMedia !== 'anime' && (
+                    <input
+                      value={libraryStyle.bannerMedia.startsWith('data:') ? 'Lokale Datei geladen' : libraryStyle.bannerMedia}
+                      disabled={libraryStyle.bannerMedia.startsWith('data:')}
+                      onChange={(event) => setLibraryStyle((current) => ({ ...current, bannerMedia: event.target.value }))}
+                      className="input w-full text-xs font-mono"
+                      placeholder="Pfad oder Bild-URL (z.B. https://...)"
+                    />
+                  )}
+
                   {libraryStyle.bannerMedia && <ThemeCover media={libraryStyle.bannerMedia} />}
                   <ThemeSlider
                     label="Banner-Aufhellung"
@@ -1058,6 +1158,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       </motion.div>
       <AnimatePresence>
         {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
+        {showMultiLaunch && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <MultiLaunchPanel onCancel={() => setShowMultiLaunch(false)} />
+          </div>
+        )}
       </AnimatePresence>
     </motion.div>
   );
@@ -1065,10 +1170,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
 // Still cover for a theme: images as-is, videos show their first frame (never autoplay).
 function ThemeCover({ media }: { media: string }) {
-  const url = toFileUrl(media);
+  const isAnime = media === 'anime';
+  const url = isAnime ? libraryBannerUrl : toFileUrl(media);
   return (
     <div className="mb-3 aspect-video w-full overflow-hidden rounded-lg border border-white/10 bg-black/40">
-      {isVideoPath(media) ? (
+      {!isAnime && isVideoPath(media) ? (
         <video
           src={url}
           muted

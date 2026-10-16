@@ -174,9 +174,7 @@ export const DEFAULT_MULTI_LAUNCH_CONFIG: MultiLaunchConfig = {
     { id: 'slot-3', name: 'Antigravity 3', tool: 'agy', command: 'agy', targetType: 'local' },
     { id: 'slot-4', name: 'Antigravity 4', tool: 'agy', command: 'agy', targetType: 'local' },
     { id: 'slot-5', name: 'Antigravity 5', tool: 'agy', command: 'agy', targetType: 'local' },
-    { id: 'slot-6', name: 'Antigravity 6', tool: 'agy', command: 'agy', targetType: 'local' },
-    { id: 'slot-7', name: 'Antigravity 7', tool: 'agy', command: 'agy', targetType: 'local' },
-    { id: 'slot-8', name: 'Claude Code', tool: 'claude', command: 'claude', targetType: 'local' },
+    { id: 'slot-6', name: 'Claude Code', tool: 'claude', command: 'claude', targetType: 'local' },
   ],
 };
 

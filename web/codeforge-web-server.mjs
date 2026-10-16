@@ -338,7 +338,7 @@ function safeCwd(cwd) {
 // One tmux client (PTY) per browser connection and tab.
 const clients = new Map(); // `${connId}:${chatId}` -> { pty, ws }
 
-async function createShell(conn, { chatId, cwd, agyAccountId, cols, rows, reattachOnly }) {
+async function createShell(conn, { chatId, cwd, agyAccountId, cols, rows, reattachOnly, vserver }) {
   if (!CHAT_ID_PATTERN.test(String(chatId || ''))) throw new Error('Ungueltige Terminal-ID.');
   const key = `${conn.id}:${chatId}`;
   if (clients.has(key)) return { reattached: true, skipStartCommand: true };
@@ -353,7 +353,14 @@ async function createShell(conn, { chatId, cwd, agyAccountId, cols, rows, reatta
     const startDir = safeCwd(cwd);
     let command;
     let label = 'Web-Terminal';
-    if (agyAccountId) {
+    if (vserver) {
+      const port = Number(vserver.port || 22);
+      const user = String(vserver.user || '').trim();
+      const host = String(vserver.host || '').trim();
+      label = vserver.name || (user ? `${user}@${host}` : host);
+      const keyOpt = vserver.keyPath ? `-i ${vserver.keyPath} -o IdentitiesOnly=yes` : '';
+      command = `exec ssh -p ${port} -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -t ${keyOpt} ${user ? `${user}@` : ''}${host}`;
+    } else if (agyAccountId) {
       accountHome(agyAccountId);
       label = accountName(agyAccountId);
       command = `exec ${CLI} __run ${agyAccountId}`;
@@ -388,8 +395,8 @@ async function createShell(conn, { chatId, cwd, agyAccountId, cols, rows, reatta
     if (!(await hasSession(name))) conn.emit(channel, { type: 'exit', code: 0 });
   });
   // Existing sessions already run their program: tell the UI not to type the start command again.
-  // Account sessions start agy themselves.
-  return { reattached: existed, skipStartCommand: existed || Boolean(agyAccountId) };
+  // Account sessions start agy themselves (unless vserver).
+  return { reattached: existed, skipStartCommand: existed || (Boolean(agyAccountId) && !vserver) };
 }
 
 function writeShell(conn, { chatId, text }) {
@@ -570,6 +577,8 @@ const handlers = new Map(
     getScratchProjectFolder: () => WORK_DIR,
     'dialog:scratch-project': () => WORK_DIR,
     selectProjectFolder: () => null,
+    selectThemeBackground: () => null,
+    selectLocalFile: () => null,
     'git:info': async (_conn, projectPath) => {
       const branch = await runGit(projectPath, ['branch', '--show-current']);
       const root = await runGit(projectPath, ['rev-parse', '--show-toplevel']);

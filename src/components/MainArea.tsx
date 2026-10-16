@@ -35,11 +35,13 @@ import {
   Minimize2,
   Clipboard,
   Mic,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import InputArea from './InputArea';
 import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
+import { MultiLaunchPanel } from './MultiLaunchPanel';
 import { useDictation } from '../useDictation';
 import { useVoiceSettings } from '../voice';
 import { useCompactLayout } from '../useCompactLayout';
@@ -176,8 +178,13 @@ function LibraryView() {
   });
   const mobileCount = libraryProjects.filter((folder) => isMobileProject(folder.path)).length;
   const bannerMedia = libraryStyle.bannerMedia;
-  const bannerIsVideo = Boolean(bannerMedia) && isVideoPath(bannerMedia);
-  const bannerImageUrl = bannerMedia ? (bannerIsVideo ? '' : toFileUrl(bannerMedia)) : libraryBannerUrl;
+  const bannerIsVideo = Boolean(bannerMedia) && bannerMedia !== 'anime' && isVideoPath(bannerMedia);
+  const bannerImageUrl = bannerMedia === 'anime'
+    ? libraryBannerUrl
+    : bannerMedia
+      ? (bannerIsVideo ? '' : toFileUrl(bannerMedia))
+      : '';
+  const hasBanner = Boolean(bannerImageUrl || bannerIsVideo);
   const libraryVars = {
     ...(libraryStyle.pageBackground ? { '--lib-bg': libraryStyle.pageBackground } : {}),
     ...(libraryStyle.cardBackground ? { '--lib-card': libraryStyle.cardBackground } : {}),
@@ -189,7 +196,7 @@ function LibraryView() {
     <main className="library-shell flex-1 overflow-y-auto custom-scrollbar px-8 py-8" style={libraryVars}>
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <section
-          className={`library-hero ${libraryBannerBackgroundEnabled ? 'with-banner-image' : ''}`}
+          className={`library-hero ${libraryBannerBackgroundEnabled && hasBanner ? 'with-banner-image' : ''}`}
           style={libraryBannerBackgroundEnabled && bannerImageUrl ? { backgroundImage: `url("${bannerImageUrl}")` } : undefined}
         >
           {libraryBannerBackgroundEnabled && bannerIsVideo && (
@@ -1814,8 +1821,20 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             {tabs.slice(0, gridSize).map((tab) => (
               <div key={tab.id} className={`border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col min-h-0 ${stacked ? 'h-[60vh] min-h-[280px] shrink-0' : 'h-full'}`}>
                 <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
-                  <span className="font-semibold text-zinc-300">{tab.title}</span>
-                  <span className="uppercase text-[8px] bg-white/5 px-1.5 py-0.5 rounded font-mono border border-white/5">{tab.shellType || 'cmd'}</span>
+                  <div className="flex items-center gap-1.5 truncate">
+                    {tab.location !== 'local' && (tab.vserver || chat.vserver) && (
+                      <Server className="w-3 h-3 text-sky-400 shrink-0" />
+                    )}
+                    <span className="font-semibold text-zinc-300 truncate">{tab.title}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {tab.command && (
+                      <span className="text-[8px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.2 rounded truncate max-w-[90px]">
+                        {tab.command}
+                      </span>
+                    )}
+                    <span className="uppercase text-[8px] bg-white/5 px-1.5 py-0.5 rounded font-mono border border-white/5">{tab.shellType || 'cmd'}</span>
+                  </div>
                 </div>
                 <div className="flex-1 min-h-0 relative">
                   <TerminalInstance
@@ -1871,8 +1890,15 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 }
 
 function HomeView() {
-  const { cliHarnesses, startWorkspace, selectedProject, agyAccounts, startAgyAccounts } = useAppContext();
-  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver'>(false);
+  const {
+    cliHarnesses,
+    startWorkspace,
+    selectedProject,
+    agyAccounts,
+    multiLaunchConfig,
+    startMultiLaunch,
+  } = useAppContext();
+  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver' | 'multilaunch'>(false);
   const [harnessId, setHarnessId] = useState(() => cliHarnesses[0]?.id || '');
   const [grid, setGrid] = useState(true);
   const [count, setCount] = useState(1);
@@ -1881,17 +1907,17 @@ function HomeView() {
   const [agyStarting, setAgyStarting] = useState(false);
   const [agyError, setAgyError] = useState('');
 
-  const handleStartAgy = async () => {
-    if (agyAccounts.length === 0) {
-      setAgyError('Noch keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen unter "Antigravity Accounts" hinzu.');
+  const handleStartMulti = async () => {
+    if (multiLaunchConfig.mode === 'default' && agyAccounts.length === 0) {
+      setAgyError('Noch keine Antigravity-Accounts angelegt. Lege sie in den Einstellungen an oder passe den Button auf "Individuell" an.');
       return;
     }
     setAgyStarting(true);
     setAgyError('');
     try {
-      await startAgyAccounts();
+      await startMultiLaunch();
     } catch (err) {
-      setAgyError(err instanceof Error ? err.message : 'Antigravity konnte nicht gestartet werden.');
+      setAgyError(err instanceof Error ? err.message : 'Multi-Launch konnte nicht gestartet werden.');
       setAgyStarting(false);
     }
   };
@@ -1941,15 +1967,36 @@ function HomeView() {
               <Server className="w-4 h-4 text-white" />
               <span>V-Server</span>
             </button>
-            <button
-              onClick={handleStartAgy}
-              disabled={agyStarting}
-              title={agyAccounts.length ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten` : 'Accounts in den Einstellungen anlegen'}
-              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 disabled:opacity-50"
-            >
-              {agyStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4 text-white" />}
-              <span>Antigravity starten{agyAccounts.length ? ` (${agyAccounts.length})` : ''}</span>
-            </button>
+            <div className="inline-flex items-stretch rounded-xl bg-orange-500/10 border border-orange-500/25 p-0.5 hover:border-orange-500/40 transition-colors">
+              <button
+                onClick={handleStartMulti}
+                disabled={agyStarting}
+                title={
+                  multiLaunchConfig.mode === 'custom'
+                    ? `${multiLaunchConfig.buttonLabel || 'Antigravity starten'} (${multiLaunchConfig.slots.length} Terminals)`
+                    : agyAccounts.length
+                      ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten`
+                      : 'Accounts in den Einstellungen anlegen oder Button anpassen'
+                }
+                className="primary-button !py-3 !px-6 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-transform duration-200 disabled:opacity-50 !rounded-lg"
+              >
+                {agyStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4 text-white" />}
+                <span>
+                  {multiLaunchConfig.buttonLabel || 'Antigravity starten'}
+                  {multiLaunchConfig.mode === 'custom'
+                    ? ` (${multiLaunchConfig.slots.length})`
+                    : agyAccounts.length ? ` (${agyAccounts.length})` : ''}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPicking('multilaunch')}
+                className="px-2.5 flex items-center justify-center text-orange-300/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors border-l border-orange-500/20"
+                title="Start-Button anpassen (Aktionen, V-Server, Claude Code, Agy frei belegen)"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
+            </div>
             {agyError && (
               <div className="w-full text-center text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">
                 {agyError}{' '}
@@ -1961,6 +2008,8 @@ function HomeView() {
               </div>
             )}
           </div>
+        ) : picking === 'multilaunch' ? (
+          <MultiLaunchPanel onCancel={() => setPicking(false)} onStart={() => { setPicking(false); void handleStartMulti(); }} />
         ) : picking === 'chat' ? (
           <ApiChatSetup onCancel={() => setPicking(false)} />
         ) : picking === 'vserver' ? (
