@@ -13,4 +13,5 @@ coverage/
 .agents/
 *.cmd
 codeforge_review_report.md
+graphify-out/
 .cursor/

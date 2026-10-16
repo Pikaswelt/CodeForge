@@ -962,7 +962,6 @@ const startedTerminalTabs = new Set<string>();
 
 const TOOLBAR_BUTTONS = [
   { key: 'showStartCommandButton', label: 'Start-Befehl' },
-  { key: 'showPrefixSuffixButton', label: 'Präfix/Suffix' },
   { key: 'showSftpButton', label: 'SFTP (nur V-Server)' },
   { key: 'showPasteButton', label: 'Einfügen' },
   { key: 'showMicButton', label: 'Spracheingabe' },
@@ -1460,8 +1459,6 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     terminalTransparency,
     terminalStartCommandEnabled,
     setTerminalStartCommandEnabled,
-    terminalPrefixSuffixEnabled,
-    setTerminalPrefixSuffixEnabled,
     openBrowserTab,
     cliHarnesses,
     mobileMode,
@@ -1836,21 +1833,6 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             <span>Start-Befehl</span>
           </label>}
 
-          {voice.showPrefixSuffixButton && <label className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-all duration-150 ${
-            terminalPrefixSuffixEnabled
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-medium'
-              : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
-          }`}>
-            <input
-              type="checkbox"
-              checked={terminalPrefixSuffixEnabled}
-              onChange={(e) => setTerminalPrefixSuffixEnabled(e.target.checked)}
-              className="sr-only"
-            />
-            <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalPrefixSuffixEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-            <span>Präfix/Suffix</span>
-          </label>}
-
           {activeServer && voice.showSftpButton && (
             <button
               onClick={() => setSftpServer(activeServer)}
@@ -2087,7 +2069,7 @@ function HomeView() {
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center px-8 overflow-y-auto custom-scrollbar">
-      <div className="w-full max-w-[640px] flex flex-col items-center">
+      <div className="w-full max-w-[720px] flex flex-col items-center">
         <div className="empty-orbit w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-6">
           <Home className="w-6 h-6 text-zinc-400" />
         </div>
@@ -2097,36 +2079,56 @@ function HomeView() {
         </p>
 
         {!picking ? (
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-9 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
             <button
               onClick={() => setPicking('workspace')}
-              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+              className="tile-animate flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left"
             >
-              <Play className="w-4 h-4 fill-current text-white" />
-              <span>Workspace starten</span>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">
+                <Play className="w-4 h-4 fill-current" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-zinc-100">Workspace starten</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Terminals mit Agent im Projektordner</span>
+              </span>
             </button>
             <button
               onClick={() => setPicking('chat')}
-              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+              className="tile-animate flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left"
             >
-              <MessageSquare className="w-4 h-4 text-white" />
-              <span>Chat starten</span>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-500/25 bg-sky-500/10 text-sky-300">
+                <MessageSquare className="w-4 h-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-zinc-100">Chat starten</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Schreiben mit deinem API-Schluessel</span>
+              </span>
             </button>
             <button
               onClick={() => setPicking('vserver')}
-              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+              className="tile-animate flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left"
             >
-              <Server className="w-4 h-4 text-white" />
-              <span>V-Server</span>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-violet-300">
+                <Server className="w-4 h-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-zinc-100">V-Server</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Per SSH auf einem Server arbeiten</span>
+              </span>
             </button>
             <button
               onClick={() => setPicking('running')}
-              className="primary-button !py-3 !px-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+              className="tile-animate flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left"
             >
-              <LogIn className="w-4 h-4 text-white" />
-              <span>Laufende Sessions</span>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-300">
+                <LogIn className="w-4 h-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-zinc-100">Laufende Sessions</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Aktive Terminals fortsetzen</span>
+              </span>
             </button>
-            <div className="inline-flex items-stretch rounded-xl bg-orange-500/10 border border-orange-500/25 p-0.5 hover:border-orange-500/40 transition-colors">
+            <div className="sm:col-span-2 flex items-stretch gap-1 rounded-2xl border border-orange-500/25 bg-gradient-to-br from-orange-500/[0.14] via-orange-500/[0.05] to-transparent p-1.5 transition-colors hover:border-orange-500/40">
               <button
                 onClick={() => {
                   // In "Standard" the split button keeps the familiar flow: pick PC or V-Server.
@@ -2141,20 +2143,28 @@ function HomeView() {
                       ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten`
                       : 'Accounts in den Einstellungen anlegen oder Button anpassen'
                 }
-                className="primary-button !py-3 !px-6 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-transform duration-200 disabled:opacity-50 !rounded-lg"
+                className="flex flex-1 items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-white/5 disabled:opacity-50"
               >
-                {agyStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4 text-white" />}
-                <span>
-                  {multiLaunchConfig.buttonLabel || 'Antigravity starten'}
-                  {multiLaunchConfig.mode === 'custom'
-                    ? ` (${multiLaunchConfig.slots.length})`
-                    : agyAccounts.length ? ` (${agyAccounts.length})` : ''}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-orange-500/25 bg-orange-500/15 text-orange-300">
+                  {agyStarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-white">
+                    {multiLaunchConfig.buttonLabel || 'Antigravity starten'}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-orange-200/70">
+                    {multiLaunchConfig.mode === 'custom'
+                      ? `${multiLaunchConfig.slots.length} Terminals nach eigener Belegung`
+                      : agyAccounts.length
+                        ? `${agyAccounts.length} Account${agyAccounts.length === 1 ? '' : 's'} nebeneinander`
+                        : 'Accounts in den Einstellungen anlegen'}
+                  </span>
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => setPicking('multilaunch')}
-                className="px-2.5 flex items-center justify-center text-orange-300/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors border-l border-orange-500/20"
+                className="px-3 flex items-center justify-center text-orange-300/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors border-l border-orange-500/20"
                 title="Start-Button anpassen (Aktionen, V-Server, Claude Code, Agy frei belegen)"
               >
                 <SlidersHorizontal className="w-4 h-4" />

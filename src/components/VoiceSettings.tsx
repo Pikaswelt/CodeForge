@@ -316,7 +316,6 @@ export function VoiceSettingsSection() {
         <div className="mt-3 space-y-2">
           <Toggle label="Spracheingabe-Button" checked={settings.showMicButton} onChange={(value) => set({ showMicButton: value })} />
           <Toggle label="Start-Befehl-Button" checked={settings.showStartCommandButton} onChange={(value) => set({ showStartCommandButton: value })} />
-          <Toggle label="Praefix/Suffix-Button" checked={settings.showPrefixSuffixButton} onChange={(value) => set({ showPrefixSuffixButton: value })} />
           <Toggle label="SFTP-Button" checked={settings.showSftpButton} onChange={(value) => set({ showSftpButton: value })} />
           <Toggle label="Einfuegen-Button" checked={settings.showPasteButton} onChange={(value) => set({ showPasteButton: value })} />
           <Toggle label="Grid-Button" checked={settings.showGridButton} onChange={(value) => set({ showGridButton: value })} />

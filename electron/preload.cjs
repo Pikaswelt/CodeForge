@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     return () => ipcRenderer.removeListener('update:status', listener);
   },
   getMcpServers: () => ipcRenderer.invoke('system:mcp-servers'),
+  isOwnerPc: () => ipcRenderer.invoke('system:owner-pc'),
   installCli: (provider) => ipcRenderer.invoke('system:install-cli', provider),
   getProviderUsage: (provider) => ipcRenderer.invoke('usage:provider', provider),
   getAntigravityTerminalUsage: () => ipcRenderer.invoke('usage:antigravity-terminal'),
@@ -102,7 +103,16 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   },
   publishControlState: (state) => ipcRenderer.invoke('control:publish-state', state),
   getMcpInfo: () => ipcRenderer.invoke('mcp:info'),
-  registerMcp: (request) => ipcRenderer.invoke('mcp:register', request),  resizeShellSession: (request) => ipcRenderer.invoke('shell:resize', request),
+  registerMcp: (request) => ipcRenderer.invoke('mcp:register', request),
+  getOwnMcpServer: () => ipcRenderer.invoke('mcp:own'),
+  getMcpSessions: () => ipcRenderer.invoke('mcp:sessions'),
+  startMcpServer: (request) => ipcRenderer.invoke('mcp:start', request),
+  stopMcpServer: (request) => ipcRenderer.invoke('mcp:stop', request),
+  onMcpSessionEnded: (callback) => {
+    const listener = (_event, id) => callback(id);
+    ipcRenderer.on('mcp:session-ended', listener);
+    return () => ipcRenderer.removeListener('mcp:session-ended', listener);
+  },  resizeShellSession: (request) => ipcRenderer.invoke('shell:resize', request),
   getAgyAccountsStatus: (accountIds) => ipcRenderer.invoke('agy-accounts:status', accountIds),
   removeAgyAccountProfile: (accountId) => ipcRenderer.invoke('agy-accounts:remove-profile', accountId),
   onShellOutput: (chatId, callback) => {

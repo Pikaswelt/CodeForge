@@ -1,7 +1,7 @@
 import type { UpdateStatus } from '../electron.d';
 import { VoiceSettingsSection } from './VoiceSettings';
 import { openUpdateWindow } from './UpdateModal';
-import { CheckCircle2, Download, Mic, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, RefreshCw, Settings, SlidersHorizontal, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
+import { CheckCircle2, Download, Mic, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, Plug, Puzzle, RefreshCw, Settings, SlidersHorizontal, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DEFAULT_LIBRARY_STYLE, useAppContext } from '../AppContext';
@@ -91,7 +91,13 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     agyAccounts,
   } = useAppContext();
   const [showMultiLaunch, setShowMultiLaunch] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'voice' | 'appearance'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'voice' | 'appearance' | 'mcp' | 'plugins'>('general');
+  // Some building blocks only exist on one machine; the main process decides that locally.
+  const [ownerPc, setOwnerPc] = useState(false);
+
+  useEffect(() => {
+    void window.agentWorkspace?.isOwnerPc?.().then((value) => setOwnerPc(Boolean(value)));
+  }, []);
   const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null);
   const [statusNotice, setStatusNotice] = useState('');
   const [customName, setCustomName] = useState('Mein Theme');
@@ -236,6 +242,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             { id: 'general', label: 'Allgemein', icon: Settings },
             { id: 'voice', label: 'Sprache', icon: Mic },
             { id: 'appearance', label: 'Aussehen', icon: Palette },
+            { id: 'mcp', label: 'MCP', icon: Plug },
+            { id: 'plugins', label: 'Plugins', icon: Puzzle },
           ].map((t) => {
             const active = activeTab === t.id;
             return (
@@ -427,10 +435,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 </p>
               </section>
               )}
-
-              {!mobileMode && <AgyAccountsSettings onClose={onClose} />}
-
-              {!mobileMode && <McpSettings />}
 
               {!mobileMode && (
                 <section className="rounded-xl border border-white/10 bg-white/[0.02] p-4 mt-4">
@@ -752,6 +756,33 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             </motion.div>
           )}
 
+
+          {activeTab === 'mcp' && (
+            <motion.div key="mcp" variants={tabContentVariants} initial="initial" animate="animate" exit="exit">
+              <McpSettings />
+            </motion.div>
+          )}
+
+          {activeTab === 'plugins' && (
+            <motion.div key="plugins" variants={tabContentVariants} initial="initial" animate="animate" exit="exit" className="space-y-7">
+              {ownerPc && !mobileMode ? (
+                <>
+                  <p className="text-[11px] leading-4 text-zinc-500">
+                    Zusaetzliche Bausteine, die nur dieser Rechner nutzt. Sie sind nicht Teil der normalen Auslieferung.
+                  </p>
+                  <AgyAccountsSettings onClose={onClose} />
+                </>
+              ) : (
+                <section className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center">
+                  <Puzzle className="mx-auto w-5 h-5 text-zinc-600" />
+                  <div className="mt-3 text-sm text-zinc-300">Keine Plugins installiert</div>
+                  <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                    Zusaetzliche Bausteine erscheinen hier, sobald sie fuer diesen Rechner freigeschaltet sind.
+                  </p>
+                </section>
+              )}
+            </motion.div>
+          )}
 
           {activeTab === 'voice' && (
             <motion.div key="voice" variants={tabContentVariants} initial="initial" animate="animate" exit="exit">

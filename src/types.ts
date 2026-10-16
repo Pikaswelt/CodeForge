@@ -336,6 +336,29 @@ export type McpServerInfo = {
   details?: string;
 };
 
+export type McpToolInfo = {
+  name: string;
+  description?: string;
+};
+
+// A server CodeForge has actually spoken to: the handshake plus the tools an agent would get.
+export type McpSessionInfo = {
+  id: string;
+  transport: McpServerInfo['transport'];
+  pid?: number;
+  startedAt: number;
+  tools: McpToolInfo[];
+  serverName?: string;
+  serverVersion?: string;
+  protocolVersion?: string;
+};
+
+export type McpStartResult = {
+  ok: boolean;
+  session?: McpSessionInfo;
+  error?: string;
+};
+
 export type MobileConnectionType = 'vps' | 'ssh';
 
 export type MobileConnectionConfig = {

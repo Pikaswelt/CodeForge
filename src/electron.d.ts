@@ -1,5 +1,5 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
-import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
+import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, SpotifyTrack, SystemPromptRequest } from './types';
 
 type NativeTabBounds = {
   x: number;
@@ -66,6 +66,7 @@ declare global {
       installUpdate(): Promise<boolean>;
       onUpdateStatus(callback: (status: UpdateStatus) => void): () => void;
       getMcpServers(): Promise<McpServerInfo[]>;
+      isOwnerPc?(): Promise<boolean>;
       installCli(provider: ProviderId): Promise<{ ok: boolean; message: string }>;
       getProviderUsage(provider: ProviderId): Promise<ProviderUsageInfo>;
       getAntigravityTerminalUsage(): Promise<ProviderUsageInfo>;
@@ -165,6 +166,11 @@ declare global {
       publishControlState?(state: unknown): Promise<boolean>;
       getMcpInfo?(): Promise<{ command: string; args: string[]; env: Record<string, string> }>;
       registerMcp?(request: { target: 'claude' | 'agy'; accountIds?: string[] }): Promise<{ ok: boolean; output: string }>;
+      getOwnMcpServer?(): Promise<McpServerInfo>;
+      getMcpSessions?(): Promise<McpSessionInfo[]>;
+      startMcpServer?(request: { id: string }): Promise<McpStartResult>;
+      stopMcpServer?(request: { id: string }): Promise<{ ok: boolean; error?: string }>;
+      onMcpSessionEnded?(callback: (id: string) => void): () => void;
       listAgyAccounts?(): Promise<{ id: string; name: string }[]>;
       saveAgyAccounts?(accounts: { id: string; name: string }[]): Promise<{ id: string; name: string }[]>;
       isWeb?: boolean;

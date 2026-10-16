@@ -3723,6 +3723,254 @@ async function registerMcp(_event, { target, accountIds = [] } = {}) {
   return { ok: false, output: 'Unbekanntes Ziel.' };
 }
 
+// A few building blocks are only meant for one machine and never travel with a build. They are
+// decided locally: an environment variable or a marker file in the app data directory.
+function isOwnerPc() {
+  if (process.env.CODEFORGE_OWNER_PC === '1') return true;
+  // The marker in the home directory survives reinstalls and a new app data folder.
+  const markers = [
+    path.join(app.getPath('home'), '.codeforge', 'owner.json'),
+    path.join(app.getPath('userData'), 'owner.json'),
+  ];
+  try {
+    return markers.some((marker) => fs.existsSync(marker));
+  } catch (_) {
+    return false;
+  }
+}
+
+// ---------- MCP servers: inspect, start and stop ----------
+// The servers Claude Code, Cursor or Codex spawn from their config files can be started here for a
+// look: CodeForge speaks the MCP handshake itself, lists the tools an agent would get and keeps the
+// process until it is stopped. HTTP servers are asked the same way, they have no process to stop.
+const mcpSessions = new Map();
+const MCP_SELF_ID = 'codeforge:self';
+
+async function ownMcpServer() {
+  const mcp = await getMcpCommand();
+  return {
+    id: MCP_SELF_ID,
+    name: 'codeforge',
+    source: 'CodeForge',
+    sourcePath: mcp.args[0] || '',
+    command: mcp.command,
+    args: mcp.args,
+    transport: 'stdio',
+    status: 'configured',
+    details: 'Steuert die Terminals von CodeForge: lesen, senden, auf Ergebnisse warten, Sessions starten.',
+  };
+}
+
+async function findMcpServer(id) {
+  if (id === MCP_SELF_ID) return ownMcpServer();
+  return getMcpServers().find((server) => server.id === id) || null;
+}
+
+function describeMcpSession(session) {
+  return {
+    id: session.id,
+    transport: session.transport,
+    pid: session.child ? session.child.pid : undefined,
+    startedAt: session.startedAt,
+    tools: session.tools,
+    serverName: session.serverName,
+    serverVersion: session.serverVersion,
+    protocolVersion: session.protocolVersion,
+  };
+}
+
+function mcpRequest(session, method, params, timeoutMs = 20000) {
+  const id = ++session.seq;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      session.pending.delete(id);
+      reject(new Error(`Keine Antwort auf ${method}.`));
+    }, timeoutMs);
+    session.pending.set(id, {
+      resolve: (value) => { clearTimeout(timer); resolve(value); },
+      reject: (error) => { clearTimeout(timer); reject(error); },
+    });
+    session.send({ jsonrpc: '2.0', id, method, params });
+  });
+}
+
+function startMcpStdio(server) {
+  // cmd.exe splits the command line on spaces, so a path like "C:\Program Files\..." needs quotes;
+  // the shell is kept because MCP servers are often started through npx.cmd or a .bat wrapper.
+  const useShell = process.platform === 'win32';
+  const child = useShell
+    ? spawn([server.command, ...(server.args || [])].map(quoteCliArg).join(' '), {
+        windowsHide: true,
+        shell: true,
+        env: { ...process.env },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    : spawn(server.command, server.args || [], {
+        windowsHide: true,
+        shell: false,
+        env: { ...process.env },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+  const session = {
+    id: server.id,
+    transport: 'stdio',
+    child,
+    tools: [],
+    pending: new Map(),
+    seq: 0,
+    buffer: '',
+    error: '',
+    startedAt: Date.now(),
+  };
+  const failPending = (error) => {
+    for (const pending of session.pending.values()) pending.reject(error);
+    session.pending.clear();
+  };
+  session.send = (message) => {
+    if (!child.stdin || !child.stdin.writable) throw new Error('Der MCP-Server nimmt keine Eingaben mehr an.');
+    child.stdin.write(`${JSON.stringify(message)}\n`);
+  };
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => {
+    session.buffer += chunk;
+    let index;
+    while ((index = session.buffer.indexOf('\n')) >= 0) {
+      const line = session.buffer.slice(0, index).trim();
+      session.buffer = session.buffer.slice(index + 1);
+      if (!line) continue;
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch (_) {
+        continue;
+      }
+      const pending = session.pending.get(message.id);
+      if (!pending) continue;
+      session.pending.delete(message.id);
+      if (message.error) pending.reject(new Error(message.error.message || `MCP-Fehler ${message.error.code}`));
+      else pending.resolve(message.result);
+    }
+  });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => {
+    session.error = `${session.error}${chunk}`.slice(-2000).trim();
+  });
+  child.on('error', (error) => failPending(error));
+  child.on('exit', (code) => {
+    failPending(new Error(session.error || `Der MCP-Server wurde beendet (Code ${code}).`));
+    // A server that dies on its own must not stay listed as running.
+    if (mcpSessions.get(session.id) === session) {
+      mcpSessions.delete(session.id);
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('mcp:session-ended', session.id);
+    }
+  });
+  return session;
+}
+
+// Streamable HTTP answers with JSON or with a text/event-stream of data: lines.
+async function mcpHttpCall(server, payload) {
+  const response = await fetch(server.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(15000),
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 200).trim()}`);
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{')) return JSON.parse(trimmed);
+  for (const line of trimmed.split(/\r?\n/)) {
+    if (!line.startsWith('data:')) continue;
+    try {
+      const message = JSON.parse(line.slice(5).trim());
+      if (message && message.id === payload.id) return message;
+    } catch (_) {}
+  }
+  throw new Error('Der MCP-Server hat keine verwertbare Antwort geschickt.');
+}
+
+const mcpClientInfo = { name: 'codeforge', version: '1.0.0' };
+const mcpInitializeParams = {
+  protocolVersion: '2025-06-18',
+  capabilities: {},
+  clientInfo: mcpClientInfo,
+};
+
+function readMcpHandshake(result) {
+  return {
+    serverName: result && result.serverInfo ? String(result.serverInfo.name || '') : '',
+    serverVersion: result && result.serverInfo ? String(result.serverInfo.version || '') : '',
+    protocolVersion: result ? String(result.protocolVersion || '') : '',
+  };
+}
+
+async function startMcpServer(_event, { id } = {}) {
+  const server = await findMcpServer(id);
+  if (!server) return { ok: false, error: 'Dieser Server steht nicht mehr in den Konfigurationen.' };
+  const running = mcpSessions.get(server.id);
+  if (running) return { ok: true, session: describeMcpSession(running) };
+  if (!server.url && !server.command) return { ok: false, error: 'Der Eintrag hat weder command noch url.' };
+
+  let stdio = null;
+  try {
+    if (server.url) {
+      const initialized = await mcpHttpCall(server, { jsonrpc: '2.0', id: 1, method: 'initialize', params: mcpInitializeParams });
+      if (initialized.error) throw new Error(initialized.error.message || 'initialize fehlgeschlagen');
+      const listed = await mcpHttpCall(server, { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+      if (listed.error) throw new Error(listed.error.message || 'tools/list fehlgeschlagen');
+      const session = {
+        id: server.id,
+        transport: server.transport,
+        tools: (listed.result && listed.result.tools) || [],
+        startedAt: Date.now(),
+        ...readMcpHandshake(initialized.result),
+      };
+      mcpSessions.set(server.id, session);
+      return { ok: true, session: describeMcpSession(session) };
+    }
+
+    stdio = startMcpStdio(server);
+    const initialized = await mcpRequest(stdio, 'initialize', mcpInitializeParams);
+    Object.assign(stdio, readMcpHandshake(initialized));
+    stdio.send({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
+    const listed = await mcpRequest(stdio, 'tools/list', {});
+    stdio.tools = (listed && listed.tools) || [];
+    mcpSessions.set(server.id, stdio);
+    return { ok: true, session: describeMcpSession(stdio) };
+  } catch (error) {
+    // A half-started server must not keep running after a failed handshake.
+    if (stdio && stdio.child) {
+      try {
+        stdio.child.kill();
+      } catch (_) {}
+    }
+    mcpSessions.delete(server.id);
+    return { ok: false, error: error && error.message ? error.message : 'Der Server liess sich nicht starten.' };
+  }
+}
+
+function stopMcpServer(_event, { id } = {}) {
+  const session = mcpSessions.get(id);
+  if (!session) return { ok: false, error: 'Dieser Server laeuft nicht.' };
+  mcpSessions.delete(id);
+  if (session.child) {
+    try {
+      session.child.kill();
+    } catch (_) {}
+  }
+  return { ok: true };
+}
+
+function stopAllMcpSessions() {
+  for (const session of mcpSessions.values()) {
+    if (!session.child) continue;
+    try {
+      session.child.kill();
+    } catch (_) {}
+  }
+  mcpSessions.clear();
+}
+
 // Running sessions for the "Laufende Sessions" view: local host sessions plus the
 // CodeForge tmux sessions on each given V-Server.
 async function listRunningSessions(_event, { vservers = [] } = {}) {
@@ -4003,6 +4251,7 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('updates:check', (_e, input) => updater ? updater.checkForAppUpdates(_e, input) : {});
   ipcMain.handle('updates:install', () => updater ? updater.installUpdate() : false);
   ipcMain.handle('system:mcp-servers', () => getMcpServers());
+  ipcMain.handle('system:owner-pc', () => isOwnerPc());
   ipcMain.handle('system:install-cli', installCli);
   ipcMain.handle('usage:provider', (_event, providerId) => getProviderUsage(providerId));
   ipcMain.handle('usage:antigravity-terminal', () => getAntigravityTerminalUsage());
@@ -4228,6 +4477,10 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('control:publish-state', publishControlState);
   ipcMain.handle('mcp:info', async () => getMcpCommand());
   ipcMain.handle('mcp:register', registerMcp);
+  ipcMain.handle('mcp:own', async () => ownMcpServer());
+  ipcMain.handle('mcp:sessions', () => [...mcpSessions.values()].map(describeMcpSession));
+  ipcMain.handle('mcp:start', startMcpServer);
+  ipcMain.handle('mcp:stop', stopMcpServer);
   ipcMain.handle('sessions:kill-remote', async (_event, { vserver, tmuxName } = {}) => {
     if (!vserver || !/^cf-[a-z0-9-]{1,90}$/i.test(String(tmuxName || ''))) return false;
     const result = await runVServerCommand(vserver, `tmux kill-session -t '=${tmuxName}' 2>/dev/null || true`);
@@ -4360,6 +4613,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   try { whisper.stopServer(); } catch (_) {}
   try { sftp.disconnectAll(); } catch (_) {}
+  try { stopAllMcpSessions(); } catch (_) {}
   for (const [runId, child] of activeProcesses) {
     try {
       if (child && !child.killed) {
