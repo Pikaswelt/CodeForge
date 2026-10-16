@@ -422,6 +422,58 @@ function writeStorage(key: string, value: unknown) {
   localStorage.setItem(`${STORAGE_PREFIX}.${key}`, JSON.stringify(value));
 }
 
+function getInitialLibrarySettings(): {
+  bannerBackgroundEnabled: boolean;
+  libraryStyle: LibraryStyle;
+} {
+  const MIGRATION_KEY = 'agentWorkspace.libraryBannerMigrated';
+  let isMigrated = false;
+  try {
+    isMigrated = Boolean(localStorage.getItem(MIGRATION_KEY));
+  } catch {}
+
+  const storedBannerEnabled = readStorage<boolean | null>('libraryBannerBackgroundEnabled', null);
+  const storedLibraryStyle = readStorage<Partial<LibraryStyle>>('libraryStyle', {});
+
+  if (!isMigrated) {
+    try {
+      // Check if user is an existing user who previously had data in CodeForge
+      const hasAnyExistingData = Boolean(
+        localStorage.getItem('agentWorkspace.setup') !== null ||
+        localStorage.getItem('agentWorkspace.folders') !== null ||
+        localStorage.getItem('agentWorkspace.chats') !== null ||
+        localStorage.getItem('agentWorkspace.provider') !== null ||
+        localStorage.getItem('agentWorkspace.theme') !== null ||
+        localStorage.getItem('agentWorkspace.libraryProjects') !== null ||
+        localStorage.getItem('agentWorkspace.libraryApps') !== null ||
+        storedBannerEnabled !== null ||
+        localStorage.getItem('agentWorkspace.libraryStyle') !== null
+      );
+
+      localStorage.setItem(MIGRATION_KEY, 'true');
+
+      if (hasAnyExistingData) {
+        // Existing user: preserve the anime banner if they didn't have custom media set
+        if (!storedLibraryStyle.bannerMedia) {
+          storedLibraryStyle.bannerMedia = 'anime';
+          writeStorage('libraryStyle', {
+            ...DEFAULT_LIBRARY_STYLE,
+            ...storedLibraryStyle,
+          });
+        }
+      }
+    } catch {}
+  }
+
+  return {
+    bannerBackgroundEnabled: storedBannerEnabled ?? true,
+    libraryStyle: {
+      ...DEFAULT_LIBRARY_STYLE,
+      ...storedLibraryStyle,
+    },
+  };
+}
+
 function projectName(projectPath: string) {
   return projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath;
 }
@@ -647,13 +699,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readStorage<HomeApp[]>('libraryApps', []).filter((app) => app.kind !== 'web' && !app.url),
   );
   const [libraryTags, setLibraryTags] = useState<string[]>(() => readStorage('libraryTags', []));
-  const [libraryBannerBackgroundEnabled, setLibraryBannerBackgroundEnabledState] = useState(() =>
-    readStorage('libraryBannerBackgroundEnabled', true),
+  const [initialLibrarySettings] = useState(() => getInitialLibrarySettings());
+  const [libraryBannerBackgroundEnabled, setLibraryBannerBackgroundEnabledState] = useState(
+    initialLibrarySettings.bannerBackgroundEnabled,
   );
-  const [libraryStyle, setLibraryStyle] = useState<LibraryStyle>(() => ({
-    ...DEFAULT_LIBRARY_STYLE,
-    ...readStorage<Partial<LibraryStyle>>('libraryStyle', {}),
-  }));
+  const [libraryStyle, setLibraryStyle] = useState<LibraryStyle>(
+    initialLibrarySettings.libraryStyle,
+  );
   const [homeTabs, setHomeTabs] = useState<HomeAppTab[]>([]);
   const [activeHomeTabId, setActiveHomeTabId] = useState<string | null>(null);
   const [plugins, setPlugins] = useState<string[]>(() => readStorage('plugins', []));

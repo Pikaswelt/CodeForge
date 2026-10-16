@@ -6,6 +6,10 @@ export function isVideoPath(filePath: string) {
 }
 
 export function toFileUrl(filePath: string) {
+  if (!filePath) return '';
+  if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('/') || filePath.startsWith('./')) {
+    return filePath;
+  }
   // Handle data: URLs (images read as data URL on mobile)
   if (filePath.startsWith('data:')) {
     return filePath;
