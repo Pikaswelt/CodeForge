@@ -28,7 +28,7 @@ fi
   --next-signer \
   --ks "$FANCYCODE_KEYSTORE_FILE" --ks-pass env:FANCYCODE_KEYSTORE_PASSWORD \
   --ks-key-alias "$FANCYCODE_KEY_ALIAS" --key-pass env:FANCYCODE_KEY_PASSWORD \
-  --lineage "$LINEAGE" \
+  --lineage "$LINEAGE" --rotation-min-sdk-version 28 \
   "$APK"
 
 "$APKSIGNER" verify --verbose --print-certs "$APK" | grep -E 'Verified using|Signer #' || true
