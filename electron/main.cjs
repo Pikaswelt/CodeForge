@@ -460,22 +460,6 @@ let discordReady = false;
 let discordEnabled = true;
 let discordStartedAt = Date.now();
 const DISCORD_CLIENT_ID = '1518686223676342282';
-const UPDATE_OWNER = 'Pikaswelt';
-const UPDATE_REPO = 'agent-manager';
-const UPDATE_LATEST_YML_URL = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest/download/latest.yml`;
-const UPDATE_DOWNLOAD_BASE_URL = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest/download/`;
-
-const updateState = {
-  status: 'idle',
-  currentVersion: app.getVersion(),
-  availableVersion: '',
-  downloaded: false,
-  percent: 0,
-  message: 'Bereit',
-  error: '',
-  feedUrl: `GitHub Releases: ${UPDATE_OWNER}/${UPDATE_REPO}`,
-  installerPath: '',
-};
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('app.codeforge.desktop');

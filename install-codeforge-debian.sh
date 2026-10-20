@@ -50,11 +50,14 @@ if [ -f "$SCRIPT_DIR/codeforge-remote-server.mjs" ]; then
 elif [ -f "$SCRIPT_DIR/../codeforge-remote-server.mjs" ]; then
   cp "$SCRIPT_DIR/../codeforge-remote-server.mjs" "$INSTALL_DIR/"
 else
-  # Aus Repository laden
+  # Aus Repository laden (schlaegt fehl, wenn das Quell-Repository privat ist)
   echo "  Lade Server von GitHub..."
   curl -fsSL "https://raw.githubusercontent.com/Pikaswelt/CodeForge/main/codeforge-remote-server.mjs" -o "$INSTALL_DIR/codeforge-remote-server.mjs" 2>/dev/null || {
+    rm -f "$INSTALL_DIR/codeforge-remote-server.mjs"
     echo "  FEHLER: Konnte codeforge-remote-server.mjs nicht finden."
-    echo "  Bitte die Datei manuell nach $INSTALL_DIR/ kopieren."
+    echo "  Das Quell-Repository ist evtl. nicht oeffentlich. Nutze codeforge-connect-debian.sh"
+    echo "  oder server-setup-codeforge.sh (Server ist dort eingebettet) oder kopiere die Datei"
+    echo "  manuell nach $INSTALL_DIR/."
     exit 1
   }
 fi

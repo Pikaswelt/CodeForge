@@ -79,5 +79,13 @@ jobs:
       - name: Attach to release
         if: github.event_name == 'release'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "${{ steps.apk.outputs.file }}" --clobber
+          # Same target as the Windows/Linux release jobs: assets must stay publicly
+          # downloadable, otherwise the in-app updater cannot reach them.
+          RELEASE_REPO: ${{ vars.RELEASE_REPO || github.repository }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$RELEASE_REPO" --title "$TAG" \
+                 --notes "Release assets for $TAG (built from $GITHUB_REPOSITORY)."
+          gh release upload "$TAG" "${{ steps.apk.outputs.file }}" --repo "$RELEASE_REPO" --clobber

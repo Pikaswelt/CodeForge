@@ -20,7 +20,11 @@ jobs:
     runs-on: windows-latest
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Repository that receives the published assets. Keep this public: release assets of
+      # a private repository cannot be downloaded without a token, and the app's updater
+      # fetches them anonymously. Override with the repository variable RELEASE_REPO.
+      RELEASE_REPO: ${{ vars.RELEASE_REPO || github.repository }}
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +40,13 @@ jobs:
       - run: npm run build
       - run: npx electron-builder --win --publish never
 
+      - name: Ensure release exists
+        shell: bash
+        run: |
+          gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$RELEASE_REPO" --title "$TAG" \
+                 --notes "Release assets for $TAG (built from $GITHUB_REPOSITORY)."
+
       - name: Upload to release
         shell: bash
         run: |
@@ -43,4 +54,5 @@ jobs:
             release/*.exe \
             release/*.exe.blockmap \
             release/latest.yml \
+            --repo "$RELEASE_REPO" \
             --clobber

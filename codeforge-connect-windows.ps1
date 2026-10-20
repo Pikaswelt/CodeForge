@@ -67,7 +67,8 @@ if (-not (Test-Path $ServerScript)) {
     }
     catch {
         Write-Host "  ✗ Konnte Server nicht herunterladen." -ForegroundColor Red
-        Write-Host "    Bitte manuell von https://github.com/Pikaswelt/CodeForge holen"
+        Write-Host "    Das Quell-Repository ist evtl. nicht oeffentlich. Lade die Datei aus dem"
+        Write-Host "    Release-Repository oder lege codeforge-remote-server.mjs neben dieses Skript."
         exit 1
     }
 }

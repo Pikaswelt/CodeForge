@@ -7,6 +7,12 @@
  *   Windows  -> silent NSIS install
  *   AppImage -> replaces the running AppImage file and relaunches
  *   .deb     -> opens the package with the system installer
+ *
+ * The feed repository lives in package.json under "codeforge.update" so the
+ * release channel can move (for example to a public release-only repository
+ * while the source repository is private) without a code change. Release assets
+ * of a private repository are not downloadable without a token, so the update
+ * feed must always point at a public repository.
  */
 const { spawn, spawnSync } = require('node:child_process');
 const { shell } = require('electron');
@@ -14,8 +20,27 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const UPDATE_OWNER = 'Pikaswelt';
-const UPDATE_REPO = 'CodeForge';
+const DEFAULT_UPDATE_OWNER = 'Pikaswelt';
+const DEFAULT_UPDATE_REPO = 'CodeForge';
+
+function readUpdateTarget() {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    const configured = (manifest && manifest.codeforge && manifest.codeforge.update) || {};
+    const owner = String(configured.owner || '').trim();
+    const repo = String(configured.repo || '').trim();
+    return {
+      owner: owner || DEFAULT_UPDATE_OWNER,
+      repo: repo || DEFAULT_UPDATE_REPO,
+    };
+  } catch {
+    return { owner: DEFAULT_UPDATE_OWNER, repo: DEFAULT_UPDATE_REPO };
+  }
+}
+
+const UPDATE_TARGET = readUpdateTarget();
+const UPDATE_OWNER = UPDATE_TARGET.owner;
+const UPDATE_REPO = UPDATE_TARGET.repo;
 const RELEASE_BASE_URL = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest/download/`;
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 

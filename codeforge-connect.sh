@@ -60,12 +60,22 @@ fi
 
 if [ ! -f "$SERVER_SCRIPT" ]; then
   echo "  ✗ codeforge-remote-server.mjs nicht gefunden! Lade von GitHub herunter..."
+  SERVER_URL="https://raw.githubusercontent.com/Pikaswelt/CodeForge/main/codeforge-remote-server.mjs"
+  FETCHED=0
   if command -v curl &>/dev/null; then
-    curl -fsSL -o "codeforge-remote-server.mjs" "https://raw.githubusercontent.com/Pikaswelt/CodeForge/main/codeforge-remote-server.mjs"
+    curl -fsSL -o "codeforge-remote-server.mjs" "$SERVER_URL" && FETCHED=1
   elif command -v wget &>/dev/null; then
-    wget -q -O "codeforge-remote-server.mjs" "https://raw.githubusercontent.com/Pikaswelt/CodeForge/main/codeforge-remote-server.mjs"
+    wget -q -O "codeforge-remote-server.mjs" "$SERVER_URL" && FETCHED=1
   else
     echo "Fehler: Weder curl noch wget gefunden."
+    exit 1
+  fi
+  if [ "$FETCHED" != "1" ]; then
+    # The source repository may be private; the download then returns 404 rather than a file.
+    rm -f "codeforge-remote-server.mjs"
+    echo "  ✗ Download fehlgeschlagen."
+    echo "    Nutze codeforge-connect-debian.sh oder server-setup-codeforge.sh (Server ist dort"
+    echo "    eingebettet) oder lege codeforge-remote-server.mjs neben dieses Skript."
     exit 1
   fi
   SERVER_SCRIPT="./codeforge-remote-server.mjs"

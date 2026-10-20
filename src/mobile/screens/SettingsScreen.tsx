@@ -478,7 +478,7 @@ function AboutPage() {
       <p className="cf-muted mb-4 text-[0.86rem] leading-relaxed">
         Die Android-App von CodeForge. Sie verbindet sich per SSH direkt mit deinem V-Server: Terminals laufen dort in tmux weiter, auch wenn das Handy die Verbindung verliert. Auf dem Handy wird nichts lokal ausgeführt.
       </p>
-      <Button className="w-full" icon={<Github className="h-4 w-4" />} onClick={() => void Native.openUrl({ url: 'https://github.com/Pikaswelt/CodeForge/releases/latest' })}>
+      <Button className="w-full" icon={<Github className="h-4 w-4" />} onClick={() => void Native.openUrl({ url: `https://github.com/${__UPDATE_REPO__}/releases/latest` })}>
         Neueste Version auf GitHub
       </Button>
     </div>
