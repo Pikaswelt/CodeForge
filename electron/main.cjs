@@ -506,7 +506,11 @@ const PROVIDERS = {
     command: 'claude',
     label: 'Claude Code',
     versionArgs: ['--version'],
-    installCommand: 'npm install -g @anthropic-ai/claude-code',
+    // The native installer needs no global npm folder (npm -g fails without sudo on most Linux setups).
+    installCommand:
+      process.platform === 'win32'
+        ? 'irm https://claude.ai/install.ps1 | iex'
+        : 'curl -fsSL https://claude.ai/install.sh | bash',
     installUrl: 'https://code.claude.com/docs',
   },
   cursor: {
@@ -1088,14 +1092,7 @@ function runCapture(command, args, options = {}) {
     };
     const killChild = (child) => {
       if (child.killed) return;
-      if (process.platform === 'win32' && child.pid) {
-        spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
-          windowsHide: true,
-          stdio: 'ignore',
-        }).on('error', () => child.kill('SIGTERM'));
-        return;
-      }
-      child.kill('SIGTERM');
+      killProcessTree(child);
     };
     const isCommandScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
     const spawnCommand = isCommandScript ? process.env.ComSpec || 'cmd.exe' : command;
@@ -1122,6 +1119,7 @@ function runCapture(command, args, options = {}) {
       windowsHide: true,
       shell: false,
       windowsVerbatimArguments: isCommandScript,
+      detached: process.platform !== 'win32',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -1790,21 +1788,63 @@ function buildAgentCommand(providerId, model, prompt, access, projectPath, reaso
   return { args, stdin };
 }
 
-function openInstallTerminal(provider) {
+// Agent CLIs start their own child processes (shells, MCP servers). On Linux and macOS they run in
+// their own process group (detached), so stopping a run ends the whole group like taskkill /t does.
+function killProcessTree(child) {
+  if (!child || !child.pid) return;
+  if (process.platform === 'win32') {
+    spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })
+      .on('error', () => child.kill('SIGTERM'));
+    return;
+  }
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch (_) {
+    try { child.kill('SIGTERM'); } catch (_) {}
+  }
+}
+
+// Terminal emulators and the argument that runs a command in them, in order of preference.
+const LINUX_TERMINALS = [
+  ['x-terminal-emulator', ['-e']],
+  ['gnome-terminal', ['--']],
+  ['konsole', ['-e']],
+  ['xfce4-terminal', ['-x']],
+  ['kitty', []],
+  ['alacritty', ['-e']],
+  ['wezterm', ['start', '--']],
+  ['foot', []],
+  ['xterm', ['-e']],
+];
+
+async function openInstallTerminal(provider) {
   if (process.platform === 'win32') {
     spawn('powershell.exe', ['-NoExit', '-ExecutionPolicy', 'ByPass', '-Command', provider.installCommand], {
       windowsHide: false,
       detached: true,
       stdio: 'ignore',
     }).unref();
-    return;
+    return true;
   }
 
   const shellCommand = process.platform === 'darwin' ? 'zsh' : 'bash';
-  spawn(shellCommand, ['-lc', `${provider.installCommand}; exec ${shellCommand}`], {
-    detached: true,
-    stdio: 'ignore',
-  }).unref();
+  const script = `${provider.installCommand}; exec ${shellCommand}`;
+  if (process.platform === 'darwin') {
+    const appleScript = `tell application "Terminal" to do script ${JSON.stringify(provider.installCommand)}`;
+    spawn('osascript', ['-e', appleScript, '-e', 'tell application "Terminal" to activate'], { detached: true, stdio: 'ignore' }).unref();
+    return true;
+  }
+  // A detached shell without a terminal would run the installer invisibly and without input
+  // (sudo prompts, login questions), so it needs a real terminal window.
+  for (const [terminal, runArgs] of LINUX_TERMINALS) {
+    const executable = await findExecutable(terminal);
+    if (!executable) continue;
+    const child = spawn(executable, [...runArgs, shellCommand, '-lc', script], { detached: true, stdio: 'ignore' });
+    child.on('error', () => {});
+    child.unref();
+    return true;
+  }
+  return false;
 }
 
 function quotePowerShellSingle(value) {
@@ -2535,7 +2575,13 @@ function getMcpServers() {
 async function installCli(_event, providerId) {
   const provider = PROVIDERS[providerId];
   if (!provider) throw new Error('Unbekannter Anbieter.');
-  openInstallTerminal(provider);
+  const opened = await openInstallTerminal(provider);
+  if (!opened) {
+    return {
+      ok: false,
+      message: `Kein Terminal-Programm gefunden. Installiere ${provider.label} selbst mit: ${provider.installCommand}`,
+    };
+  }
   return {
     ok: true,
     message: `Installationsfenster fuer ${provider.label} wurde geoeffnet: ${provider.installCommand}`,
@@ -4355,14 +4401,7 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('agent:cancel', (_event, runId) => {
     const child = activeProcesses.get(runId);
     if (!child) return false;
-    if (process.platform === 'win32' && child.pid) {
-      spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
-        windowsHide: true,
-        stdio: 'ignore',
-      });
-    } else {
-      child.kill('SIGTERM');
-    }
+    killProcessTree(child);
     activeProcesses.delete(runId);
     return true;
   });
@@ -4722,16 +4761,7 @@ app.on('before-quit', () => {
   try { stopAllMcpSessions(); } catch (_) {}
   for (const [runId, child] of activeProcesses) {
     try {
-      if (child && !child.killed) {
-        if (process.platform === 'win32' && child.pid) {
-          spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
-            windowsHide: true,
-            stdio: 'ignore',
-          });
-        } else {
-          child.kill('SIGTERM');
-        }
-      }
+      if (child && !child.killed) killProcessTree(child);
     } catch (_) {}
   }
   activeProcesses.clear();

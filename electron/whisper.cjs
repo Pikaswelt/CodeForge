@@ -13,10 +13,14 @@ const os = require('node:os');
 const path = require('node:path');
 
 const WHISPER_VERSION = 'v1.9.2';
-const BIN_URLS = {
-  win32: `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-x64.zip`,
-  linux: `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-x64.tar.gz`,
+// Keyed by platform-arch: a Linux ARM machine (e.g. a Raspberry Pi) needs the arm64 build.
+const BIN_URLS_BY_TARGET = {
+  'win32-x64': `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-x64.zip`,
+  'linux-x64': `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-x64.tar.gz`,
+  'linux-arm64': `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-arm64.tar.gz`,
 };
+const BIN_URL = BIN_URLS_BY_TARGET[`${process.platform}-${process.arch}`]
+  || (process.platform === 'win32' ? BIN_URLS_BY_TARGET['win32-x64'] : '');
 const MODELS = {
   base: { file: 'ggml-base.bin', label: 'Base (148 MB, schnell)', size: 147951465 },
   small: { file: 'ggml-small.bin', label: 'Small (488 MB, genauer)', size: 487601967 },
@@ -56,7 +60,7 @@ function setupWhisper({ app, getWindow }) {
       Object.keys(MODELS).map((id) => [id, fs.existsSync(path.join(modelsDir(), MODELS[id].file))]),
     );
     return {
-      supported: Boolean(BIN_URLS[process.platform]),
+      supported: Boolean(BIN_URL),
       binaryInstalled: Boolean(serverExe()),
       models,
       installed: Boolean(serverExe()) && Object.values(models).some(Boolean),
@@ -119,7 +123,7 @@ function setupWhisper({ app, getWindow }) {
     const modelId = MODELS[input.model] ? input.model : 'base';
     installing = (async () => {
       try {
-        if (!BIN_URLS[process.platform]) throw new Error('Whisper ist auf diesem System nicht verfuegbar.');
+        if (!BIN_URL) throw new Error('Whisper ist auf diesem System nicht verfuegbar.');
         fs.mkdirSync(modelsDir(), { recursive: true });
         const needBinary = !serverExe();
         const modelPath = path.join(modelsDir(), MODELS[modelId].file);
@@ -128,8 +132,8 @@ function setupWhisper({ app, getWindow }) {
 
         if (needBinary) {
           send({ type: 'progress', label: 'Whisper-Programm', percent: 0 });
-          const archive = path.join(rootDir(), path.basename(BIN_URLS[process.platform]));
-          await downloadFile(BIN_URLS[process.platform], archive, 'Whisper-Programm', binWeight, 0);
+          const archive = path.join(rootDir(), path.basename(BIN_URL));
+          await downloadFile(BIN_URL, archive, 'Whisper-Programm', binWeight, 0);
           send({ type: 'progress', label: 'Entpacke...', percent: Math.round(binWeight * 100) });
           fs.rmSync(binDir(), { recursive: true, force: true });
           await extract(archive, binDir());

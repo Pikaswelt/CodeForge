@@ -16,7 +16,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TOKEN="${CODEFORGE_TOKEN:-$(openssl rand -hex 16 2>/dev/null || echo \"codeforge-$(date +%s)\")}"
+TOKEN="${CODEFORGE_TOKEN:-$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')}"
 PORT="${CODEFORGE_PORT:-8787}"
 HOST="0.0.0.0"
 
