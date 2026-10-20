@@ -1,11 +1,11 @@
 #!/bin/bash
-# CodeForge Debian Server Installer v2.4.3
+# FancyCode Debian Server Installer v2.4.3
 # Installation: sudo bash install-codeforge-debian.sh
 
 set -e
 
 echo "==============================================="
-echo "  CodeForge Debian Server Installer v2.4.3"
+echo "  FancyCode Debian Server Installer v2.4.3"
 echo "==============================================="
 echo ""
 
@@ -41,7 +41,7 @@ mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # ── Server-Datei installieren ───────────────────────────────────
-echo "[3/5] Installiere CodeForge Remote Server..."
+echo "[3/5] Installiere FancyCode Remote Server..."
 
 # Falls die Datei im aktuellen Verzeichnis liegt, kopieren
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -90,7 +90,7 @@ echo "[4/5] Richte systemd-Dienst ein..."
 
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=CodeForge Remote Server
+Description=FancyCode Remote Server
 After=network-online.target
 Wants=network-online.target
 
@@ -119,7 +119,7 @@ systemctl restart "$SERVICE_NAME"
 echo "[5/5] Installation abgeschlossen!"
 echo ""
 echo "==============================================="
-echo "  CodeForge Server ist bereit!"
+echo "  FancyCode Server ist bereit!"
 echo "==============================================="
 echo ""
 
@@ -133,7 +133,7 @@ echo "  ║  Kopiere diesen Key und füge ihn in der App ein:         ║"
 echo "  ║                                                          ║"
 echo "  ║  $CONNECTION_KEY"
 echo "  ║                                                          ║"
-echo "  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║"
+echo "  ║  FancyCode-App → Verbinden → Einfügen → FERTIG! ✨     ║"
 echo "  ╚══════════════════════════════════════════════════════════╝"
 echo ""
 

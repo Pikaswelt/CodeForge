@@ -84,7 +84,7 @@ export default function UpdateModal() {
               </span>
               <div>
                 <div className="text-base font-medium text-white">
-                  {upToDate ? 'CodeForge ist aktuell' : status.availableVersion ? `Update ${status.availableVersion}` : 'Update'}
+                  {upToDate ? 'FancyCode ist aktuell' : status.availableVersion ? `Update ${status.availableVersion}` : 'Update'}
                 </div>
                 <div className="text-xs text-zinc-500">Installiert: v{status.currentVersion}</div>
               </div>
@@ -111,7 +111,7 @@ export default function UpdateModal() {
             </div>
           )}
 
-          <div className="mt-5 text-sm text-zinc-300">{installing ? 'CodeForge wird beendet und installiert...' : status.message}</div>
+          <div className="mt-5 text-sm text-zinc-300">{installing ? 'FancyCode wird beendet und installiert...' : status.message}</div>
 
           {!installing && current !== 'error' && (
             <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-black/30">
@@ -161,7 +161,7 @@ export default function UpdateModal() {
 
           {installing && (
             <p className="mt-3 text-[11px] leading-5 text-zinc-500">
-              Ein kleines Fenster zeigt den Installationsfortschritt. CodeForge startet danach automatisch neu.
+              Ein kleines Fenster zeigt den Installationsfortschritt. FancyCode startet danach automatisch neu.
             </p>
           )}
 

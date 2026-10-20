@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Signs a release APK with the key rotation old CodeForge key -> new FancyCode key.
+# Signs a release APK with the key rotation old FancyCode key -> new FancyCode key.
 #
 # The old key was public in this repository, so releases are signed with a new key. Android
 # only installs an update over an existing app when the signature matches, so the APK carries

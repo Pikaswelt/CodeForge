@@ -1,13 +1,13 @@
 # =============================================================================
-# CodeForge Connect – Windows PowerShell Setup
+# FancyCode Connect – Windows PowerShell Setup
 # =============================================================================
 # In PowerShell (als Administrator) ausführen:
 #   powershell -ExecutionPolicy Bypass -File codeforge-connect-windows.ps1
 #
 # Das Skript:
 #   1. Prüft/installiert Node.js
-#   2. Startet den CodeForge Remote Server
-#   3. Zeigt Verbindungsdaten für die CodeForge-App
+#   2. Startet den FancyCode Remote Server
+#   3. Zeigt Verbindungsdaten für die FancyCode-App
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +20,7 @@ $ProjectPath = if ($env:CODEFORGE_PROJECT_PATH) { $env:CODEFORGE_PROJECT_PATH } 
 
 Clear-Host
 Write-Host "╔══════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║        CodeForge Connect – Windows Setup            ║" -ForegroundColor Cyan
+Write-Host "║        FancyCode Connect – Windows Setup            ║" -ForegroundColor Cyan
 Write-Host "║     Ein Befehl – PC bereit für dein Handy          ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
@@ -88,7 +88,7 @@ if (-not (Test-Path $ProjectPath)) {
 Write-Host ""
 Write-Host "  [3/4] Firewall wird konfiguriert..." -ForegroundColor Yellow
 try {
-    $ruleName = "CodeForge Remote Server (Port $Port)"
+    $ruleName = "FancyCode Remote Server (Port $Port)"
     $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
     if (-not $existing) {
         New-NetFirewallRule -DisplayName $ruleName `
@@ -97,7 +97,7 @@ try {
             -LocalPort $Port `
             -Action Allow `
             -Profile Any `
-            -Description "Erlaubt eingehende Verbindungen für CodeForge Mobile Connect" | Out-Null
+            -Description "Erlaubt eingehende Verbindungen für FancyCode Mobile Connect" | Out-Null
         Write-Host "  ✓ Firewall-Regel erstellt: Port $Port (TCP)" -ForegroundColor Green
     } else {
         Write-Host "  ✓ Firewall-Regel existiert bereits" -ForegroundColor Green
@@ -127,7 +127,7 @@ if (-not $IpAddress) { $IpAddress = "127.0.0.1" }
 
 Clear-Host
 Write-Host "╔══════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║        CodeForge Connect – Windows bereit!          ║" -ForegroundColor Cyan
+Write-Host "║        FancyCode Connect – Windows bereit!          ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
@@ -141,7 +141,7 @@ Write-Host "  ║  Kopiere diesen Key und füge ihn in der App ein:         ║"
 Write-Host "  ║                                                          ║" -ForegroundColor Green
 Write-Host "  ║  $ConnectionKey" -ForegroundColor Yellow
 Write-Host "  ║                                                          ║" -ForegroundColor Green
-Write-Host "  ║  CodeForge-App -> Verbinden -> Einfügen -> FERTIG! ✨     ║" -ForegroundColor Green
+Write-Host "  ║  FancyCode-App -> Verbinden -> Einfügen -> FERTIG! ✨     ║" -ForegroundColor Green
 Write-Host "  ╚══════════════════════════════════════════════════════════╝" -ForegroundColor Green
 Write-Host ""
 

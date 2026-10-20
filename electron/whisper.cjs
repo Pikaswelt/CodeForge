@@ -1,7 +1,7 @@
 /**
  * Local Whisper speech-to-text (whisper.cpp).
  *
- * The user installs it on demand: CodeForge downloads the whisper.cpp binaries
+ * The user installs it on demand: FancyCode downloads the whisper.cpp binaries
  * plus a ggml model into userData/whisper. Transcription runs through a local
  * whisper-server process that keeps the model loaded, so each utterance takes
  * about a second instead of reloading the model every time.

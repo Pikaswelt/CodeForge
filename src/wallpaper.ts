@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-// Anime 4K wallpapers served by CodeForge Web (/api/wallpaper, fetched from wallhaven.cc).
+// Anime 4K wallpapers served by FancyCode Web (/api/wallpaper, fetched from wallhaven.cc).
 // Each page load gets a new one; the top bar button asks for the next.
 
 const NEXT_EVENT = 'codeforge:next-wallpaper';

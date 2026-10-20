@@ -636,8 +636,8 @@ function classifyProject(title: string, path: string) {
   const value = `${title} ${path}`.toLowerCase();
   if (value.includes('antigravity')) return 'Antigravity';
   if (value.includes('codex')) return 'Codex';
-  if (value.includes('codeforge') || value.includes('name\\name') || value.includes('name/name')) return 'CodeForge';
-  return 'CodeForge';
+  if (value.includes('fancycode') || value.includes('codeforge') || value.includes('name\\name') || value.includes('name/name')) return 'FancyCode';
+  return 'FancyCode';
 }
 
 function isMobileProject(path: string) {
@@ -1251,7 +1251,7 @@ function TerminalInstance({
       }
     };
 
-    // The backend reports a re-joined (desktop) or re-attached (CodeForge Web) session;
+    // The backend reports a re-joined (desktop) or re-attached (FancyCode Web) session;
     // its program is already running and must not be started a second time.
     Promise.resolve(shellCreated)
       .then((result) => {
@@ -2081,7 +2081,7 @@ function HomeView() {
         </div>
         <h1 className="text-3xl text-white font-medium text-center tracking-tight">Home</h1>
         <p className="text-sm text-zinc-600 mt-3 text-center max-w-lg">
-          {selectedProject ? `Workspace startet in ${selectedProject.path}` : 'Ohne Projekt nutzt CodeForge einen eigenen Arbeitsordner.'}
+          {selectedProject ? `Workspace startet in ${selectedProject.path}` : 'Ohne Projekt nutzt FancyCode einen eigenen Arbeitsordner.'}
         </p>
 
         {!picking ? (
@@ -3068,14 +3068,14 @@ function RunStatus({ provider }: { provider: ReturnType<typeof useAppContext>['p
       <div className="run-feed-visible forge-feed-visible run-timeline">
         <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-zinc-500">
           <span className="forge-feed-dot" />
-          CodeForge Laufspur
+          FancyCode Laufspur
         </div>
         {progressItems.map((item, index) => (
           <RunProgressRow key={`${item.text}-${index}`} item={item} />
         ))}
         <div className="flex items-center gap-2 text-[13px] text-zinc-500">
           <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-300" />
-          <span>{providerName} arbeitet in CodeForge...</span>
+          <span>{providerName} arbeitet in FancyCode...</span>
         </div>
       </div>
       <div className="flex items-center justify-between gap-3">

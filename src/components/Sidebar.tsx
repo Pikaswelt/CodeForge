@@ -201,7 +201,7 @@ export default function Sidebar({
               onIconChange={(icon) => updateProjectIcon(folder.id, icon)}
               onEdit={() => setProjectEditor(folder)}
               onDelete={() => {
-                if (window.confirm(`Projekt "${folder.title}" aus CodeForge entfernen? Zugehoerige Chats werden ebenfalls geloescht.`)) {
+                if (window.confirm(`Projekt "${folder.title}" aus FancyCode entfernen? Zugehoerige Chats werden ebenfalls geloescht.`)) {
                   deleteProject(folder.id);
                 }
               }}
@@ -223,7 +223,7 @@ export default function Sidebar({
               projectEditor === 'new'
                 ? undefined
                 : () => {
-                    if (window.confirm(`Projekt "${projectEditor.title}" aus CodeForge entfernen? Zugehoerige Chats werden ebenfalls geloescht.`)) {
+                    if (window.confirm(`Projekt "${projectEditor.title}" aus FancyCode entfernen? Zugehoerige Chats werden ebenfalls geloescht.`)) {
                       deleteProject(projectEditor.id);
                       setProjectEditor(null);
                     }
@@ -297,7 +297,7 @@ function ProjectEditorModal({
         <div className="library-project-form-header">
           <div>
             <h2>{folder ? 'Projekt bearbeiten' : 'Projekt erstellen'}</h2>
-            <p>Name reicht aus. Ohne Ordner legt CodeForge einen neuen Projektordner an.</p>
+            <p>Name reicht aus. Ohne Ordner legt FancyCode einen neuen Projektordner an.</p>
           </div>
           <button onClick={onClose} title="Schliessen">
             <X className="h-4 w-4" />

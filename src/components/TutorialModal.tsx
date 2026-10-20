@@ -8,7 +8,7 @@ const LINUX_GUIDE = {
     {
       title: 'Skript ausführen',
       code: 'bash codeforge-connect.sh',
-      desc: 'Lade die CodeForge-Dateien herunter oder klone das Repository. Führe dann das Skript im Ordner aus.',
+      desc: 'Lade die FancyCode-Dateien herunter oder klone das Repository. Führe dann das Skript im Ordner aus.',
     },
     {
       title: 'Token kopieren',
@@ -16,7 +16,7 @@ const LINUX_GUIDE = {
     },
     {
       title: 'In der App verbinden',
-      desc: 'Öffne die CodeForge-App → Mobile Modus aktivieren → "Netzwerk durchsuchen" oder "Server-URL manuell eingeben".',
+      desc: 'Öffne die FancyCode-App → Mobile Modus aktivieren → "Netzwerk durchsuchen" oder "Server-URL manuell eingeben".',
     },
     {
       title: 'Fertig!',

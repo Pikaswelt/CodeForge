@@ -1,10 +1,10 @@
 name: Android APK
 
-# Builds the Android app (CodeForge Mobile) as an installable APK. Every run uploads it as a
+# Builds the Android app (FancyCode Mobile) as an installable APK. Every run uploads it as a
 # workflow artifact; for a published release it is attached to the release as well.
 #
 # Signing: the release key lives only in the repository secrets ANDROID_KEYSTORE_BASE64,
-# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. The old CodeForge key
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. The old FancyCode key
 # (ANDROID_OLD_KEYSTORE_BASE64, ANDROID_OLD_KEYSTORE_PASSWORD) is only used together with
 # android/app/signing-lineage.bin, so installed apps accept the new key as an update.
 # Without the secrets (pull requests from forks) the APK is signed with a throwaway debug key.
@@ -78,12 +78,12 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           mkdir -p out
-          cp android/app/build/outputs/apk/release/app-release.apk "out/CodeForge-Android-$VERSION.apk"
-          echo "file=out/CodeForge-Android-$VERSION.apk" >> "$GITHUB_OUTPUT"
+          cp android/app/build/outputs/apk/release/app-release.apk "out/FancyCode-Android-$VERSION.apk"
+          echo "file=out/FancyCode-Android-$VERSION.apk" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CodeForge-Android
+          name: FancyCode-Android
           path: ${{ steps.apk.outputs.file }}
           if-no-files-found: error
 

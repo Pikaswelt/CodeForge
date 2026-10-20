@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ⚔️ CodeForge CLI — コードフォージ ☆ 君のコードを完全にする！
+ * ⚔️ FancyCode CLI — コードフォージ ☆ 君のコードを完全にする！
  *
  * Usage:
  *   npx codeforge-cli --url http://server:8787 --token YOUR_TOKEN --prompt "Your prompt"
@@ -38,7 +38,7 @@ ${C.pink}  ╔══════════════════════
 
 const HELP = `
 ${C.pink}╔══════════════════════════════════════════════════════════════╗
-║${C.reset}  ${C.sparkle}☆ﾟ.*･｡ CodeForge CLI v${VERSION} ｡･*.ﾟ☆${C.pink}                    ║
+║${C.reset}  ${C.sparkle}☆ﾟ.*･｡ FancyCode CLI v${VERSION} ｡･*.ﾟ☆${C.pink}                    ║
 ╚══════════════════════════════════════════════════════════════╝${C.reset}
 
 ${C.gold}USAGE:${C.reset}
@@ -265,7 +265,7 @@ async function interactiveMode(config) {
     }
 
     if (input === '/nyaa') {
-      process.stdout.write(`  ${C.sakura}にゃー！CodeForge-chan ist bereit, Senpai! ٩(◕‿◕｡)۶${C.reset}\n`);
+      process.stdout.write(`  ${C.sakura}にゃー！FancyCode-chan ist bereit, Senpai! ٩(◕‿◕｡)۶${C.reset}\n`);
       continue;
     }
 
@@ -316,7 +316,7 @@ async function main() {
   }
 
   if (args.version) {
-    process.stdout.write(`${C.sparkle}CodeForge CLI v${VERSION}${C.reset} ${C.sakura}☆ 君のコードを完全にする！${C.reset}\n`);
+    process.stdout.write(`${C.sparkle}FancyCode CLI v${VERSION}${C.reset} ${C.sakura}☆ 君のコードを完全にする！${C.reset}\n`);
     process.exit(0);
   }
 
@@ -335,7 +335,7 @@ async function main() {
   const healthy = await checkHealth(config.url, config.token);
   if (!healthy) {
     process.stderr.write(`\n  ${C.red}💔 Server unter ${config.url} antwortet nicht...${C.reset}\n`);
-    process.stderr.write(`  ${C.dim}Stelle sicher, dass der CodeForge-Server läuft und der Token korrekt ist.${C.reset}\n\n`);
+    process.stderr.write(`  ${C.dim}Stelle sicher, dass der FancyCode-Server läuft und der Token korrekt ist.${C.reset}\n\n`);
     process.exit(1);
   }
 

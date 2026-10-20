@@ -87,7 +87,7 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
         {url && <div className="absolute inset-0" style={{ background: `rgb(0 0 0 / ${(draft.mediaDim ?? 40) / 100})` }} />}
         <div className="absolute inset-x-4 bottom-4 rounded-2xl border p-3" style={{ background: `color-mix(in srgb, ${preview.surface} ${settings.surfaceOpacity}%, transparent)`, borderColor: 'rgb(255 255 255 / 0.1)', color: preview.text, backdropFilter: `blur(${settings.blur}px)` }}>
           <div className="text-[0.9rem] font-semibold">{draft.name || 'Vorschau'}</div>
-          <div className="text-[0.75rem] opacity-70">So sieht CodeForge damit aus</div>
+          <div className="text-[0.75rem] opacity-70">So sieht FancyCode damit aus</div>
           <div className="mt-2 inline-block rounded-lg px-3 py-1 text-[0.75rem] font-semibold" style={{ background: preview.accent, color: '#111' }}>Akzent</div>
         </div>
       </div>

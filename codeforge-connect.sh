@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# CodeForge Connect – Ein Befehl, ein Code, verbunden!
+# FancyCode Connect – Ein Befehl, ein Code, verbunden!
 # =============================================================================
 # Auf dem Linux-PC ausführen:
 #   bash codeforge-connect.sh
@@ -86,7 +86,7 @@ cat << "BANNER"
 
   ╔══════════════════════════════════════════════════════════╗
   ║                                                        ║
-  ║           ⚔️  CODEFORGE MOBILE CONNECT  ⚔️               ║
+  ║           ⚔️  FANCYCODE MOBILE CONNECT  ⚔️               ║
   ║                                                        ║
   ║       Ein Befehl → Ein Code → Verbunden! にゃー ✨      ║
   ║                                                        ║

@@ -20,7 +20,7 @@ export default function HomeScreen() {
       <header className="cf-safe-top flex shrink-0 items-center gap-3 px-4 pb-3">
         <AppLogo className="h-10 w-10 shrink-0" />
         <div className="min-w-0 flex-1">
-          <h1 className="text-[1.45rem] font-bold leading-tight tracking-tight">CodeForge</h1>
+          <h1 className="text-[1.45rem] font-bold leading-tight tracking-tight">FancyCode</h1>
           <p className="cf-muted text-[0.8rem]">Unterwegs auf deinem V-Server</p>
         </div>
         <IconButton label="V-Server hinzufügen" onClick={() => setEditing('new')} className="cf-glass">
@@ -34,7 +34,7 @@ export default function HomeScreen() {
             <EmptyState
               icon={<Server className="h-8 w-8" />}
               title="Verbinde deinen V-Server"
-              text="CodeForge Mobile arbeitet direkt auf deinem V-Server: Claude Code, Codex, Antigravity und Terminals laufen dort in tmux und überleben Funklöcher. Auf dem Handy selbst läuft nichts lokal."
+              text="FancyCode Mobile arbeitet direkt auf deinem V-Server: Claude Code, Codex, Antigravity und Terminals laufen dort in tmux und überleben Funklöcher. Auf dem Handy selbst läuft nichts lokal."
               action={
                 <div className="flex w-full flex-col gap-2">
                   <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>
@@ -239,7 +239,7 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
                 {loading ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
               </IconButton>
             </div>
-            {sessions && sessions.length === 0 && <p className="cf-muted px-4 pb-3 text-[0.82rem]">Keine CodeForge-Sessions auf dem Server.</p>}
+            {sessions && sessions.length === 0 && <p className="cf-muted px-4 pb-3 text-[0.82rem]">Keine FancyCode-Sessions auf dem Server.</p>}
             {sessions?.map((item) => {
               const openTab = terminals.find((tab) => tab.serverId === server.id && tab.tmuxName === item.name);
               const open = Boolean(openTab);

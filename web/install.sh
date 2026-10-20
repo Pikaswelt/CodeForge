@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs or updates CodeForge Web on this server. Run from the repository root:
+# Installs or updates FancyCode Web on this server. Run from the repository root:
 #   web/install.sh
 # Configuration lives in /etc/codeforge-web.env (created once, mode 600).
 set -euo pipefail
@@ -18,6 +18,8 @@ rm -rf "$TARGET/dist.new" && cp -r dist "$TARGET/dist.new" && rm -rf "$TARGET/di
 (cd "$TARGET/node_modules/node-pty" && npx --yes node-gyp rebuild >/dev/null)
 node -e "require('$TARGET/node_modules/node-pty')"
 install -m 755 cli/codeforge /usr/local/bin/codeforge
+# FancyCode is the new name; "codeforge" stays as a command for existing scripts and habits.
+ln -sf /usr/local/bin/codeforge /usr/local/bin/fancycode
 
 if [ ! -f /etc/codeforge-web.env ]; then
   install -m 600 /dev/null /etc/codeforge-web.env

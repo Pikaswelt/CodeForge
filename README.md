@@ -1,12 +1,13 @@
 <p align="center">
-  <img src="assets/codeforge.png" alt="CodeForge logo" width="112" />
+  <img src="assets/fancycode.png" alt="FancyCode logo" width="112" />
 </p>
 
-<h1 align="center">CodeForge</h1>
+<h1 align="center">FancyCode</h1>
 
 <p align="center">
   <strong>A desktop workspace for AI coding agents.</strong><br />
-  Run Claude Code, Codex and other CLI agents side by side, chat with any LLM API about your projects, and keep all of your work in one place.
+  Run Claude Code, Codex and other CLI agents side by side, chat with any LLM API about your projects, and keep all of your work in one place.<br />
+  <sub>Formerly CodeForge.</sub>
 </p>
 
 <p align="center">
@@ -30,7 +31,7 @@
 
 ## Overview
 
-CodeForge is an Electron app that turns your machine into a control center for AI-assisted development. Instead of juggling terminal windows, you start a **workspace** with up to four agent terminals in a grid, or open a **chat** with any Anthropic, OpenAI or OpenAI-compatible model that knows which project you are working on.
+FancyCode is an Electron app that turns your machine into a control center for AI-assisted development. Instead of juggling terminal windows, you start a **workspace** with up to four agent terminals in a grid, or open a **chat** with any Anthropic, OpenAI or OpenAI-compatible model that knows which project you are working on.
 
 Everything runs locally. Your projects, chats and API keys stay on your computer.
 
@@ -53,7 +54,7 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 ### API chat
 - Chat directly with **Anthropic**, **OpenAI** or any **OpenAI-compatible** endpoint (Ollama, OpenRouter, LM Studio, …).
 - Save multiple **AI providers** with URL, API key and default model; load the model list with one click.
-- Attach a **project** to a chat. CodeForge sends its name, path and file list as context.
+- Attach a **project** to a chat. FancyCode sends its name, path and file list as context.
 - Chats are grouped by project in the sidebar.
 
 ### Voice input
@@ -70,7 +71,7 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - Glass effects, transparency and corner radius are adjustable.
 
 ### Android app
-- Install the **CodeForge Android** APK and work on your V-Server from your phone. The app runs nothing locally: every terminal, agent and file lives on the server.
+- Install the **FancyCode Android** APK and work on your V-Server from your phone. The app runs nothing locally: every terminal, agent and file lives on the server.
 - Connects over **SSH directly** (no extra server software). Use the key from your PC, paste one, or let the phone **generate its own Ed25519 key** and add it to the server with your password in one tap.
 - Terminals run in **tmux**, exactly like on the desktop. They survive dead spots and a locked phone, reconnect automatically, and you can **continue a session started on the PC** (and the other way round) under *Laufende Sessions*.
 - Built for touch: extra-keys bar (Esc, Tab, Shift+Tab, Ctrl, Alt, arrows, ^C, …), a prompt box for long prompts or dictation, swipe to scroll, pinch to zoom, tappable links (e.g. the Antigravity login).
@@ -81,7 +82,7 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - **Take over from the PC**: on the home screen choose *Für Android exportieren* next to your V-Servers, copy the file to the phone and import it under *Vom PC übernehmen*.
 
 ### Automatic updates
-- CodeForge checks GitHub Releases on start and every six hours.
+- FancyCode checks GitHub Releases on start and every six hours.
 - Updates download in the background and are verified with SHA-512.
 - Installation starts with one click, so running agents are never interrupted.
 
@@ -91,13 +92,13 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 
 Download the package for your system from the [latest release](https://github.com/Pikaswelt/CodeForge/releases/latest).
 
-**Windows:** run `CodeForge-Setup-<version>.exe`. CodeForge installs per user and needs no admin rights.
+**Windows:** run `FancyCode-Setup-<version>.exe`. FancyCode installs per user and needs no admin rights.
 
 **Linux (AppImage, any distribution):**
 
 ```bash
-chmod +x CodeForge-<version>-x86_64.AppImage
-./CodeForge-<version>-x86_64.AppImage
+chmod +x FancyCode-<version>-x86_64.AppImage
+./FancyCode-<version>-x86_64.AppImage
 ```
 
 The AppImage updates itself.
@@ -105,12 +106,12 @@ The AppImage updates itself.
 **Debian / Ubuntu:**
 
 ```bash
-sudo apt install ./CodeForge-<version>-amd64.deb
+sudo apt install ./FancyCode-<version>-amd64.deb
 ```
 
-With the `.deb` package, CodeForge downloads updates and opens them in your system installer.
+With the `.deb` package, FancyCode downloads updates and opens them in your system installer.
 
-**Android:** download `CodeForge-Android-<version>.apk` from the release (or the *CodeForge-Android* artifact of the **Android APK** workflow run), open it on the phone and allow the installation from this source. Android 8.0 or newer. New versions install over the old one and keep your servers and settings.
+**Android:** download `FancyCode-Android-<version>.apk` from the release (or the *FancyCode-Android* artifact of the **Android APK** workflow run), open it on the phone and allow the installation from this source. Android 8.0 or newer. New versions install over the old one and keep your servers and settings.
 
 ### Requirements
 
@@ -147,7 +148,7 @@ Sessions run in tmux (`apt install tmux`): they keep running when the SSH connec
 
 ```bash
 git clone https://github.com/Pikaswelt/CodeForge.git
-cd CodeForge
+cd FancyCode
 npm install
 
 npm run dev        # Vite dev server + Electron with hot reload
@@ -189,15 +190,15 @@ src/
 
 1. Bump `version` in `package.json`.
 2. Run `npm run dist:win`.
-3. Create a GitHub release `v<version>` and attach `CodeForge-Setup-<version>.exe`, its `.blockmap` and `latest.yml`.
+3. Create a GitHub release `v<version>` and attach `FancyCode-Setup-<version>.exe`, its `.blockmap` and `latest.yml`.
 4. The **Linux release** workflow builds the AppImage and `.deb` on GitHub Actions and attaches them, together with `latest-linux.yml`.
-5. The **Android APK** workflow builds `CodeForge-Android-<version>.apk` and attaches it. To sign with your own key, add the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`; otherwise the project keystore is used. Switching keys later means uninstalling the app once.
+5. The **Android APK** workflow builds `FancyCode-Android-<version>.apk` and attaches it. It is signed with the release key from the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Together with `ANDROID_OLD_KEYSTORE_BASE64` and `ANDROID_OLD_KEYSTORE_PASSWORD` (the key of the CodeForge releases) the APK also carries the key rotation in `android/app/signing-lineage.bin`, so installed apps update without being uninstalled. Without secrets the APK is signed with a debug key.
 
 Installed apps pick up the new version automatically.
 
 ## Privacy
 
-- CodeForge has no telemetry.
+- FancyCode has no telemetry.
 - API keys, chats and settings are stored locally in the app's data folder.
 - Network requests go to the AI providers you configure and to GitHub for update checks.
 - If you enable the optional Spotify widget, it looks up album artwork on Deezer or iTunes.

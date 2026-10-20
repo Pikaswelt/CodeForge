@@ -32,9 +32,9 @@ export function parseExport(text: string): MobileExport {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error('Die Datei ist keine CodeForge-Exportdatei.');
+    throw new Error('Die Datei ist keine FancyCode-Exportdatei.');
   }
-  if (!data || data.type !== EXPORT_TYPE || !Array.isArray(data.servers)) throw new Error('Die Datei ist keine CodeForge-Exportdatei.');
+  if (!data || data.type !== EXPORT_TYPE || !Array.isArray(data.servers)) throw new Error('Die Datei ist keine FancyCode-Exportdatei.');
   if (data.version > EXPORT_VERSION) throw new Error('Die Exportdatei ist neuer als diese App. Bitte die App aktualisieren.');
   return data;
 }

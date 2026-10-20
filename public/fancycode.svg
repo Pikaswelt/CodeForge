@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="fc-bg" x1="24" x2="232" y1="16" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff5fb8"/>
+      <stop offset=".5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <radialGradient id="fc-glow" cx="128" cy="128" r="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="fc-shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#1e0b3a" flood-opacity=".45"/>
+    </filter>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#fc-bg)"/>
+  <rect width="256" height="256" rx="58" fill="url(#fc-glow)"/>
+  <g filter="url(#fc-shadow)" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M94 82 48 128l46 46"/>
+    <path d="m162 82 46 46-46 46"/>
+  </g>
+  <path filter="url(#fc-shadow)" fill="#fff" d="M128 88c4 26 12 34 38 40-26 6-34 14-38 40-4-26-12-34-38-40 26-6 34-14 38-40Z"/>
+  <path fill="#fff" fill-opacity=".9" d="M190 40c2 11 5 14 16 16-11 2-14 5-16 16-2-11-5-14-16-16 11-2 14-5 16-16Z"/>
+</svg>

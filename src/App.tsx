@@ -376,7 +376,7 @@ function VersionIntro({ version, updated, onComplete }: { version: string; updat
         className="flex flex-col items-center"
       >
         <AppLogo className="h-16 w-16" />
-        <div className="mt-6 text-[11px] font-semibold uppercase tracking-[0.45em] text-zinc-500">CodeForge</div>
+        <div className="mt-6 text-[11px] font-semibold uppercase tracking-[0.45em] text-zinc-500">FancyCode</div>
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}

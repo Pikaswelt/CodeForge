@@ -365,4 +365,4 @@ wss.on('connection', (socket) => {
   });
 });
 
-console.log(`CodeForge mobile dev bridge on ws://127.0.0.1:${PORT} (data: ${DATA_DIR}) [${randomUUID().slice(0, 8)}]`);
+console.log(`FancyCode mobile dev bridge on ws://127.0.0.1:${PORT} (data: ${DATA_DIR}) [${randomUUID().slice(0, 8)}]`);

@@ -1,9 +1,9 @@
 'use strict';
-// Connects CodeForge to the session host (session-host.cjs) and starts it when needed.
+// Connects FancyCode to the session host (session-host.cjs) and starts it when needed.
 // The host runs from a copy in the user data folder with the system Node.js when available,
-// so it is neither part of CodeForge's process tree nor locked to the install folder that an
-// update replaces. Without Node.js it falls back to CodeForge's own runtime (survives a
-// restart of CodeForge, not an update).
+// so it is neither part of FancyCode's process tree nor locked to the install folder that an
+// update replaces. Without Node.js it falls back to FancyCode's own runtime (survives a
+// restart of FancyCode, not an update).
 
 const fs = require('node:fs');
 const net = require('node:net');
@@ -216,7 +216,7 @@ function createSessionClient({ userDataDir, isPackaged, resourcesPath }) {
     return list();
   }
 
-  // Recent output and size of a running session, or null. Hosts started by an older CodeForge
+  // Recent output and size of a running session, or null. Hosts started by an older FancyCode
   // have no 'snapshot' op; for them a 'create' on the existing id returns the same output.
   async function snapshot(id) {
     const sessions = await listIfRunning();

@@ -168,7 +168,7 @@ export default function InputArea() {
                   ? 'Nachricht sendet startet den Agent im Terminal-Modus...'
                   : selectedProject
                     ? 'Beschreibe, was im Projekt erledigt werden soll...'
-                    : 'Nachricht schreiben - startet ohne Projekt im CodeForge-Arbeitsordner...'
+                    : 'Nachricht schreiben - startet ohne Projekt im FancyCode-Arbeitsordner...'
             }
             rows={2}
           />

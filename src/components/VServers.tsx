@@ -6,7 +6,7 @@ import type { CliHarness, VServer, VServerConnection } from '../types';
 import { SftpBrowser } from './SftpBrowser';
 
 // Saved V-Servers (SSH hosts). Stored locally; the private key is copied into
-// CodeForge's data folder when uploaded, so the original file may be moved.
+// FancyCode's data folder when uploaded, so the original file may be moved.
 
 const STORAGE_KEY = 'agentWorkspace.vservers';
 const listeners = new Set<() => void>();
@@ -121,7 +121,7 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
             <button
               onClick={() => setExporting((value) => !value)}
               className="secondary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5"
-              title="Server, Keys und Einstellungen in die CodeForge-Android-App uebernehmen"
+              title="Server, Keys und Einstellungen in die FancyCode-Android-App uebernehmen"
             >
               <Smartphone className="w-3.5 h-3.5" />
               Fuer Android exportieren
@@ -337,7 +337,7 @@ function VServerForm({ initial, modal, onCancel, onSave }: { initial?: VServer; 
             </button>
           )}
         </div>
-        <p className="mt-1.5 text-[11px] text-zinc-600">Privaten Key waehlen (z.B. id_ed25519), nicht die .pub-Datei. Der Key wird in CodeForge gespeichert.</p>
+        <p className="mt-1.5 text-[11px] text-zinc-600">Privaten Key waehlen (z.B. id_ed25519), nicht die .pub-Datei. Der Key wird in FancyCode gespeichert.</p>
       </div>
 
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
@@ -522,7 +522,7 @@ function AndroidExport({ servers: list, onDone }: { servers: VServer[]; onDone()
     <div className="rounded-xl border border-sky-400/20 bg-sky-500/[0.06] p-4 space-y-3">
       <div className="flex items-center gap-2 text-sm text-white">
         <Smartphone className="w-4 h-4 text-sky-300" />
-        CodeForge auf Android einrichten
+        FancyCode auf Android einrichten
       </div>
       <p className="text-xs leading-relaxed text-zinc-400">
         Erstellt eine Datei mit deinen {list.length} V-Servern, CLI-Harnesses, Antigravity-Accounts und Themes. Die Android-App arbeitet nur auf den V-Servern, nicht auf diesem PC.

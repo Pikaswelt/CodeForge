@@ -1,5 +1,5 @@
 [Unit]
-Description=CodeForge Remote Server (incl. CLI API)
+Description=FancyCode Remote Server (incl. CLI API)
 After=network-online.target
 Wants=network-online.target
 

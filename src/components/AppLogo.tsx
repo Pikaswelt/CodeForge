@@ -10,42 +10,39 @@ export default function AppLogo({ className = 'w-6 h-6' }: { className?: string 
       className={className}
     >
       <defs>
-        <linearGradient id="codeforge-mark" x1="10" x2="54" y1="8" y2="58">
-          <stop stopColor="#f2c96d" />
-          <stop offset="0.48" stopColor="#64d2ff" />
-          <stop offset="1" stopColor="#a78bfa" />
+        <linearGradient id="fancycode-mark" x1="6" x2="58" y1="4" y2="60" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#ff5fb8" />
+          <stop offset="0.5" stopColor="#8b5cf6" />
+          <stop offset="1" stopColor="#22d3ee" />
         </linearGradient>
       </defs>
-      <rect width="64" height="64" rx="14" fill="#111113" />
+      <rect width="64" height="64" rx="14.5" fill="url(#fancycode-mark)" />
       <motion.path
         initial={{ pathLength: 0, opacity: 0 }}
         animate={{ pathLength: 1, opacity: 1 }}
-        transition={{ duration: 1, ease: 'easeInOut' }}
-        d="M15 20.5 32 10l17 10.5v23L32 54 15 43.5v-23Z"
+        transition={{ duration: 0.8, ease: 'easeInOut' }}
+        d="M23.5 20.5 12 32l11.5 11.5M40.5 20.5 52 32 40.5 43.5"
         fill="none"
-        stroke="url(#codeforge-mark)"
-        strokeWidth="4"
-        strokeLinejoin="round"
-      />
-      <motion.path
-        initial={{ pathLength: 0, opacity: 0 }}
-        animate={{ pathLength: 1, opacity: 1 }}
-        transition={{ duration: 0.8, ease: 'easeInOut', delay: 0.3 }}
-        d="m28 23-8 8.5 8 8.5M36 23l8 8.5-8 8.5"
-        fill="none"
-        stroke="#f7f7f8"
+        stroke="#fff"
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="4"
+        strokeWidth="5"
       />
       <motion.path
-        initial={{ pathLength: 0, opacity: 0 }}
-        animate={{ pathLength: 1, opacity: 1 }}
-        transition={{ duration: 0.6, ease: 'easeInOut', delay: 0.6 }}
-        d="m34 21-5 22"
-        stroke="#f2c96d"
-        strokeLinecap="round"
-        strokeWidth="4"
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: 'backOut', delay: 0.5 }}
+        style={{ transformOrigin: '32px 32px' }}
+        d="M32 22c1 6.5 3 8.5 9.5 10-6.5 1.5-8.5 3.5-9.5 10-1-6.5-3-8.5-9.5-10 6.5-1.5 8.5-3.5 9.5-10Z"
+        fill="#fff"
+      />
+      <motion.path
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 0.9 }}
+        transition={{ duration: 0.4, ease: 'backOut', delay: 0.8 }}
+        style={{ transformOrigin: '47.5px 14px' }}
+        d="M47.5 10c.5 2.75 1.25 3.5 4 4-2.75.5-3.5 1.25-4 4-.5-2.75-1.25-3.5-4-4 2.75-.5 3.5-1.25 4-4Z"
+        fill="#fff"
       />
     </motion.svg>
   );

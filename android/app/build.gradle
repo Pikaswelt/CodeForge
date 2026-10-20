@@ -9,7 +9,7 @@ def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionPa
 // Signing: the release key comes from the environment (CI secrets or a local file outside the
 // repository). Without it the build falls back to the Android debug key, which cannot install
 // over a release build. CI re-signs the release APK with scripts/sign-apk-rotated.sh so devices
-// that have the old CodeForge key accept the new key through android/app/signing-lineage.bin.
+// that have the old FancyCode key accept the new key through android/app/signing-lineage.bin.
 def envKeystore = System.getenv('FANCYCODE_KEYSTORE_FILE')
 
 android {

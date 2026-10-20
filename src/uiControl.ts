@@ -1,5 +1,5 @@
 // Generic UI control for agents (via the codeforge MCP server): a text snapshot of every visible
-// control with a short ref, plus click / type / key on those refs. Covers every CodeForge feature
+// control with a short ref, plus click / type / key on those refs. Covers every FancyCode feature
 // without a dedicated tool per feature. Terminal contents are left out; the terminal tools read those.
 
 const INTERACTIVE =

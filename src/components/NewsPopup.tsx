@@ -44,7 +44,7 @@ export default function NewsPopup({ onClose, version }: { onClose: () => void; v
                 Was ist neu
               </div>
               <h2 className="mt-0.5 text-lg font-semibold text-white">
-                {head ? `CodeForge v${head.version}` : 'CodeForge Changelog'}
+                {head ? `FancyCode v${head.version}` : 'FancyCode Changelog'}
               </h2>
             </div>
           </div>

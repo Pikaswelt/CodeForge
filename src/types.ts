@@ -341,7 +341,7 @@ export type McpToolInfo = {
   description?: string;
 };
 
-// A server CodeForge has actually spoken to: the handshake plus the tools an agent would get.
+// A server FancyCode has actually spoken to: the handshake plus the tools an agent would get.
 export type McpSessionInfo = {
   id: string;
   transport: McpServerInfo['transport'];

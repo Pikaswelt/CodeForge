@@ -3,7 +3,7 @@ import { Bot, Check, Copy, Loader2, Play, Plug, RefreshCw, Square, Wrench } from
 import { useAppContext } from '../AppContext';
 import type { McpServerInfo, McpSessionInfo } from '../types';
 
-// The MCP tab: CodeForge's own MCP server, the servers Claude Code / Cursor / Codex spawn from their
+// The MCP tab: FancyCode's own MCP server, the servers Claude Code / Cursor / Codex spawn from their
 // config files, and a look at the tools each of them exposes. Starting a server speaks the real MCP
 // handshake; stopping it ends the process again.
 
@@ -29,7 +29,7 @@ function StatusBadge({ server, session }: { server: McpServerInfo; session?: Mcp
   );
 }
 
-// In the browser (CodeForge Web) the bridge answers over a socket that may never come up; a slow or
+// In the browser (FancyCode Web) the bridge answers over a socket that may never come up; a slow or
 // missing answer must not leave the tab spinning forever.
 function withTimeout<T>(promise: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -251,7 +251,7 @@ export function McpSettings() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] leading-4 text-zinc-500">
-          MCP-Server verbinden Agenten mit CodeForge und anderen Werkzeugen. Hier startest du einen Server, um seine
+          MCP-Server verbinden Agenten mit FancyCode und anderen Werkzeugen. Hier startest du einen Server, um seine
           Werkzeuge zu sehen; Stoppen beendet den Prozess wieder.
         </p>
         <button onClick={() => void refresh()} disabled={loading} className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.08] disabled:opacity-50">
@@ -267,10 +267,10 @@ export function McpSettings() {
       )}
 
       <section>
-        {api?.getOwnMcpServer && <div className="section-label">CodeForge MCP-Server</div>}
+        {api?.getOwnMcpServer && <div className="section-label">FancyCode MCP-Server</div>}
         {!api?.getOwnMcpServer ? (
           <p className="mt-2 text-[11px] leading-4 text-zinc-500">
-            Den eigenen MCP-Server von CodeForge zeigt nur die Desktop-App; hier steht nur, was in deinen Konfigurationsdateien steht.
+            Den eigenen MCP-Server von FancyCode zeigt nur die Desktop-App; hier steht nur, was in deinen Konfigurationsdateien steht.
           </p>
         ) : own ? (
           <div className="mt-2">
@@ -287,7 +287,7 @@ export function McpSettings() {
                     <>
                       <p className="text-[11px] leading-4 text-zinc-500">
                         Ein Agent wie Claude Code kann damit alle Terminals sehen, Aufgaben schicken, auf Ergebnisse warten und
-                        Sessions starten oder fortsetzen. Lesen und Senden geht auch, wenn CodeForge zu ist.
+                        Sessions starten oder fortsetzen. Lesen und Senden geht auch, wenn FancyCode zu ist.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => void register('claude')} disabled={Boolean(registerBusy)} className={registerButton}>
@@ -330,7 +330,7 @@ export function McpSettings() {
             />
           </div>
         ) : (
-          <p className="mt-2 text-[11px] text-zinc-500">Dieser Rechner hat noch keinen CodeForge-MCP-Server.</p>
+          <p className="mt-2 text-[11px] text-zinc-500">Dieser Rechner hat noch keinen FancyCode-MCP-Server.</p>
         )}
       </section>
 

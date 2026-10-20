@@ -43,7 +43,7 @@ export default function SettingsScreen() {
       harnesses: 'CLI-Harnesses',
       agy: 'Antigravity-Accounts',
       providers: 'KI-Provider',
-      about: 'Über CodeForge',
+      about: 'Über FancyCode',
     };
     return (
       <div className="flex h-full flex-col">
@@ -87,12 +87,12 @@ export default function SettingsScreen() {
           <div className="cf-glass cf-card overflow-hidden">
             <NavRow icon={<Server className="h-4 w-4" />} title="V-Server verwalten" subtitle={servers.length ? servers.map((item) => item.name).join(', ') : 'Noch keiner'} onClick={() => setTab('home')} />
             <Divider />
-            <NavRow icon={<Upload className="h-4 w-4" />} title="Vom PC übernehmen" subtitle="Server, Keys und Einstellungen aus CodeForge am PC" onClick={() => setImporting(true)} />
+            <NavRow icon={<Upload className="h-4 w-4" />} title="Vom PC übernehmen" subtitle="Server, Keys und Einstellungen aus FancyCode am PC" onClick={() => setImporting(true)} />
           </div>
         </Section>
         <Section>
           <div className="cf-glass cf-card overflow-hidden">
-            <NavRow icon={<Info className="h-4 w-4" />} title="Über CodeForge" subtitle={`Version ${__APP_VERSION__}`} onClick={() => setPage('about')} />
+            <NavRow icon={<Info className="h-4 w-4" />} title="Über FancyCode" subtitle={`Version ${__APP_VERSION__}`} onClick={() => setPage('about')} />
           </div>
         </Section>
       </div>
@@ -471,12 +471,12 @@ function AboutPage() {
       <div className="mb-3 flex items-center gap-3">
         <SquareTerminal className="cf-accent-text h-8 w-8" />
         <div>
-          <div className="text-lg font-bold">CodeForge Mobile</div>
+          <div className="text-lg font-bold">FancyCode Mobile</div>
           <div className="cf-muted text-[0.82rem]">Version {__APP_VERSION__}</div>
         </div>
       </div>
       <p className="cf-muted mb-4 text-[0.86rem] leading-relaxed">
-        Die Android-App von CodeForge. Sie verbindet sich per SSH direkt mit deinem V-Server: Terminals laufen dort in tmux weiter, auch wenn das Handy die Verbindung verliert. Auf dem Handy wird nichts lokal ausgeführt.
+        Die Android-App von FancyCode. Sie verbindet sich per SSH direkt mit deinem V-Server: Terminals laufen dort in tmux weiter, auch wenn das Handy die Verbindung verliert. Auf dem Handy wird nichts lokal ausgeführt.
       </p>
       <Button className="w-full" icon={<Github className="h-4 w-4" />} onClick={() => void Native.openUrl({ url: `https://github.com/${__UPDATE_REPO__}/releases/latest` })}>
         Neueste Version auf GitHub

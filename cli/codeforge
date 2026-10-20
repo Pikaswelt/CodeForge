@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CodeForge CLI: start Antigravity (agy) with one of several saved Google accounts.
+# FancyCode CLI: start Antigravity (agy) with one of several saved Google accounts.
 # Each account gets its own HOME folder, so agy keeps a separate login per account
 # (agy stores its OAuth token as a file below HOME on SSH/Linux sessions).
 # Sessions run in tmux: they survive a dropped SSH connection and end only when closed.
@@ -184,7 +184,7 @@ style_session() { # $1 = session, $2 = label
     set -t "$s" @cf_session "$2" \; \
     set -t "$s" mouse on \; \
     set -t "$s" status-style "bg=colour235,fg=colour250" \; \
-    set -t "$s" status-left "#[fg=colour208,bold] CodeForge #[default]· #{@cf_session} " \; \
+    set -t "$s" status-left "#[fg=colour208,bold] FancyCode #[default]· #{@cf_session} " \; \
     set -t "$s" status-left-length 60 \; \
     set -t "$s" status-right "#[fg=colour244]Ctrl-b d = Hintergrund · Ctrl-b Pfeile = Pane wechseln " \; \
     set -t "$s" status-right-length 80 \; \
@@ -305,7 +305,7 @@ menu() {
   while true; do
     count="$(list_sessions | wc -l)"
     echo
-    echo "  ${c_or}${c_bold}CodeForge${c_off} ${c_dim}· Antigravity · $(pwd)${c_off}"
+    echo "  ${c_or}${c_bold}FancyCode${c_off} ${c_dim}· Antigravity · $(pwd)${c_off}"
     echo
     echo "  ${c_or}1)${c_off} Account auswaehlen und starten"
     echo "  ${c_or}2)${c_off} Einstellungen (Accounts verwalten)"

@@ -1,5 +1,5 @@
 /**
- * CodeForge Auto-Updater
+ * FancyCode Auto-Updater
  *
  * Reads latest.yml (Windows) or latest-linux.yml (Linux) from the newest public
  * GitHub release, downloads the matching artifact in the background
@@ -183,7 +183,7 @@ function setupUpdater({ app, mainWindow }) {
           availableVersion: metadata.version,
           downloaded: false,
           percent: 0,
-          message: 'CodeForge ist aktuell.',
+          message: 'FancyCode ist aktuell.',
         });
       }
       setState({ status: 'downloading', availableVersion: metadata.version, percent: 0, message: `Update ${metadata.version} gefunden.` });
@@ -235,9 +235,9 @@ function setupUpdater({ app, mainWindow }) {
       return true;
     }
 
-    // Runs after CodeForge exits: shows a small progress window, kills leftover
+    // Runs after FancyCode exits: shows a small progress window, kills leftover
     // processes from the install dir (terminal helpers lock files), installs
-    // silently, falls back to a clean install and restarts CodeForge.
+    // silently, falls back to a clean install and restarts FancyCode.
     const ps = (value) => value.replace(/'/g, "''");
     const versionText = state.availableVersion ? ` auf ${state.availableVersion}` : '';
     const script = `
@@ -253,7 +253,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'CodeForge Update'
+$form.Text = 'FancyCode Update'
 $form.ClientSize = New-Object System.Drawing.Size(420, 110)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'
@@ -265,7 +265,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 27)
 $form.ForeColor = [System.Drawing.Color]::White
 if (Test-Path $exe) { try { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe) } catch {} }
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'CodeForge wird aktualisiert${ps(versionText)}'
+$title.Text = 'FancyCode wird aktualisiert${ps(versionText)}'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
 $title.Location = New-Object System.Drawing.Point(18, 14)
 $title.Size = New-Object System.Drawing.Size(390, 24)
@@ -306,7 +306,7 @@ function Wait-Proc($proc, $from, $to, $text, $timeoutSec) {
   }
   return $true
 }
-Step 'Warte bis CodeForge beendet ist...' 3
+Step 'Warte bis FancyCode beendet ist...' 3
 $t = 0
 while ((Get-Process -Id $appPid) -and $t -lt 120) { Start-Sleep -Milliseconds 250; [System.Windows.Forms.Application]::DoEvents(); $t++ }
 function Stop-AppProcesses {
@@ -316,7 +316,7 @@ function Stop-AppProcesses {
 function Remove-UninstallEntries($onlyBroken) {
   Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall' | ForEach-Object {
     $p = Get-ItemProperty $_.PSPath
-    if ($p.DisplayName -like 'CodeForge*' -and ((-not $onlyBroken) -or (-not $p.UninstallString))) { Remove-Item $_.PSPath -Recurse -Force }
+    if ($p.DisplayName -like 'FancyCode*' -and ((-not $onlyBroken) -or (-not $p.UninstallString))) { Remove-Item $_.PSPath -Recurse -Force }
   }
 }
 Step 'Beende alte Prozesse...' 10
@@ -334,7 +334,7 @@ if (-not $finished -or $proc.ExitCode -ne 0 -or -not (Test-Path $exe)) {
   [void](Wait-Proc $proc 60 95 'Installiere neu...' 300)
   Log "clean install exit $($proc.ExitCode)"
 }
-Step 'Fertig. Starte CodeForge...' 100
+Step 'Fertig. Starte FancyCode...' 100
 Start-Sleep -Milliseconds 600
 Start-Process -FilePath $exe
 $form.Close()
@@ -342,8 +342,8 @@ Log 'done'
 `;
     const scriptPath = path.join(pendingDir(), 'install-update.ps1');
     fs.writeFileSync(scriptPath, `﻿${script}`, 'utf8');
-    // Launch through WMI so the script is not a child of CodeForge: nothing
-    // that ends CodeForge's process tree can kill the installer halfway.
+    // Launch through WMI so the script is not a child of FancyCode: nothing
+    // that ends FancyCode's process tree can kill the installer halfway.
     const commandLine = `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`;
     const launched = spawnSync('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-Command',
@@ -388,7 +388,7 @@ async function fetchReleaseNotes({ version = '', limit = 6 } = {}) {
   const now = Date.now();
   if (now - releasesCache.at > RELEASES_CACHE_MS) {
     const response = await fetch(`${RELEASES_API}?per_page=20`, {
-      headers: { accept: 'application/vnd.github+json', 'user-agent': 'CodeForge' },
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'FancyCode' },
     });
     if (!response.ok) throw new Error(`GitHub antwortete mit ${response.status}.`);
     const payload = await response.json();

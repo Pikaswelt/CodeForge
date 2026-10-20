@@ -441,7 +441,7 @@ function getInitialLibrarySettings(): {
 
   if (!isMigrated) {
     try {
-      // Check if user is an existing user who previously had data in CodeForge
+      // Check if user is an existing user who previously had data in FancyCode
       const hasAnyExistingData = Boolean(
         localStorage.getItem('agentWorkspace.setup') !== null ||
         localStorage.getItem('agentWorkspace.folders') !== null ||
@@ -549,7 +549,7 @@ function buildLocalFormattingTestOutput(projectPath: string) {
     '',
     'const result: FormatCheck = {',
     '  ok: true,',
-    "  message: 'CodeForge formatiert diese Testantwort lokal.',",
+    "  message: 'FancyCode formatiert diese Testantwort lokal.',",
     '};',
     '```',
     '',
@@ -979,7 +979,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
   useEffect(() => writeStorage('agyAccounts', agyAccounts), [agyAccounts]);
   useEffect(() => writeStorage('multiLaunchConfig', multiLaunchConfig), [multiLaunchConfig]);
-  // CodeForge Web: the accounts live on the server (shared with the codeforge CLI), not in this browser.
+  // FancyCode Web: the accounts live on the server (shared with the codeforge CLI), not in this browser.
   const agyAccountsLoaded = useRef(false);
   useEffect(() => {
     const workspace = window.agentWorkspace;
@@ -2835,7 +2835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isError: !result.ok,
       };
       void window.agentWorkspace.notifyAgentComplete({
-        title: result.ok ? 'CodeForge: Aufgabe erledigt' : 'CodeForge: Aufgabe fehlgeschlagen',
+        title: result.ok ? 'FancyCode: Aufgabe erledigt' : 'FancyCode: Aufgabe fehlgeschlagen',
         body: `${updatedChat.title} - ${formatDurationForNotification(durationMs)}`,
       });
       if (tokenUsage > 0) {
@@ -2872,7 +2872,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isError: true,
       };
       void window.agentWorkspace.notifyAgentComplete({
-        title: 'CodeForge: Aufgabe fehlgeschlagen',
+        title: 'FancyCode: Aufgabe fehlgeschlagen',
         body: error instanceof Error ? error.message : 'Unbekannter Fehler beim Agent-Aufruf.',
       });
       setChats((current) =>
@@ -3152,7 +3152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.agentWorkspace?.killShellSession(selectedChatId);
       delete activeShellSessions.current[selectedChatId];
     }
-    // Terminals now outlive CodeForge, so deleting the workspace has to end them.
+    // Terminals now outlive FancyCode, so deleting the workspace has to end them.
     const removed = chats.find((chat) => chat.id === selectedChatId);
     if (removed) endTerminals(removed);
     setSavedTerminalWorkspaces((current) => current.filter((chat) => chat.id !== selectedChatId));
@@ -3198,7 +3198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!key) return undefined;
     const wanted = key.trim().toLowerCase();
     const server = readSavedServers().find((item) => item.id === key || item.name.toLowerCase() === wanted || item.host === key);
-    if (!server) throw new Error(`V-Server "${key}" ist in CodeForge nicht gespeichert.`);
+    if (!server) throw new Error(`V-Server "${key}" ist in FancyCode nicht gespeichert.`);
     return server;
   };
 

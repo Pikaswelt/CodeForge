@@ -1,5 +1,5 @@
 [Unit]
-Description=CodeForge Web (behind Cloudflare Access)
+Description=FancyCode Web (behind Cloudflare Access)
 After=network-online.target
 Wants=network-online.target
 

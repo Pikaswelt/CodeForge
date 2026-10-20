@@ -179,7 +179,7 @@ export default function TopBar({
         </button>
         <div className="flex items-center gap-2 pr-2 text-zinc-200">
           <AppLogo className="w-5 h-5" />
-          <span className="hidden sm:inline text-[12px] font-semibold tracking-wide">CodeForge</span>
+          <span className="hidden sm:inline text-[12px] font-semibold tracking-wide">FancyCode</span>
         </div>
         <div className="flex items-center gap-1">
           <button

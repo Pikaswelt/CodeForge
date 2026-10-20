@@ -188,7 +188,7 @@ function startPairingBroadcast() {
     console.log('  ║                                                        ║');
     console.log(`  ║  ${easySetupUrl}  ║`);
     console.log('  ║                                                        ║');
-    console.log('  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║');
+    console.log('  ║  FancyCode-App → Verbinden → Einfügen → FERTIG! ✨     ║');
     console.log('  ╚══════════════════════════════════════════════════════════╝');
     console.log('');
     console.log(`   🔢 Kopplungscode: ${pairingCode}  ⏱️  ${PAIRING_AUTO_STOP_MINUTES} Min gültig`);
@@ -475,7 +475,7 @@ async function handleHealth(req, res) {
   if (!isAuthorized(req)) return unauthorized(res);
   json(res, 200, {
     ok: true,
-    name: 'CodeForge Remote Server',
+    name: 'FancyCode Remote Server',
     providers: Object.fromEntries(
       Object.entries(providers).map(([id, provider]) => [id, { command: resolveCommand(provider) }]),
     ),
@@ -512,8 +512,8 @@ async function handleRun(req, res) {
     const userHome = process.env.USERPROFILE || process.env.HOME || '';
     if (isWin) {
       if (projectPath.startsWith('/root/') || projectPath === '/root/codeforge-project' || projectPath.startsWith('~/')) {
-        const docPath = path.join(userHome, 'OneDrive/Dokumente/CodeForge/Ohne Projekt');
-        const docPathAlt = path.join(userHome, 'Documents/CodeForge/Ohne Projekt');
+        const docPath = path.join(userHome, 'OneDrive/Dokumente/FancyCode/Ohne Projekt');
+        const docPathAlt = path.join(userHome, 'Documents/FancyCode/Ohne Projekt');
         if (existsSync(docPath)) {
           effectiveProjectPath = docPath;
         } else if (existsSync(docPathAlt)) {
@@ -669,7 +669,7 @@ const server = createServer((req, res) => {
     return json(res, 200, {
       ok: true,
       service: 'codeforge-remote',
-      name: 'CodeForge Remote Server',
+      name: 'FancyCode Remote Server',
       version: '2.5.0',
       localIp: getLocalIp(),
       port: PORT,
@@ -973,8 +973,8 @@ server.listen(PORT, HOST, () => {
   console.log('  ║                                                          ║');
   console.log(`  ║  ${connectionKey}`);
   console.log('  ║                                                          ║');
-  console.log('  ║  CodeForge-App → Verbinden → Einfügen → FERTIG! ✨     ║');
+  console.log('  ║  FancyCode-App → Verbinden → Einfügen → FERTIG! ✨     ║');
   console.log('  ╚══════════════════════════════════════════════════════════╝');
   console.log('');
-  console.log(`CodeForge Remote Server v2.5.0 läuft auf http://${HOST}:${PORT}`);
+  console.log(`FancyCode Remote Server v2.5.0 läuft auf http://${HOST}:${PORT}`);
 });

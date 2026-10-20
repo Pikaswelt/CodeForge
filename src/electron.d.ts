@@ -159,7 +159,7 @@ declare global {
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;
       cancelTerminalCommand(id: string): Promise<boolean>;
       onTerminalOutput(id: string, callback: (payload: { type: 'stdout' | 'stderr' | 'exit'; text?: string; code?: number }) => void): () => void;
-      // CodeForge Web re-attaches running sessions and reports that with skipStartCommand.
+      // FancyCode Web re-attaches running sessions and reports that with skipStartCommand.
       createShellSession(request: { chatId: string; cwd?: string; shellType?: 'powershell' | 'cmd'; externalServer?: any; vserver?: VServerConnection; agyAccountId?: string; cols?: number; rows?: number; startCommand?: string }): Promise<{ resumed?: boolean; reattached?: boolean; skipStartCommand?: boolean } | void>;
       listRunningSessions(request: { vservers: VServerConnection[] }): Promise<{
         local: { id: string; meta: { vserverId?: string; agyAccountId?: string; tmuxName?: string } }[];

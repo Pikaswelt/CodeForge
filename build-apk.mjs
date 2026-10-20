@@ -45,6 +45,6 @@ const version = pkg.version;
 const srcApk = path.join('android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
 const outDir = path.join('release');
 if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-const targetApk = path.join(outDir, `CodeForge-${version}.apk`);
+const targetApk = path.join(outDir, `FancyCode-${version}.apk`);
 fs.copyFileSync(srcApk, targetApk);
 console.log(`\n🎉 APK erfolgreich erstellt: ${targetApk} (${(fs.statSync(targetApk).size / 1024 / 1024).toFixed(2)} MB)`);

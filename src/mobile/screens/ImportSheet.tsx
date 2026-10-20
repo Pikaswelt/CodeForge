@@ -99,7 +99,7 @@ export default function ImportSheet({ onClose }: { onClose: () => void }) {
       <div className="mb-4 flex gap-3 rounded-2xl bg-cf-hover p-3.5">
         <MonitorSmartphone className="cf-accent-text mt-0.5 h-5 w-5 shrink-0" />
         <ol className="cf-muted list-decimal space-y-1 pl-4 text-[0.84rem] leading-relaxed">
-          <li>Am PC in CodeForge auf dem Startbildschirm bei den V-Servern <b>Für Android exportieren</b> wählen.</li>
+          <li>Am PC in FancyCode auf dem Startbildschirm bei den V-Servern <b>Für Android exportieren</b> wählen.</li>
           <li>Die Datei <code>codeforge-android.json</code> aufs Handy kopieren (USB, Cloud, Messenger an dich selbst).</li>
           <li>Hier auswählen und übernehmen.</li>
         </ol>

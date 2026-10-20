@@ -1,11 +1,11 @@
 'use strict';
-// CodeForge session host: owns the terminal processes (PTYs) so they keep running while
-// CodeForge is closed, restarted or updated. CodeForge talks to it over a local pipe
+// FancyCode session host: owns the terminal processes (PTYs) so they keep running while
+// FancyCode is closed, restarted or updated. FancyCode talks to it over a local pipe
 // (newline-delimited JSON) and re-attaches to running sessions by id.
 //
-// Started by CodeForge as:  node session-host.cjs <node-pty dir> <pipe path> <token file>
+// Started by FancyCode as:  node session-host.cjs <node-pty dir> <pipe path> <token file>
 // With --daemon it re-spawns itself detached and exits, so the host is not part of
-// CodeForge's process tree (CodeForge tree-kills itself on quit).
+// FancyCode's process tree (FancyCode tree-kills itself on quit).
 
 const fs = require('node:fs');
 const net = require('node:net');

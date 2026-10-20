@@ -720,7 +720,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <div className="mt-3 space-y-3">
                   <SettingToggle
                     label="Discord-Status aktivieren"
-                    description="Zeigt deinen aktuellen CodeForge-Status, gewähltes KI-Modell und aktiven Agenten in Discord an."
+                    description="Zeigt deinen aktuellen FancyCode-Status, gewähltes KI-Modell und aktiven Agenten in Discord an."
                     checked={discordRpcEnabled}
                     onChange={setDiscordRpcEnabled}
                   />

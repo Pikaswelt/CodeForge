@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'app.codeforge.desktop',
-  appName: 'CodeForge',
+  appName: 'FancyCode',
   webDir: 'dist',
   backgroundColor: '#111111',
   android: {

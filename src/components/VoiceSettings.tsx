@@ -111,7 +111,7 @@ export function VoiceInstallModal() {
             )}
           </div>
           <p className="mt-4 text-xs leading-5 text-zinc-400">
-            Fuer die Spracheingabe laedt CodeForge einmalig Whisper (ca. 8 MB) und ein Sprachmodell herunter. Danach funktioniert alles ohne Internet.
+            Fuer die Spracheingabe laedt FancyCode einmalig Whisper (ca. 8 MB) und ein Sprachmodell herunter. Danach funktioniert alles ohne Internet.
           </p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             {(['base', 'small'] as const).map((id) => (
@@ -285,7 +285,7 @@ export function VoiceSettingsSection() {
         <div className="mt-3 space-y-3">
           <Toggle
             label="Immer zuhoeren"
-            description="CodeForge hoert dauerhaft zu. Sagst du das Wake-Word, startet das Diktat. Eine Sprechpause beendet es."
+            description="FancyCode hoert dauerhaft zu. Sagst du das Wake-Word, startet das Diktat. Eine Sprechpause beendet es."
             checked={settings.wakeWordEnabled}
             onChange={(value) => set({ wakeWordEnabled: value })}
           />

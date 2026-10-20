@@ -7,6 +7,15 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Main Process Unhandled Rejection]:', reason);
 });
 
+// Until 2.10 the app was called CodeForge and kept its data (settings, chats, keys, running
+// sessions, agy logins) in a "CodeForge" folder. Keep using that folder so nothing is lost after
+// the rename. This must run before the single instance lock, which lives in the data folder.
+(() => {
+  if (app.commandLine.hasSwitch('user-data-dir')) return;
+  const legacy = require('node:path').join(app.getPath('appData'), 'CodeForge');
+  if (require('node:fs').existsSync(legacy)) app.setPath('userData', legacy);
+})();
+
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -84,7 +93,7 @@ function startSyncServer() {
   syncToken = process.env.CODEFORGE_SYNC_TOKEN || '';
   if (!syncToken) {
     syncToken = 'codeforge-' + crypto.randomUUID().slice(0, 8);
-    console.log('CodeForge Sync Token (set CODEFORGE_SYNC_TOKEN env to customize): ' + syncToken);
+    console.log('FancyCode Sync Token (set CODEFORGE_SYNC_TOKEN env to customize): ' + syncToken);
   }
 
   syncServer = http.createServer((req, res) => {
@@ -119,7 +128,7 @@ function startSyncServer() {
       getCliStatus().then(function(status) {
         jsonResponse(200, {
           ok: true,
-          name: 'CodeForge Desktop Sync Server',
+          name: 'FancyCode Desktop Sync Server',
           version: app.getVersion(),
           providers: status,
           tokenConfigured: true,
@@ -618,9 +627,9 @@ function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#111111',
-    title: 'CodeForge',
+    title: 'FancyCode',
     icon: (() => {
-      const p = getAssetPath(process.platform === 'win32' ? 'codeforge.ico' : 'codeforge.png');
+      const p = getAssetPath(process.platform === 'win32' ? 'fancycode.ico' : 'fancycode.png');
       return p && fs.existsSync(p) ? nativeImage.createFromPath(p) : undefined;
     })(),
     webPreferences: {
@@ -641,7 +650,7 @@ function createWindow() {
 
   // One clear line in the log once the UI is really there - the Linux smoke test waits for it.
   mainWindow.webContents.on('did-finish-load', () => {
-    console.log(`[Start] CodeForge UI geladen auf ${process.platform} (v${app.getVersion()})`);
+    console.log(`[Start] FancyCode UI geladen auf ${process.platform} (v${app.getVersion()})`);
   });
 
   // Never open popups as extra app windows; web links go to Chrome instead.
@@ -728,7 +737,7 @@ function findExecutable(command) {
 }
 
 function getMainWindowHwnd() {
-  if (!mainWindow) throw new Error('CodeForge-Fenster ist nicht bereit.');
+  if (!mainWindow) throw new Error('FancyCode-Fenster ist nicht bereit.');
   const handle = mainWindow.getNativeWindowHandle();
   if (handle.length >= 8) return handle.readBigUInt64LE(0).toString();
   return String(handle.readUInt32LE(0));
@@ -875,7 +884,7 @@ if ($action -eq 'attach') {
   }
 
   if ($hwnd -eq [IntPtr]::Zero) {
-    Write-Result @{ ok = $false; pid = $targetPid; hwnd = ""; message = "Die App wurde gestartet, aber CodeForge konnte kein einbettbares Hauptfenster finden." }
+    Write-Result @{ ok = $false; pid = $targetPid; hwnd = ""; message = "Die App wurde gestartet, aber FancyCode konnte kein einbettbares Hauptfenster finden." }
     exit 0
   }
 
@@ -1561,7 +1570,9 @@ function safeProjectFolderName(value) {
 }
 
 function scratchProjectFolder() {
-  const target = path.join(app.getPath('documents'), 'CodeForge', 'Ohne Projekt');
+  // Keep the folder of CodeForge installs (the name before FancyCode) so existing chats find it.
+  const legacy = path.join(app.getPath('documents'), 'CodeForge', 'Ohne Projekt');
+  const target = fs.existsSync(legacy) ? legacy : path.join(app.getPath('documents'), 'FancyCode', 'Ohne Projekt');
   fs.mkdirSync(target, { recursive: true });
   return target;
 }
@@ -1640,7 +1651,7 @@ async function updateDiscordPresence(_event, input = {}) {
     ).slice(0, 128),
     startTimestamp: discordStartedAt,
     largeImageKey: 'codeforge',
-    largeImageText: 'CodeForge',
+    largeImageText: 'FancyCode',
     smallImageText: input.isRunning ? 'Agent laeuft' : 'Bereit',
     instance: false,
   };
@@ -1857,7 +1868,7 @@ async function createWorkspaceTerminalScript(slot, index, projectPath) {
   const found = await findProviderExecutable(provider);
   const executable = found.executable || '';
   if (!executable) {
-    throw new Error(`${provider.label} wurde nicht gefunden. Installiere die CLI und starte CodeForge neu.`);
+    throw new Error(`${provider.label} wurde nicht gefunden. Installiere die CLI und starte FancyCode neu.`);
   }
   if (slot.provider === 'antigravity' && /\.(cmd|bat)$/i.test(executable)) {
     throw new Error('Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.');
@@ -2141,7 +2152,7 @@ function removeCodexPlugin(_event, pluginPath, projectPath = '') {
     const relative = path.relative(path.resolve(root), resolved);
     return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
   });
-  if (!allowed) throw new Error('Dieses Plugin kann in CodeForge nicht entfernt werden.');
+  if (!allowed) throw new Error('Dieses Plugin kann in FancyCode nicht entfernt werden.');
   if (fs.existsSync(resolved)) fs.rmSync(resolved, { recursive: true, force: true });
   return true;
 }
@@ -2179,12 +2190,12 @@ function withSystemPrompt(systemPrompt, prompt) {
 
 function showTaskNotification(input = {}) {
   if (!Notification.isSupported()) return false;
-  const title = String(input.title || 'CodeForge').slice(0, 80);
+  const title = String(input.title || 'FancyCode').slice(0, 80);
   const body = String(input.body || 'Aufgabe ist erledigt.').slice(0, 240);
   const notification = new Notification({
     title,
     body,
-    icon: getAssetPath('codeforge.png'),
+    icon: getAssetPath('fancycode.png'),
   });
   notification.on('click', () => {
     if (!mainWindow) return;
@@ -2645,7 +2656,7 @@ async function runAgent(event, request) {
       return {
         ok: false,
         output: '',
-        error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte CodeForge neu.`,
+        error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte FancyCode neu.`,
         exitCode: -1,
       };
     }
@@ -2710,7 +2721,7 @@ async function runAgent(event, request) {
       onNoOutput: () => {
         event.sender.send('agent:output', {
           runId,
-          chunk: '\nAntigravity laeuft, liefert aber noch keine Konsolenausgabe. Bei schreibenden Aufgaben startet CodeForge jetzt mit uebersprungenen CLI-Permissions; falls es trotzdem haengt, pruefe Login/Modellzugriff mit `agy` im Terminal.\n',
+          chunk: '\nAntigravity laeuft, liefert aber noch keine Konsolenausgabe. Bei schreibenden Aufgaben startet FancyCode jetzt mit uebersprungenen CLI-Permissions; falls es trotzdem haengt, pruefe Login/Modellzugriff mit `agy` im Terminal.\n',
           stream: 'stderr',
         });
       },
@@ -2857,7 +2868,7 @@ async function generateSystemPrompt(_event, request) {
       return {
         ok: false,
         output: '',
-        error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte CodeForge neu.`,
+        error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte FancyCode neu.`,
         exitCode: -1,
       };
     }
@@ -3179,7 +3190,7 @@ async function buildVServerSshArgs(vserver) {
   return { command: ssh, args };
 }
 
-// Copies an uploaded private key into CodeForge's own folder with LF line endings
+// Copies an uploaded private key into FancyCode's own folder with LF line endings
 // and owner-only permissions (OpenSSH refuses keys that others can read).
 function importSshKey(_event, { sourcePath, name } = {}) {
   if (!sourcePath || !fs.existsSync(sourcePath)) throw new Error('Key-Datei nicht gefunden.');
@@ -3366,7 +3377,7 @@ async function removeAgyAccountProfile(_event, accountId) {
 }
 
 // Terminal sessions live in the session host (session-host.cjs), so they keep running while
-// CodeForge is closed or updated. Falls back to an in-process PTY if the host cannot start.
+// FancyCode is closed or updated. Falls back to an in-process PTY if the host cannot start.
 let sessionClient = null;
 function getSessionClient() {
   if (!sessionClient) {
@@ -3388,7 +3399,7 @@ function shellQuote(value) {
 }
 
 // V-Server tabs run inside tmux on the server: they survive a lost connection and a closed
-// CodeForge, and opening the tab again re-attaches. Antigravity accounts use one tmux session
+// FancyCode, and opening the tab again re-attaches. Antigravity accounts use one tmux session
 // per account (cf-agy-<id>), each with its own HOME so the agy logins stay separate.
 function buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand }) {
   let inner = '';
@@ -3618,7 +3629,7 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
 // ---------- Agent control (MCP) ----------
 // The MCP server (mcp-server.cjs, started by Claude Code / agy) reads and writes terminals through
 // the session host directly. Everything that needs the UI (start sessions, open workspaces) goes
-// through this control pipe to the renderer, so the agent's actions show up in CodeForge.
+// through this control pipe to the renderer, so the agent's actions show up in FancyCode.
 
 const controlRequests = new Map();
 let controlSeq = 0;
@@ -3638,13 +3649,13 @@ function controlToken() {
 function askRenderer(op, args, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
-      reject(new Error('Das CodeForge-Fenster ist nicht offen.'));
+      reject(new Error('Das FancyCode-Fenster ist nicht offen.'));
       return;
     }
     const reqId = ++controlSeq;
     const timer = setTimeout(() => {
       controlRequests.delete(reqId);
-      reject(new Error('CodeForge hat nicht rechtzeitig geantwortet.'));
+      reject(new Error('FancyCode hat nicht rechtzeitig geantwortet.'));
     }, timeoutMs);
     controlRequests.set(reqId, { resolve, reject, timer });
     mainWindow.webContents.send('control:request', { reqId, op, args: args || {} });
@@ -3657,11 +3668,11 @@ function handleControlResponse(_event, { reqId, ok, result, error } = {}) {
   controlRequests.delete(reqId);
   clearTimeout(pending.timer);
   if (ok) pending.resolve(result);
-  else pending.reject(new Error(error || 'Fehler in CodeForge.'));
+  else pending.reject(new Error(error || 'Fehler in FancyCode.'));
 }
 
 // The renderer publishes workspaces, accounts and servers so the MCP server can describe them
-// even while CodeForge is closed.
+// even while FancyCode is closed.
 function publishControlState(_event, state) {
   try {
     fs.mkdirSync(sessionHostDir(), { recursive: true });
@@ -3674,7 +3685,7 @@ function publishControlState(_event, state) {
 
 // The window as JPEG (base64), scaled to at most 1400px wide, for codeforge_screenshot.
 async function captureWindow() {
-  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Das CodeForge-Fenster ist nicht offen.');
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Das FancyCode-Fenster ist nicht offen.');
   let image = await mainWindow.webContents.capturePage();
   const { width } = image.getSize();
   if (width > 1400) image = image.resize({ width: 1400, quality: 'good' });
@@ -3743,7 +3754,7 @@ function startControlServer() {
 }
 
 // Copies the MCP server with what it needs next to the session host, outside the install folder,
-// so Claude Code / agy keep a stable path across CodeForge updates.
+// so Claude Code / agy keep a stable path across FancyCode updates.
 function installMcpFiles() {
   const dir = path.join(sessionHostDir(), 'mcp');
   fs.mkdirSync(dir, { recursive: true });
@@ -3788,7 +3799,7 @@ function quoteCliArg(value) {
   return process.platform === 'win32' ? `"${String(value).replace(/"/g, '\\"')}"` : value;
 }
 
-// Registers the CodeForge MCP server with Claude Code (user scope) or agy. For agy it is added to
+// Registers the FancyCode MCP server with Claude Code (user scope) or agy. For agy it is added to
 // the normal login and to every saved Antigravity account on this PC (each has its own HOME).
 async function registerMcp(_event, { target, accountIds = [] } = {}) {
   const mcp = await getMcpCommand();
@@ -3868,7 +3879,7 @@ function markUpdateSeen(version) {
 
 // ---------- MCP servers: inspect, start and stop ----------
 // The servers Claude Code, Cursor or Codex spawn from their config files can be started here for a
-// look: CodeForge speaks the MCP handshake itself, lists the tools an agent would get and keeps the
+// look: FancyCode speaks the MCP handshake itself, lists the tools an agent would get and keeps the
 // process until it is stopped. HTTP servers are asked the same way, they have no process to stop.
 const mcpSessions = new Map();
 const MCP_SELF_ID = 'codeforge:self';
@@ -3878,13 +3889,13 @@ async function ownMcpServer() {
   return {
     id: MCP_SELF_ID,
     name: 'codeforge',
-    source: 'CodeForge',
+    source: 'FancyCode',
     sourcePath: mcp.args[0] || '',
     command: mcp.command,
     args: mcp.args,
     transport: 'stdio',
     status: 'configured',
-    details: 'Steuert die Terminals von CodeForge: lesen, senden, auf Ergebnisse warten, Sessions starten.',
+    details: 'Steuert die Terminals von FancyCode: lesen, senden, auf Ergebnisse warten, Sessions starten.',
   };
 }
 
@@ -4099,7 +4110,7 @@ function stopAllMcpSessions() {
 }
 
 // Running sessions for the "Laufende Sessions" view: local host sessions plus the
-// CodeForge tmux sessions on each given V-Server.
+// FancyCode tmux sessions on each given V-Server.
 async function listRunningSessions(_event, { vservers = [] } = {}) {
   const local = await getSessionClient().list();
   const remote = await Promise.all(
@@ -4655,7 +4666,7 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('whisper:warm-up', (_event, model) => whisper.warmUp(model));
   ipcMain.handle('ssh:import-key', importSshKey);
   // Writes the file the Android app imports ("Vom PC uebernehmen"): V-Servers with their keys
-  // (only keys from CodeForge's own key folder), plus the settings the renderer passes in.
+  // (only keys from FancyCode's own key folder), plus the settings the renderer passes in.
   ipcMain.handle('vservers:export-android', async (_event, payload = {}) => {
     const keyDir = path.join(app.getPath('userData'), 'ssh-keys');
     const servers = (Array.isArray(payload.servers) ? payload.servers : []).slice(0, 50).map((server) => {
@@ -4669,9 +4680,9 @@ ipcMain.handle('device:status', () => {
     });
     const data = { type: 'codeforge-mobile-export', version: 1, exportedAt: Date.now(), servers, ...(payload.settings && typeof payload.settings === 'object' ? payload.settings : {}) };
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Fuer CodeForge Android exportieren',
+      title: 'Fuer FancyCode Android exportieren',
       defaultPath: path.join(app.getPath('downloads'), 'codeforge-android.json'),
-      filters: [{ name: 'CodeForge-Export', extensions: ['json'] }],
+      filters: [{ name: 'FancyCode-Export', extensions: ['json'] }],
     });
     if (result.canceled || !result.filePath) return { saved: false };
     fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });

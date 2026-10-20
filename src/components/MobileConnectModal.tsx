@@ -32,7 +32,7 @@ async function tryDiscover(ip: string, port: number, signal: AbortSignal): Promi
       return {
         ip,
         port,
-        name: data.name || 'CodeForge Server',
+        name: data.name || 'FancyCode Server',
         tokenRequired: data.tokenRequired !== false,
         providers: data.providers || [],
         pairingActive: data.pairingActive,

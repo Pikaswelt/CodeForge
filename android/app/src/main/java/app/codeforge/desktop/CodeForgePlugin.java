@@ -625,7 +625,7 @@ public class CodeForgePlugin extends Plugin {
     @PluginMethod
     public void copyText(PluginCall call) {
         ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboard.setPrimaryClip(ClipData.newPlainText("CodeForge", call.getString("text", "")));
+        clipboard.setPrimaryClip(ClipData.newPlainText("FancyCode", call.getString("text", "")));
         call.resolve();
     }
 
@@ -668,7 +668,7 @@ public class CodeForgePlugin extends Plugin {
         PendingIntent pending = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(call.getString("title", "CodeForge"))
+                .setContentTitle(call.getString("title", "FancyCode"))
                 .setContentText(call.getString("body", ""))
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(call.getString("body", "")))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

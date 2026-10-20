@@ -224,7 +224,7 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
           {keySource === 'file' && (
             <div className="rounded-2xl border border-cf-line bg-cf-hover p-3.5">
               <p className="cf-muted mb-3 text-[0.82rem] leading-relaxed">
-                Wähle die private Key-Datei, die auch CodeForge am PC nutzt (z.B. <code>id_ed25519</code>, nicht die .pub-Datei). Kopiere sie dafür vorher aufs Handy.
+                Wähle die private Key-Datei, die auch FancyCode am PC nutzt (z.B. <code>id_ed25519</code>, nicht die .pub-Datei). Kopiere sie dafür vorher aufs Handy.
               </p>
               <input ref={fileInput} type="file" className="hidden" onChange={(event) => void pickFile(event.target.files?.[0])} />
               <Button className="w-full" icon={<FileKey2 className="h-4 w-4" />} busy={busy === 'key'} onClick={() => fileInput.current?.click()}>

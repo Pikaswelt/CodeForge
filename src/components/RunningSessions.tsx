@@ -5,7 +5,7 @@ import type { Chat, TerminalTab, VServerConnection } from '../types';
 import { useVServers } from './VServers';
 
 // Terminals keep running in the background (session host on this PC, tmux on V-Servers)
-// while CodeForge is closed. This view lists them and re-joins the workspace they belong to.
+// while FancyCode is closed. This view lists them and re-joins the workspace they belong to.
 
 type Listing = Awaited<ReturnType<NonNullable<typeof window.agentWorkspace>['listRunningSessions']>>;
 
@@ -122,7 +122,7 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
         <div>
           <div className="section-label">Laufende Sessions</div>
           <p className="text-xs text-zinc-500 mt-2">
-            Terminals laufen weiter, auch wenn CodeForge geschlossen oder aktualisiert wird. Beitreten oeffnet den Workspace genau so wie vorher.
+            Terminals laufen weiter, auch wenn FancyCode geschlossen oder aktualisiert wird. Beitreten oeffnet den Workspace genau so wie vorher.
           </p>
         </div>
         <button onClick={() => void refresh()} disabled={loading} className="text-zinc-400 hover:text-zinc-200 disabled:opacity-50" title="Neu laden">

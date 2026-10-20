@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CodeForge Web: serves the CodeForge UI and runs its terminals on this server.
+// FancyCode Web: serves the FancyCode UI and runs its terminals on this server.
 //
 // Security model (fail closed):
 //  - Listens on 127.0.0.1 only; the public hostname reaches it through a Cloudflare Tunnel.
@@ -45,7 +45,7 @@ const configError = [
   ALLOWED_EMAILS.size === 0 && 'CODEFORGE_ALLOWED_EMAILS',
 ].filter(Boolean);
 if (configError.length) {
-  console.error(`[CodeForge Web] Missing configuration: ${configError.join(', ')}. Refusing to start.`);
+  console.error(`[FancyCode Web] Missing configuration: ${configError.join(', ')}. Refusing to start.`);
   process.exit(1);
 }
 
@@ -638,7 +638,7 @@ server.on('upgrade', async (req, socket, head) => {
       if (msg?.type !== 'ipc-call' || typeof msg.method !== 'string') return;
       const reply = (payload) => ws.readyState === ws.OPEN && ws.send(JSON.stringify({ type: 'ipc-response', id: msg.id, ...payload }));
       const handler = handlers.get(msg.method);
-      if (!handler) return reply({ error: `In CodeForge Web nicht verfuegbar: ${msg.method}` });
+      if (!handler) return reply({ error: `In FancyCode Web nicht verfuegbar: ${msg.method}` });
       try {
         reply({ result: await handler(conn, ...(Array.isArray(msg.args) ? msg.args : [])) });
       } catch (error) {
@@ -656,10 +656,10 @@ server.on('upgrade', async (req, socket, head) => {
 try {
   execFileSync('tmux', ['-V'], { stdio: 'ignore' });
 } catch {
-  console.error('[CodeForge Web] tmux is required.');
+  console.error('[FancyCode Web] tmux is required.');
   process.exit(1);
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`[CodeForge Web] http://${HOST}:${PORT} -> ${PUBLIC_ORIGIN} (Access team ${TEAM_DOMAIN}, ${ALLOWED_EMAILS.size} e-mail(s))`);
+  console.log(`[FancyCode Web] http://${HOST}:${PORT} -> ${PUBLIC_ORIGIN} (Access team ${TEAM_DOMAIN}, ${ALLOWED_EMAILS.size} e-mail(s))`);
 });
