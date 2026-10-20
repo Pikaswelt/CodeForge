@@ -20,13 +20,26 @@ function findNode() {
   });
 }
 
+// Unix socket paths are limited to about 107 bytes. A long data folder (long user name, custom
+// --user-data-dir) would make listen() fail with EINVAL, so such sockets move to a short private
+// runtime folder instead. Both sides derive the same path from the data folder.
+function unixSocketPath(preferred, name, folderHash) {
+  if (Buffer.byteLength(preferred) <= 100) return preferred;
+  const os = require('node:os');
+  const runtime = process.env.XDG_RUNTIME_DIR && fs.existsSync(process.env.XDG_RUNTIME_DIR)
+    ? process.env.XDG_RUNTIME_DIR
+    : path.join(os.tmpdir(), `codeforge-${typeof process.getuid === 'function' ? process.getuid() : 'user'}`);
+  fs.mkdirSync(runtime, { recursive: true, mode: 0o700 });
+  return path.join(runtime, `codeforge-${name}-${folderHash}.sock`);
+}
+
 function createSessionClient({ userDataDir, isPackaged, resourcesPath }) {
   const baseDir = path.join(userDataDir, 'session-host');
   // One host per data folder (dev and installed builds keep separate sessions and tokens).
   const folderHash = crypto.createHash('sha1').update(path.resolve(userDataDir).toLowerCase()).digest('hex').slice(0, 12);
   const pipePath = process.platform === 'win32'
     ? `\\\\.\\pipe\\codeforge-sessions-${String(process.env.USERNAME || 'user').replace(/[^a-z0-9_-]/gi, '_')}-${folderHash}`
-    : path.join(baseDir, 'host.sock');
+    : unixSocketPath(path.join(baseDir, 'host.sock'), 'sessions', folderHash);
   const tokenFile = path.join(baseDir, 'token');
 
   let socket = null;
@@ -269,4 +282,4 @@ function createSessionClient({ userDataDir, isPackaged, resourcesPath }) {
   };
 }
 
-module.exports = { createSessionClient };
+module.exports = { createSessionClient, unixSocketPath };

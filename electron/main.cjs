@@ -7,11 +7,12 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Main Process Unhandled Rejection]:', reason);
 });
 
-// Until 2.10 the app was called CodeForge and kept its data (settings, chats, keys, running
-// sessions, agy logins) in a "CodeForge" folder. Keep using that folder so nothing is lost after
-// the rename. This must run before the single instance lock, which lives in the data folder.
+// Until 2.10 the app was called CodeForge. Installed builds keep their data folder through the
+// rename, because it is named after package.json "name" (codeforge-desktop), which stays. Started
+// from the sources (npm run dev) Electron uses productName instead, which was "CodeForge": keep
+// using that folder there. Must run before the single instance lock, which lives in the folder.
 (() => {
-  if (app.commandLine.hasSwitch('user-data-dir')) return;
+  if (app.isPackaged || app.commandLine.hasSwitch('user-data-dir')) return;
   const legacy = require('node:path').join(app.getPath('appData'), 'CodeForge');
   if (require('node:fs').existsSync(legacy)) app.setPath('userData', legacy);
 })();
@@ -43,7 +44,7 @@ const DiscordRPC = require('discord-rpc');
 const { setupUpdater, fetchReleaseNotes } = require('./updater.cjs');
 const { setupWhisper } = require('./whisper.cjs');
 const sftp = require('./sftp.cjs');
-const { createSessionClient } = require('./session-client.cjs');
+const { createSessionClient, unixSocketPath } = require('./session-client.cjs');
 let updater = null;
 const whisper = setupWhisper({ app, getWindow: () => mainWindow });
 
@@ -3695,7 +3696,9 @@ async function captureWindow() {
 function controlPipePath() {
   const hash = crypto.createHash('sha1').update(path.resolve(app.getPath('userData')).toLowerCase()).digest('hex').slice(0, 12);
   const user = String(process.env.USERNAME || process.env.USER || 'user').replace(/[^a-z0-9_-]/gi, '_');
-  return process.platform === 'win32' ? `\\\\.\\pipe\\codeforge-control-${user}-${hash}` : path.join(sessionHostDir(), 'control.sock');
+  return process.platform === 'win32'
+    ? `\\\\.\\pipe\\codeforge-control-${user}-${hash}`
+    : unixSocketPath(path.join(sessionHostDir(), 'control.sock'), 'control', hash);
 }
 
 function startControlServer() {
