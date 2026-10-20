@@ -15,3 +15,7 @@ coverage/
 codeforge_review_report.md
 graphify-out/
 .cursor/
+
+# Signierschluessel nie einchecken (liegen als CI-Secrets bzw. ausserhalb des Repos).
+*.keystore
+*.jks

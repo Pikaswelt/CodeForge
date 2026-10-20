@@ -3,10 +3,11 @@ name: Android APK
 # Builds the Android app (CodeForge Mobile) as an installable APK. Every run uploads it as a
 # workflow artifact; for a published release it is attached to the release as well.
 #
-# Signing: set the repository secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
-# ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD to sign with a private key. Without them the
-# project keystore (android/app/codeforge.keystore) is used, so updates still install over
-# each other.
+# Signing: the release key lives only in the repository secrets ANDROID_KEYSTORE_BASE64,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. The old CodeForge key
+# (ANDROID_OLD_KEYSTORE_BASE64, ANDROID_OLD_KEYSTORE_PASSWORD) is only used together with
+# android/app/signing-lineage.bin, so installed apps accept the new key as an update.
+# Without the secrets (pull requests from forks) the APK is signed with a throwaway debug key.
 
 on:
   push:
@@ -50,17 +51,27 @@ jobs:
       - name: Use private signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          OLD_KEYSTORE_BASE64: ${{ secrets.ANDROID_OLD_KEYSTORE_BASE64 }}
         if: env.KEYSTORE_BASE64 != ''
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-          echo "CODEFORGE_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
-          echo "CODEFORGE_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
-          echo "CODEFORGE_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
-          echo "CODEFORGE_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "FANCYCODE_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          echo "FANCYCODE_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "FANCYCODE_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "FANCYCODE_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          if [ -n "$OLD_KEYSTORE_BASE64" ]; then
+            echo "$OLD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/old.keystore"
+            echo "OLD_KEYSTORE_FILE=$RUNNER_TEMP/old.keystore" >> "$GITHUB_ENV"
+            echo "OLD_KEYSTORE_PASSWORD=${{ secrets.ANDROID_OLD_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          fi
 
       - name: Build APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Sign with key rotation
+        if: env.OLD_KEYSTORE_FILE != ''
+        run: scripts/sign-apk-rotated.sh android/app/build/outputs/apk/release/app-release.apk
 
       - name: Name APK
         id: apk

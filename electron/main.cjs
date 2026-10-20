@@ -3185,19 +3185,24 @@ function resolveAgyAccountHome(accountId) {
 
 function ensureAgyAccountHome(accountId) {
   const root = getAgyAccountsRoot();
-  if (!fs.existsSync(root)) {
+  if (process.platform !== 'win32') {
+    // The folders hold OAuth tokens: owner only, also for folders created by older versions.
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(root, 0o700); } catch (_) {}
+  } else if (!fs.existsSync(root)) {
     fs.mkdirSync(root, { recursive: true });
     // The folders hold OAuth tokens: keep them readable for the current Windows user only.
-    if (process.platform === 'win32') {
-      const user = process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${process.env.USERNAME}` : process.env.USERNAME;
-      try {
-        require('node:child_process').execFileSync('icacls', [root, '/inheritance:r', '/grant:r', `${user}:(OI)(CI)F`], { windowsHide: true, stdio: 'ignore' });
-      } catch (_) {}
-    }
+    const user = process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${process.env.USERNAME}` : process.env.USERNAME;
+    try {
+      require('node:child_process').execFileSync('icacls', [root, '/inheritance:r', '/grant:r', `${user}:(OI)(CI)F`], { windowsHide: true, stdio: 'ignore' });
+    } catch (_) {}
   }
   const home = resolveAgyAccountHome(accountId);
+  if (process.platform !== 'win32' && fs.existsSync(home)) {
+    try { fs.chmodSync(home, 0o700); } catch (_) {}
+  }
   if (!fs.existsSync(home)) {
-    fs.mkdirSync(home, { recursive: true });
+    fs.mkdirSync(home, { recursive: true, mode: 0o700 });
     // Carry over agy preferences (model, permissions, global instructions), never login data.
     const realGemini = path.join(app.getPath('home'), '.gemini');
     const seeds = [

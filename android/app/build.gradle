@@ -6,9 +6,11 @@ def appVersion = packageJson.version.toString()
 def versionParts = appVersion.tokenize('.-').take(3).collect { it.isInteger() ? it.toInteger() : 0 }
 def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
 
-// Signing: a private keystore from the environment (CI secrets) when set, otherwise the
-// project keystore, so every build can be installed over the previous one.
-def envKeystore = System.getenv('CODEFORGE_KEYSTORE_FILE')
+// Signing: the release key comes from the environment (CI secrets or a local file outside the
+// repository). Without it the build falls back to the Android debug key, which cannot install
+// over a release build. CI re-signs the release APK with scripts/sign-apk-rotated.sh so devices
+// that have the old CodeForge key accept the new key through android/app/signing-lineage.bin.
+def envKeystore = System.getenv('FANCYCODE_KEYSTORE_FILE')
 
 android {
     namespace = "app.codeforge.desktop"
@@ -27,27 +29,22 @@ android {
         }
     }
     signingConfigs {
-        codeforge {
+        release {
             if (envKeystore) {
                 storeFile file(envKeystore)
-                storePassword System.getenv('CODEFORGE_KEYSTORE_PASSWORD')
-                keyAlias System.getenv('CODEFORGE_KEY_ALIAS')
-                keyPassword System.getenv('CODEFORGE_KEY_PASSWORD')
-            } else {
-                storeFile file('codeforge.keystore')
-                storePassword 'codeforge'
-                keyAlias 'codeforge'
-                keyPassword 'codeforge'
+                storePassword System.getenv('FANCYCODE_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('FANCYCODE_KEY_ALIAS')
+                keyPassword System.getenv('FANCYCODE_KEY_PASSWORD')
             }
         }
     }
     buildTypes {
         debug {
-            signingConfig signingConfigs.codeforge
+            signingConfig envKeystore ? signingConfigs.release : signingConfigs.debug
         }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.codeforge
+            signingConfig envKeystore ? signingConfigs.release : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

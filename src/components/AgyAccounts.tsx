@@ -135,6 +135,9 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
         Der Start-Button auf Home oeffnet fuer jeden Account ein eigenes agy-Terminal (bis zu {MAX_AGY_ACCOUNTS}) oder kann frei belegt werden (z. B. 5x Agy + Claude Code, Aufteilung auf PC und V-Server). Jeder Account hat einen
         eigenen Login-Ordner auf diesem PC; beim ersten Start fragt agy einmal nach dem Google-Login, danach bleibt er gespeichert.
       </p>
+      <p className="text-[11px] leading-4 text-amber-300/80 mt-2">
+        Nur eigene Google-Accounts eintragen. Logins nicht an andere weitergeben und nicht nutzen, um Nutzungslimits zu umgehen; das verstoesst gegen die Google-Nutzungsbedingungen und kann zur Sperre fuehren.
+      </p>
     </section>
   );
 }
