@@ -676,21 +676,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [chats, setChats] = useState<Chat[]>(() => readStorage('chats', []));
   const [savedTerminalWorkspaces, setSavedTerminalWorkspaces] = useState<Chat[]>(() => readStorage('terminalWorkspaces', []));
   const [apiProviders, setApiProviders] = useState<ApiProviderConfig[]>(() => {
+    // Die eingebaute KI (über den FancyCode-Server, Login nötig) steht immer an erster Stelle.
+    const builtin: ApiProviderConfig = { id: 'fancycode-ai', name: 'FancyCode AI (gratis)', provider: 'fancycode', baseUrl: '', apiKey: '', model: 'gpt-oss-120b' };
+    const withBuiltin = (list: ApiProviderConfig[]) => [builtin, ...list.filter((item) => item.id !== builtin.id)];
     const stored = readStorage<ApiProviderConfig[] | null>('apiProviders', null);
-    if (stored) return stored;
+    if (stored) return withBuiltin(stored);
     // Migrate the single connection from the first API-chat version.
     const legacy = readStorage<Partial<ApiProviderConfig> & { apiKey?: string }>('apiChatConfig', {});
     if (legacy.provider && (legacy.apiKey || legacy.baseUrl)) {
-      return [{
+      return withBuiltin([{
         id: newId(),
         name: legacy.provider === 'anthropic' ? 'Anthropic' : legacy.provider === 'openai' ? 'OpenAI' : 'OpenAI-kompatibel',
         provider: legacy.provider,
         baseUrl: legacy.baseUrl || '',
         apiKey: legacy.apiKey || '',
         model: legacy.model || '',
-      }];
+      }]);
     }
-    return [];
+    return withBuiltin([]);
   });
   const [apiChatConfig, setApiChatConfig] = useState<ApiChatConfig>(() => {
     const stored = readStorage<Partial<ApiChatConfig>>('apiChatConfig', {});

@@ -1,6 +1,14 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
 import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
 
+export type FancyAccount = {
+  id: string;
+  name: string;
+  avatar: string;
+  provider: 'discord' | 'github' | 'guest';
+  quota: { used: number; limit: number };
+};
+
 type NativeTabBounds = {
   x: number;
   y: number;
@@ -154,6 +162,16 @@ declare global {
         messages: { role: 'user' | 'assistant'; content: string }[];
       }): Promise<{ text: string; tokens: number }>;
       apiChatModels(input: { provider: string; baseUrl: string; apiKey: string }): Promise<string[]>;
+      fancyAccount?: {
+        available(): Promise<boolean>;
+        me(): Promise<FancyAccount | null>;
+        wasGranted(): Promise<boolean>;
+        login(provider: 'discord' | 'github', invite?: string): Promise<FancyAccount>;
+        guest(invite: string): Promise<FancyAccount>;
+        checkInvite(invite: string): Promise<boolean>;
+        cancel(): Promise<void>;
+        logout(): Promise<boolean>;
+      };
       apiChatProjectFiles(root: string): Promise<string[]>;
       getSyncServerStatus(): Promise<{ running: boolean; url?: string; ip?: string; port?: number }>;
       runTerminalCommand(request: { id: string; command: string; cwd?: string }): Promise<{ exitCode?: number; error?: string }>;

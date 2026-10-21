@@ -1,4 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol, net, nativeImage, session, systemPreferences } = require('electron');
+const fancyAccount = require('./fancy-account.cjs');
 
 process.on('uncaughtException', (error) => {
   console.error('[Main Process Uncaught Exception]:', error);
@@ -4264,8 +4265,25 @@ ipcMain.handle('device:status', () => {
     }
   };
 
+  // FancyCode-Konto (Einladung, Gast, Discord, GitHub) und eingebaute KI.
+  ipcMain.handle('fancy:available', () => !!fancyAccount.apiBase());
+  ipcMain.handle('fancy:me', () => fancyAccount.me());
+  ipcMain.handle('fancy:was-granted', () => fancyAccount.wasGranted());
+  ipcMain.handle('fancy:login', (_event, provider, invite) => fancyAccount.login(String(provider || ''), invite ? String(invite).slice(0, 40) : ''));
+  ipcMain.handle('fancy:guest', (_event, invite) => fancyAccount.guest(String(invite || '')));
+  ipcMain.handle('fancy:check-invite', (_event, invite) => fancyAccount.checkInvite(String(invite || '')));
+  ipcMain.handle('fancy:cancel', () => fancyAccount.cancelLogin());
+  ipcMain.handle('fancy:logout', () => fancyAccount.logout());
+
   ipcMain.handle('apichat:send', async (_event, input = {}) => {
     const { provider, baseUrl, apiKey, model, system, messages = [] } = input;
+    if (provider === 'fancycode') {
+      const history = messages
+        .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && item.content)
+        .slice(-40)
+        .map((item) => ({ role: item.role, content: String(item.content).slice(0, 60000) }));
+      return fancyAccount.chat(system, history);
+    }
     if (!model) throw new Error('Kein Modell angegeben.');
     const base = apiBaseUrl(provider, baseUrl);
     const history = messages
@@ -4296,6 +4314,7 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('apichat:models', async (_event, input = {}) => {
     const { provider, baseUrl, apiKey } = input;
+    if (provider === 'fancycode') return ['gpt-oss-120b'];
     const response = await fetch(`${apiBaseUrl(provider, baseUrl)}/models`, { headers: apiHeaders(provider, apiKey) });
     if (!response.ok) throw new Error(`Modelle konnten nicht geladen werden (${response.status}): ${await readApiError(response)}`);
     const data = await response.json();

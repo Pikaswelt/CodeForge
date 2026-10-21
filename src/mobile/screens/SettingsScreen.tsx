@@ -403,6 +403,7 @@ function ProviderPage() {
 }
 
 const PROVIDER_PRESETS: Record<ApiProviderConfig['provider'], { name: string; baseUrl: string; model: string }> = {
+  fancycode: { name: 'FancyCode AI', baseUrl: '', model: 'gpt-oss-120b' },
   anthropic: { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-5' },
   openai: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
   'openai-compatible': { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: '' },

@@ -49,6 +49,13 @@ export function ApiProvidersSettings() {
   return (
     <div className="space-y-3 mt-3">
       {apiProviders.map((provider) => {
+        if (provider.provider === 'fancycode') {
+          return (
+            <div key={provider.id} className="rounded-xl border border-orange-400/20 bg-orange-500/[0.06] p-3 text-xs text-zinc-300">
+              <span className="font-medium text-orange-200">{provider.name}</span> – eingebaute KI, kostenlos mit Tageslimit. Läuft über dein FancyCode-Konto, kein API-Key nötig.
+            </div>
+          );
+        }
         const typeInfo = API_PROVIDER_TYPES.find((item) => item.id === provider.provider) || API_PROVIDER_TYPES[0];
         return (
           <div key={provider.id} className="rounded-xl border border-white/10 bg-white/[0.025] p-3 space-y-2">

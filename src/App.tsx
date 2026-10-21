@@ -18,6 +18,7 @@ import { VoiceIndicator, VoiceInstallModal } from './components/VoiceSettings';
 import { syncWakeMode } from './voice';
 import { useCompactLayout } from './useCompactLayout';
 import { isWebBuild, useWallpaper } from './wallpaper';
+import { FancyAccessGate } from './components/FancyAccessGate';
 import type { UpdateSpotlight } from './types';
 
 // Modals and widgets load on demand to keep startup fast.
@@ -457,7 +458,9 @@ export default function App() {
           {showIntro ? (
             <VersionIntro key="version-intro" version={version} updated={updated} onComplete={finishIntro} />
           ) : (
-            <AppLayout key="layout" />
+            <FancyAccessGate key="layout">
+              <AppLayout />
+            </FancyAccessGate>
           )}
         </AnimatePresence>
       )}

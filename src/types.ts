@@ -416,7 +416,7 @@ export type CodexPluginInfo = {
   removable: boolean;
 };
 
-export type ApiChatProvider = 'anthropic' | 'openai' | 'openai-compatible';
+export type ApiChatProvider = 'fancycode' | 'anthropic' | 'openai' | 'openai-compatible';
 
 export type ApiProviderConfig = {
   id: string;

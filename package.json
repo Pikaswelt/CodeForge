@@ -2,7 +2,7 @@
   "name": "codeforge-desktop",
   "desktopName": "codeforge-desktop.desktop",
   "private": true,
-  "version": "2.10.2",
+  "version": "2.11.0",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "Pikaswelt <125045294+Pikaswelt@users.noreply.github.com>",
   "type": "module",
@@ -143,5 +143,6 @@
       "owner": "Pikaswelt",
       "repo": "CodeForge"
     }
-  }
+  },
+  "fancyApi": "https://fancygames-api.christina-nave1902.workers.dev"
 }

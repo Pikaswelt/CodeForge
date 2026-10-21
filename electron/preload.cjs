@@ -84,6 +84,16 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     return () => ipcRenderer.removeListener(`terminal:output:${id}`, listener);
   },
   apiChatSend: (input) => ipcRenderer.invoke('apichat:send', input),
+  fancyAccount: {
+    available: () => ipcRenderer.invoke('fancy:available'),
+    me: () => ipcRenderer.invoke('fancy:me'),
+    wasGranted: () => ipcRenderer.invoke('fancy:was-granted'),
+    login: (provider, invite) => ipcRenderer.invoke('fancy:login', provider, invite),
+    guest: (invite) => ipcRenderer.invoke('fancy:guest', invite),
+    checkInvite: (invite) => ipcRenderer.invoke('fancy:check-invite', invite),
+    cancel: () => ipcRenderer.invoke('fancy:cancel'),
+    logout: () => ipcRenderer.invoke('fancy:logout'),
+  },
   apiChatModels: (input) => ipcRenderer.invoke('apichat:models', input),
   apiChatProjectFiles: (root) => ipcRenderer.invoke('apichat:project-files', root),
   createShellSession: (request) => ipcRenderer.invoke('shell:create', request),
