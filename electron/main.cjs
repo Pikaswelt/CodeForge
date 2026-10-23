@@ -4387,8 +4387,8 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('fancy:guest', (_event, invite) => fancyAccount.guest(String(invite || '')));
   ipcMain.handle('fancy:check-invite', (_event, invite) => fancyAccount.checkInvite(String(invite || '')));
   ipcMain.handle('fancy:cancel', () => fancyAccount.cancelLogin());
-  ipcMain.handle('fancy:usage', () => fancyAccount.usage());
-  ipcMain.handle('fancy:usage-reset', () => fancyAccount.resetUsage());
+  ipcMain.handle('fancy:usage', (_event, app) => fancyAccount.usage(String(app || '')));
+  ipcMain.handle('fancy:usage-reset', (_event, app) => fancyAccount.resetUsage(String(app || '')));
   ipcMain.handle('fancy:logout', () => fancyAccount.logout());
 
   // Plugins: Katalog, Installation mit Prüfsumme, Entfernen.

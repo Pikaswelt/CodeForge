@@ -421,6 +421,8 @@ export function FancyCodePanel({
             setThinking(false);
             push({ k: 'note', id: uid(), level: 'error', text: ev.status === 401 ? 'Nicht angemeldet. Melde dich mit deinem FancyServers-Konto an.' : ev.message });
             if (ev.status === 401) setAccount(null);
+            // Nach einem Limit-Fehler den Balken sofort auf den echten Stand bringen.
+            else bridge.send(id, { type: 'command', name: 'usage' });
             break;
           case 'done':
             setRunning(false);

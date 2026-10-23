@@ -160,12 +160,16 @@ async function me() {
   return r.json();
 }
 
-// Verbrauch der eingebauten KI: 5-Stunden- und 7-Tage-Fenster kommen direkt vom Server.
-async function usage() {
+// Die eingebaute KI zählt pro App: fancycode-cli sind die Tokens des FancyCode-Agenten,
+// fancycode die Nachrichten des einfachen Chats. Beide Fenster kommen direkt vom Server.
+const USAGE_APPS = new Set(['fancycode', 'fancycode-cli', 'fancygames', 'fancyagent']);
+const usageApp = (app) => (USAGE_APPS.has(String(app || '')) ? String(app) : APP_ID);
+
+async function usage(app) {
   if (!apiBase()) throw new Error(mt('Der FancyCode-Server ist in dieser Version nicht eingerichtet.'));
   if (!getSession()) throw new Error(mt('Bitte melde dich an, um deine Nutzung zu sehen.'));
   const r = await fetch(`${apiBase()}/v1/usage`, {
-    headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': APP_ID },
+    headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': usageApp(app) },
     signal: AbortSignal.timeout(15000),
   });
   if (r.status === 401) {
@@ -177,12 +181,12 @@ async function usage() {
   return r.json();
 }
 
-// Verbraucht ein Reset-Guthaben und setzt beide Nutzungsfenster zurück.
-async function resetUsage() {
+// Verbraucht ein Reset-Guthaben der App und setzt beide Nutzungsfenster zurück.
+async function resetUsage(app) {
   if (!getSession()) throw new Error(mt('Bitte melde dich an, um dein Limit zurückzusetzen.'));
   const r = await fetch(`${apiBase()}/v1/usage/reset`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': APP_ID },
+    headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': usageApp(app) },
     signal: AbortSignal.timeout(15000),
   });
   if (r.status === 401) {

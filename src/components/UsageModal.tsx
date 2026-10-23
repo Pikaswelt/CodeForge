@@ -1,12 +1,33 @@
 import { tr, locale } from '../i18n';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Gauge, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react';
-import type { FancyUsage, FancyUsageWindow } from '../electron';
+import type { FancyUsage, FancyUsageUnit, FancyUsageWindow } from '../electron';
 import type { UsagePopupSeed } from '../AppContext';
+
+type Kind = 'agent' | 'chat';
+type UsageMap = Record<Kind, FancyUsage | null>;
+
+const APPS: Record<Kind, 'fancycode-cli' | 'fancycode'> = {
+  agent: 'fancycode-cli',
+  chat: 'fancycode',
+};
+
+const TITLES: Record<Kind, string> = {
+  agent: 'FancyCode Agent',
+  chat: 'Chat',
+};
 
 const percent = (window: FancyUsageWindow) => Math.max(0, Math.min(100, Math.ceil((window.used / window.limit) * 100)));
 
 const barColor = (pct: number) => (pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-orange-500' : 'bg-amber-400');
+
+const cleanError = (error: unknown) =>
+  error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("Die Nutzung konnte nicht geladen werden.");
+
+function formatAmount(value: number, unit: FancyUsageUnit) {
+  if (unit === 'messages') return value.toLocaleString(locale());
+  return new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
 
 function resetLabel(window: FancyUsageWindow) {
   if (!window.used || !window.resetAt) return '';
@@ -19,30 +40,36 @@ function resetLabel(window: FancyUsageWindow) {
   });
 }
 
-// Verbrauch der eingebauten KI: zwei Fenster, nur Prozent und Balken, direkt vom Server.
-// `initial` sind Werte, die die FancyCode-Ansicht schon kennt; das Popup zeigt sie sofort und
-// aktualisiert im Hintergrund.
+// Verbrauch der eingebauten KI. Der Agent zählt Tokens, der einfache Chat Nachrichten – beide
+// Fenster und ihre Resets liegen serverseitig in getrennten Apps (fancycode-cli / fancycode).
+// `initial` sind die Agent-Werte, die die FancyCode-Ansicht schon kennt; das Popup zeigt sie
+// sofort und aktualisiert im Hintergrund.
 export default function UsageModal({ onClose, initial }: { onClose(): void; initial?: UsagePopupSeed | null }) {
-  const [usage, setUsage] = useState<FancyUsage | null>(() => (initial ? (initial as FancyUsage) : null));
+  const [usage, setUsage] = useState<UsageMap>(() => ({ agent: initial ? (initial as FancyUsage) : null, chat: null }));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [resetting, setResetting] = useState(false);
+  const [resetting, setResetting] = useState<Kind | null>(null);
   const [message, setMessage] = useState('');
   const hasData = useRef(Boolean(initial));
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    setMessage('');
     try {
       const api = window.agentWorkspace?.fancyAccount;
       if (!api) throw new Error(tr('Die Nutzung zeigt nur die Desktop-App.'));
-      setUsage(await api.usage());
+      const [agent, chat] = await Promise.allSettled([api.usage(APPS.agent), api.usage(APPS.chat)]);
+      const next: UsageMap = {
+        agent: agent.status === 'fulfilled' ? agent.value : null,
+        chat: chat.status === 'fulfilled' ? chat.value : null,
+      };
+      if (!next.agent && !next.chat) throw (agent.status === 'rejected' ? agent.reason : chat.status === 'rejected' ? chat.reason : new Error(''));
+      setUsage(next);
       hasData.current = true;
     } catch (err) {
       // Mit Werten aus der FancyCode-Ansicht bleibt das Popup gefuellt, statt einen Fehler zu zeigen.
-      if (!hasData.current) {
-        setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("Die Nutzung konnte nicht geladen werden."));
-      }
+      if (!hasData.current) setError(cleanError(err));
     } finally {
       setLoading(false);
     }
@@ -52,26 +79,43 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
     void load();
   }, [load]);
 
-  const reset = async () => {
+  const reset = async (kind: Kind) => {
     const api = window.agentWorkspace?.fancyAccount;
-    if (!api || !usage || usage.resets <= 0) return;
+    const group = usage[kind];
+    if (!api || !group || group.resets <= 0) return;
     const ok = window.confirm(
-      tr("Gesamtes Limit zurücksetzen? Danach sind noch {left} von {total} Resets übrig.", { left: usage.resets - 1, total: usage.resets }),
+      tr("Limit für {name} zurücksetzen? Danach sind noch {left} von {total} Resets übrig.", {
+        name: TITLES[kind],
+        left: group.resets - 1,
+        total: group.resets,
+      }),
     );
     if (!ok) return;
-    setResetting(true);
+    setResetting(kind);
     setError('');
     setMessage('');
     try {
-      const next = await api.resetUsage();
-      setUsage({ fiveHour: next.fiveHour, weekly: next.weekly, resets: next.resets });
+      const next = await api.resetUsage(APPS[kind]);
+      setUsage((current) => ({
+        ...current,
+        [kind]: {
+          ...group,
+          fiveHour: next.fiveHour,
+          weekly: next.weekly,
+          resets: next.resets,
+          unit: next.unit || group.unit,
+          plan: next.plan || group.plan,
+        },
+      }));
       setMessage(tr("Limit zurückgesetzt."));
     } catch (err) {
-      setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("Das Limit konnte nicht zurückgesetzt werden."));
+      setError(cleanError(err));
     } finally {
-      setResetting(false);
+      setResetting(null);
     }
   };
+
+  const sections: Kind[] = (['agent', 'chat'] as Kind[]).filter((kind) => usage[kind]);
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-5 backdrop-blur-lg" onClick={onClose}>
@@ -86,7 +130,7 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
             </div>
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-300/80">
-                {tr("FancyCode AI")}{usage?.plan ? ` · ${usage.plan === 'max' ? 'Max' : usage.plan === 'pro' ? 'Pro' : 'Free'}` : ''}
+                {tr("FancyCode AI")}{usage.agent?.plan || usage.chat?.plan ? ` · ${(usage.agent?.plan || usage.chat?.plan) === 'max' ? 'Max' : (usage.agent?.plan || usage.chat?.plan) === 'pro' ? 'Pro' : 'Free'}` : ''}
               </div>
               <h2 className="text-lg font-semibold text-zinc-100">{tr("Nutzung")}</h2>
             </div>
@@ -100,13 +144,13 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
           </button>
         </div>
 
-        {loading && !usage && (
+        {loading && !sections.length && (
           <div className="flex items-center gap-2 py-10 text-sm text-zinc-400">
             <Loader2 className="h-4 w-4 animate-spin" /> {tr("Limit wird geladen …")}
           </div>
         )}
 
-        {!usage && error && (
+        {!sections.length && error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {error}
             <button onClick={() => void load()} className="mt-3 flex items-center gap-2 text-xs text-zinc-300 hover:text-zinc-100">
@@ -115,28 +159,21 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
           </div>
         )}
 
-        {usage && (
-          <div className="space-y-5">
-            <UsageBar label={tr("5-Stunden-Limit")} window={usage.fiveHour} />
-            <UsageBar label={tr("Wochenlimit (7 Tage)")} window={usage.weekly} />
-
-            <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
-              <div className="min-w-0">
-                <div className="text-[13px] text-zinc-300">{tr("Limit-Resets")}</div>
-                <div className="text-[11px] text-zinc-600">
-                  {usage.resets > 0 ? tr("{count} verfügbar – setzt beide Fenster zurück", { count: usage.resets }) : tr("Keine Resets verfügbar")}
-                </div>
+        {sections.length > 0 && (
+          <div className="max-h-[68vh] space-y-5 overflow-y-auto pr-1">
+            {sections.map((kind, index) => (
+              <div key={kind} className={index > 0 ? 'border-t border-white/10 pt-5' : undefined}>
+                <UsageSection
+                  kind={kind}
+                  group={usage[kind]!}
+                  resetting={resetting === kind}
+                  disabled={resetting !== null}
+                  onReset={() => void reset(kind)}
+                />
               </div>
-              <button
-                onClick={() => void reset()}
-                disabled={usage.resets <= 0 || resetting}
-                className="flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-40"
-              >
-                {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                {tr("Zurücksetzen")}
-              </button>
-            </div>
+            ))}
             {message && <div className="text-[11px] text-emerald-300">{message}</div>}
+            {error && <div className="text-[11px] text-red-300">{error}</div>}
           </div>
         )}
 
@@ -155,9 +192,55 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
   );
 }
 
-function UsageBar({ label, window }: { label: string; window: FancyUsageWindow }) {
+function UsageSection({
+  kind,
+  group,
+  resetting,
+  disabled,
+  onReset,
+}: {
+  kind: Kind;
+  group: FancyUsage;
+  resetting: boolean;
+  disabled: boolean;
+  onReset(): void;
+}) {
+  const unit: FancyUsageUnit = group.unit || (kind === 'agent' ? 'tokens' : 'messages');
+  return (
+    <section>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="text-[13px] font-semibold text-zinc-100">{tr(TITLES[kind])}</h3>
+        <span className="text-[10px] uppercase tracking-wider text-zinc-500">{unit === 'tokens' ? tr('Tokens') : tr('Nachrichten')}</span>
+      </div>
+      <div className="space-y-4">
+        <UsageBar label={tr("5-Stunden-Limit")} window={group.fiveHour} unit={unit} />
+        <UsageBar label={tr("Wochenlimit (7 Tage)")} window={group.weekly} unit={unit} />
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[13px] text-zinc-300">{tr("Limit-Resets")}</div>
+          <div className="text-[11px] text-zinc-600">
+            {group.resets > 0 ? tr("{count} verfügbar – setzt beide Fenster zurück", { count: group.resets }) : tr("Keine Resets verfügbar")}
+          </div>
+        </div>
+        <button
+          onClick={onReset}
+          disabled={group.resets <= 0 || disabled}
+          className="flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-40"
+        >
+          {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+          {tr("Zurücksetzen")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function UsageBar({ label, window, unit }: { label: string; window: FancyUsageWindow; unit: FancyUsageUnit }) {
   const pct = percent(window);
   const reset = resetLabel(window);
+  const unitLabel = unit === 'tokens' ? tr('Tokens') : tr('Nachrichten');
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
@@ -175,8 +258,11 @@ function UsageBar({ label, window }: { label: string; window: FancyUsageWindow }
           aria-label={label}
         />
       </div>
-      <div className="mt-1 text-[11px] text-zinc-600">
-        {window.used >= window.limit ? tr("Limit erreicht") : reset ? `Reset: ${reset}` : tr("Noch nichts verbraucht")}
+      <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-zinc-600">
+        <span className="tabular-nums">
+          {formatAmount(window.used, unit)} / {formatAmount(window.limit, unit)} {unitLabel}
+        </span>
+        <span>{window.used >= window.limit ? tr("Limit erreicht") : reset ? `Reset: ${reset}` : tr("Noch nichts verbraucht")}</span>
       </div>
     </div>
   );

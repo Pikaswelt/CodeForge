@@ -13,7 +13,16 @@ export type FancyAccount = {
 };
 
 export type FancyUsageWindow = { used: number; limit: number; resetAt: number };
-export type FancyUsage = { fiveHour: FancyUsageWindow; weekly: FancyUsageWindow; resets: number; plan?: FancyPlan };
+// FancyCode zählt pro App: der Agent in Tokens (fancycode-cli), der einfache Chat in Nachrichten.
+export type FancyUsageUnit = 'tokens' | 'messages';
+export type FancyUsage = {
+  fiveHour: FancyUsageWindow;
+  weekly: FancyUsageWindow;
+  resets: number;
+  unit?: FancyUsageUnit;
+  plan?: FancyPlan;
+};
+export type FancyUsageApp = 'fancycode' | 'fancycode-cli';
 
 export type FancyPluginManifest = {
   id: string;
@@ -209,8 +218,8 @@ declare global {
         guest(invite: string): Promise<FancyAccount>;
         checkInvite(invite: string): Promise<boolean>;
         cancel(): Promise<void>;
-        usage(): Promise<FancyUsage>;
-        resetUsage(): Promise<FancyUsage & { ok: true }>;
+        usage(app?: FancyUsageApp): Promise<FancyUsage>;
+        resetUsage(app?: FancyUsageApp): Promise<FancyUsage & { ok: true }>;
         logout(): Promise<boolean>;
       };
       plugins?: {

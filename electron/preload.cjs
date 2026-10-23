@@ -93,8 +93,8 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     guest: (invite) => ipcRenderer.invoke('fancy:guest', invite),
     checkInvite: (invite) => ipcRenderer.invoke('fancy:check-invite', invite),
     cancel: () => ipcRenderer.invoke('fancy:cancel'),
-    usage: () => ipcRenderer.invoke('fancy:usage'),
-    resetUsage: () => ipcRenderer.invoke('fancy:usage-reset'),
+    usage: (app) => ipcRenderer.invoke('fancy:usage', app),
+    resetUsage: (app) => ipcRenderer.invoke('fancy:usage-reset', app),
     logout: () => ipcRenderer.invoke('fancy:logout'),
   },
   plugins: {
