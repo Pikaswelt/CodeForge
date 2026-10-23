@@ -1,12 +1,12 @@
 import { tr } from '../i18n';
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Check, Copy, Loader2, Play, Plug, RefreshCw, Square, Wrench } from 'lucide-react';
+import { Bot, Check, Copy, Loader2, Plug, RefreshCw, Wrench } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import type { McpServerInfo, McpSessionInfo } from '../types';
 
 // The MCP tab: FancyCode Desktop's own MCP server, the servers Claude Code / Cursor / Codex spawn from their
-// config files, and a look at the tools each of them exposes. Starting a server speaks the real MCP
-// handshake; stopping it ends the process again.
+// config files, and a look at the tools each of them exposes. The own server starts with the app and is
+// always on; foreign servers are started by their tool, so here they are only shown with their state.
 
 const TRANSPORT_LABEL: Record<McpServerInfo['transport'], string> = {
   stdio: 'stdio (lokaler Prozess)',
@@ -15,17 +15,20 @@ const TRANSPORT_LABEL: Record<McpServerInfo['transport'], string> = {
   unknown: 'unbekannt',
 };
 
+// an/aus heisst: laeuft gerade eine Verbindung zu diesem Server (an) oder nicht (aus).
 function StatusBadge({ server, session }: { server: McpServerInfo; session?: McpSessionInfo }) {
-  const tone = session
+  const on = Boolean(session);
+  const missing = !on && server.status === 'missing-command';
+  const tone = on
     ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
-    : server.status === 'missing-command'
+    : missing
       ? 'text-red-300 bg-red-500/10 border-red-500/20'
-      : server.status === 'configured'
-        ? 'text-zinc-300 bg-white/[0.06] border-white/10'
-        : 'text-zinc-500 bg-white/[0.03] border-white/10';
+      : 'text-zinc-400 bg-white/[0.04] border-white/10';
   return (
-    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone}`}>
-      {session ? tr("läuft") : server.status === 'missing-command' ? tr("nicht gefunden") : 'bereit'}
+    <span className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${on ? 'bg-emerald-400' : missing ? 'bg-red-400' : 'bg-zinc-500'}`} />
+      {on ? tr("an") : tr("aus")}
+      {missing && <span className="text-red-300/80">· {tr("nicht gefunden")}</span>}
     </span>
   );
 }
@@ -52,18 +55,10 @@ function InfoRow({ label, value }: { label: string; value?: string }) {
 function ServerCard({
   server,
   session,
-  busy,
-  note,
-  canControl,
-  onToggle,
   extra,
 }: {
   server: McpServerInfo;
   session?: McpSessionInfo;
-  busy: boolean;
-  note?: { ok: boolean; text: string };
-  canControl: boolean;
-  onToggle(): void;
   extra?: React.ReactNode;
 }) {
   const tools = session?.tools || [];
@@ -92,20 +87,6 @@ function ServerCard({
             {session?.protocolVersion && <InfoRow label={tr("Protokoll")} value={session.protocolVersion} />}
           </div>
         </div>
-        {canControl && (
-          <button
-            onClick={onToggle}
-            disabled={busy}
-            className={`shrink-0 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors disabled:opacity-50 ${
-              session
-                ? 'border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-                : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-            }`}
-          >
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : session ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            {session ? tr("Stoppen") : tr("Starten")}
-          </button>
-        )}
       </div>
 
       {session && (
@@ -132,12 +113,6 @@ function ServerCard({
         </div>
       )}
 
-      {note && (
-        <div className={`mt-3 rounded-lg border px-3 py-2 text-[11px] ${note.ok ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-red-500/20 bg-red-500/10 text-red-300'}`}>
-          {note.text}
-        </div>
-      )}
-
       {extra}
     </div>
   );
@@ -149,15 +124,13 @@ export function McpSettings() {
   const [servers, setServers] = useState<McpServerInfo[]>([]);
   const [sessions, setSessions] = useState<McpSessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState('');
-  const [notes, setNotes] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [command, setCommand] = useState('');
   const [copied, setCopied] = useState(false);
   const [registerBusy, setRegisterBusy] = useState<'' | 'claude' | 'agy' | 'fancycode' | 'opencode'>('');
   const [registerResult, setRegisterResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const api = window.agentWorkspace;
-  const canControl = Boolean(api?.startMcpServer && api?.stopMcpServer);
+  const canSeeState = Boolean(api?.getMcpSessions);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -184,43 +157,6 @@ export function McpSettings() {
     // A server that stops on its own must not stay listed as running.
     return api?.onMcpSessionEnded?.(() => void refresh());
   }, [api, refresh]);
-
-  const toggle = async (server: McpServerInfo, session?: McpSessionInfo) => {
-    setBusyId(server.id);
-    setNotes((current) => ({ ...current, [server.id]: { ok: true, text: '' } }));
-    try {
-      if (session) {
-        const answer = await api!.stopMcpServer!({ id: server.id });
-        setNotes((current) => ({
-          ...current,
-          [server.id]: { ok: answer.ok, text: answer.ok ? tr("Server gestoppt.") : answer.error || tr("Stoppen fehlgeschlagen.") },
-        }));
-      } else {
-        const answer = await api!.startMcpServer!({ id: server.id });
-        const started = answer.session;
-        if (answer.ok && started) {
-          setSessions((current) => [...current.filter((item) => item.id !== server.id), started]);
-          setNotes((current) => ({
-            ...current,
-            [server.id]: { ok: true, text: `Verbunden: ${started.tools.length} Werkzeuge.` },
-          }));
-        } else {
-          setNotes((current) => ({
-            ...current,
-            [server.id]: { ok: false, text: answer.error || tr("Der Server liess sich nicht starten.") },
-          }));
-        }
-      }
-      await refresh();
-    } catch (error) {
-      setNotes((current) => ({
-        ...current,
-        [server.id]: { ok: false, text: error instanceof Error ? error.message : tr("Aktion fehlgeschlagen.") },
-      }));
-    } finally {
-      setBusyId('');
-    }
-  };
 
   const register = async (target: 'claude' | 'agy' | 'fancycode' | 'opencode') => {
     if (!api?.registerMcp) return;
@@ -249,14 +185,13 @@ export function McpSettings() {
 
   const sessionFor = (id: string) => sessions.find((session) => session.id === id);
   const ownSession = own ? sessionFor(own.id) : undefined;
-
   const registerButton = 'flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-200 hover:bg-white/[0.08] disabled:opacity-50';
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] leading-4 text-zinc-500">
-          {tr("MCP-Server verbinden Agenten mit FancyCode Desktop und anderen Werkzeugen. Hier startest du einen Server, um seine Werkzeuge zu sehen; Stoppen beendet den Prozess wieder.")}
+          {tr("MCP-Server verbinden Agenten mit FancyCode Desktop und anderen Werkzeugen. Der eigene Server laeuft immer; die anderen startet das jeweilige Tool selbst, hier steht nur, ob sie gerade an sind.")}
         </p>
         <button onClick={() => void refresh()} disabled={loading} className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.08] disabled:opacity-50">
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -264,9 +199,9 @@ export function McpSettings() {
         </button>
       </div>
 
-      {!canControl && (
+      {!canSeeState && (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
-          {tr("Server lassen sich nur in der Desktop-App starten und stoppen. Die Infos unten kommen aus deinen Konfigurationsdateien.")}
+          {tr("Ob ein Server gerade laeuft, zeigt nur die Desktop-App. Die Infos unten kommen aus deinen Konfigurationsdateien.")}
         </div>
       )}
 
@@ -281,10 +216,6 @@ export function McpSettings() {
             <ServerCard
               server={own}
               session={ownSession}
-              busy={busyId === own.id}
-              note={notes[own.id]}
-              canControl={canControl}
-              onToggle={() => void toggle(own, ownSession)}
               extra={
                 <div className="mt-3 space-y-3 border-t border-white/5 pt-3">
                   {api?.registerMcp && (
@@ -348,7 +279,7 @@ export function McpSettings() {
       <section>
         <div className="flex items-center justify-between">
           <div className="section-label">{tr("Gefundene Server (")}{servers.length})</div>
-          <div className="text-[10px] text-zinc-600">{sessions.length} verbunden</div>
+          <div className="text-[10px] text-zinc-600">{servers.filter((server) => sessionFor(server.id)).length} {tr("an")}</div>
         </div>
         {servers.length === 0 ? (
           <p className="mt-2 text-[11px] leading-4 text-zinc-500">
@@ -359,15 +290,7 @@ export function McpSettings() {
             {servers.map((server) => {
               const session = sessionFor(server.id);
               return (
-                <ServerCard
-                  key={server.id}
-                  server={server}
-                  session={session}
-                  busy={busyId === server.id}
-                  note={notes[server.id]}
-                  canControl={canControl && (Boolean(server.command) || Boolean(server.url))}
-                  onToggle={() => void toggle(server, session)}
-                />
+                <ServerCard key={server.id} server={server} session={session} />
               );
             })}
           </div>

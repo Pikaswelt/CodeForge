@@ -29,6 +29,7 @@ const EN: Record<string, string> = {
   '5 V-Server': '5 VPS',
   '5-Stunden-Limit': '5-hour limit',
   '8 Terminals': '8 terminals',
+  'an': 'on',
   'Ab neun Servern oeffnen sich die Terminals als Tabs statt im Grid.':
     'From nine servers on, terminals open as tabs instead of a grid.',
   'ab Pro': 'Pro and up',
@@ -151,6 +152,7 @@ const EN: Record<string, string> = {
   'Aufs Handy speichern': 'Save to phone',
   'Aus = Mikrofon-Buttons, Hotkey und Wake-Word ueberall deaktiviert.':
     'Off = microphone buttons, hotkey and wake word disabled everywhere.',
+  'aus': 'off',
   'aus:': 'off:',
   Ausfuehren: 'Run',
   'Ausfuehrung:': 'Execution:',
@@ -1178,7 +1180,10 @@ const EN: Record<string, string> = {
   "Nur eigene Google-Accounts eintragen. Logins nicht an andere weitergeben und nicht nutzen, um Nutzungslimits zu umgehen; das verstoesst gegen die Google-Nutzungsbedingungen und kann zur Sperre fuehren.": "Only add your own Google accounts. Do not share logins with others and do not use them to bypass usage limits; this violates the Google Terms of Service and can lead to a ban.",
   "Fragst du eine KI nach Minecraft-Servern, Plugins oder Mods, meldet sie zuerst, dass das FancyCode Minecraft-Plugin aktiv ist. Dann fragt sie, wo sie arbeiten soll (Server per SSH/RCON/Panel oder dieser PC) und ob sie live deployen darf oder nur bauen soll. Danach erledigt sie die Aufgabe.": "If you ask an AI about Minecraft servers, plugins or mods, it first reports that the FancyCode Minecraft plugin is active. Then it asks where it should work (server via SSH/RCON/panel or this PC) and whether it may deploy live or only build. After that it does the task.",
   "nebeneinander. Auf einem V-Server muss agy installiert sein; jeder Account meldet sich dort einmal separat an.": "side by side. On a VPS, agy must be installed; each account signs in there once separately.",
-  "MCP-Server verbinden Agenten mit FancyCode Desktop und anderen Werkzeugen. Hier startest du einen Server, um seine Werkzeuge zu sehen; Stoppen beendet den Prozess wieder.": "MCP servers connect agents with FancyCode Desktop and other tools. Start a server here to see its tools; Stop ends the process again.",
+  "MCP-Server verbinden Agenten mit FancyCode Desktop und anderen Werkzeugen. Der eigene Server laeuft immer; die anderen startet das jeweilige Tool selbst, hier steht nur, ob sie gerade an sind.":
+    'MCP servers connect agents with FancyCode Desktop and other tools. The own server always runs; the others are started by their tool, here you only see whether they are on.',
+  "Ob ein Server gerade laeuft, zeigt nur die Desktop-App. Die Infos unten kommen aus deinen Konfigurationsdateien.":
+    'Only the desktop app shows whether a server is running. The info below comes from your configuration files.',
   "Den eigenen MCP-Server von FancyCode Desktop zeigt nur die Desktop-App; hier steht nur, was in deinen Konfigurationsdateien steht.": "Only the desktop app shows FancyCode Desktop's own MCP server; here you only see what is in your configuration files.",
   "Ein Agent wie Claude Code kann damit alle Terminals sehen, Aufgaben schicken, auf Ergebnisse warten und Sessions starten oder fortsetzen. Lesen und Senden geht auch, wenn FancyCode Desktop zu ist. Außerdem kann er dir Popups, Fragen mit Buttons und Formulare schicken (fancycode_notify, fancycode_ask, fancycode_form) und erkennt selbst, ob er in einem Terminal von FancyCode Desktop läuft. FancyCode bekommt den Server automatisch.": "An agent like Claude Code can see all terminals, send tasks, wait for results and start or resume sessions. Reading and sending also works when FancyCode Desktop is closed. It can also send you popups, questions with buttons and forms (fancycode_notify, fancycode_ask, fancycode_form) and detects whether it runs in a FancyCode Desktop terminal. FancyCode gets the server automatically.",
   "&larr; Zurück zum Assistenten": "← Back to the assistant",

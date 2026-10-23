@@ -3989,6 +3989,9 @@ async function ownMcpServer() {
     sourcePath: mcp.args[0] || '',
     command: mcp.command,
     args: mcp.args,
+    // Ohne eigenes Node laeuft der Server ueber Electron (ELECTRON_RUN_AS_NODE); das muss beim
+    // Start mitgegeben werden, sonst oeffnet sich ein zweites Electron-Fenster.
+    env: mcp.env || {},
     transport: 'stdio',
     status: 'configured',
     details: mt('Steuert die Terminals von FancyCode Desktop: lesen, senden, auf Ergebnisse warten, Sessions starten.'),
@@ -4036,13 +4039,13 @@ function startMcpStdio(server) {
     ? spawn([server.command, ...(server.args || [])].map(quoteCliArg).join(' '), {
         windowsHide: true,
         shell: true,
-        env: { ...process.env },
+        env: { ...process.env, ...(server.env || {}) },
         stdio: ['pipe', 'pipe', 'pipe'],
       })
     : spawn(server.command, server.args || [], {
         windowsHide: true,
         shell: false,
-        env: { ...process.env },
+        env: { ...process.env, ...(server.env || {}) },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
   const session = {
@@ -4273,6 +4276,11 @@ app.whenReady().then(() => {
     console.warn(`[Skills] sync failed: ${error.message}`);
   }
   fancycodeHarness.registerIpc(ipcMain, (event) => !!mainWindow && event.sender === mainWindow.webContents);
+  // Der eigene MCP-Server ist immer an: Er startet mit der App und laesst sich in den Einstellungen
+  // nicht mehr stoppen. Fremde Server startet das jeweilige Tool selbst; dort wird nur der Zustand gezeigt.
+  void startMcpServer(null, { id: MCP_SELF_ID }).then((result) => {
+    if (!result.ok) console.warn(`[MCP] Eigener Server startet nicht: ${result.error}`);
+  });
   if (session && session.defaultSession) {
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
       const allowedPermissions = ['media', 'audioCapture', 'speech'];

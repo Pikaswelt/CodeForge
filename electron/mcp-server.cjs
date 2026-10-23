@@ -826,6 +826,8 @@ async function callTool(name, args = {}) {
 
 // One popup per agent start, only when FancyCode Desktop is open (it is never started for this).
 function announceConnection() {
+  // Die MCP-Ansicht in den Einstellungen verbindet sich nur zum Nachsehen – das ist kein Agent.
+  if (clientName === 'fancycode-desktop') return;
   const name = clientLabel() || 'einem Agenten';
   void askOpenWindow('notify', {
     ...popupBase({ title: `Verbunden mit ${name}` }),
