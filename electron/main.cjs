@@ -3809,7 +3809,9 @@ function startControlServer() {
 function installMcpFiles() {
   const dir = path.join(sessionHostDir(), 'mcp');
   fs.mkdirSync(dir, { recursive: true });
-  for (const name of ['mcp-server.cjs', 'session-client.cjs', 'session-host.cjs']) {
+  // i18n.cjs belongs with them: session-client.cjs loads it, and without it the server dies
+  // with MODULE_NOT_FOUND before it can answer the first handshake.
+  for (const name of ['mcp-server.cjs', 'session-client.cjs', 'session-host.cjs', 'i18n.cjs']) {
     const source = fs.readFileSync(path.join(__dirname, name), 'utf8');
     const target = path.join(dir, name);
     if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8') !== source) fs.writeFileSync(target, source);
