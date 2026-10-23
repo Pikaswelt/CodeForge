@@ -1,7 +1,9 @@
+import { LANGUAGES, setLanguage, tr, useLanguage, type Language, locale } from '../i18n';
+import { updateVoiceSettings } from '../voice';
 import type { UpdateStatus } from '../electron.d';
 import { VoiceSettingsSection } from './VoiceSettings';
 import { openUpdateWindow } from './UpdateModal';
-import { CheckCircle2, Download, Mic, Edit2, FolderOpen, Image, KeyRound, Loader2, MessageSquare, Music2, Palette, Plug, Puzzle, RefreshCw, Settings, SlidersHorizontal, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
+import { CheckCircle2, Download, Mic, Edit2, FolderOpen, Image, KeyRound, Languages, Loader2, MessageSquare, Music2, Palette, Plug, Puzzle, RefreshCw, Settings, SlidersHorizontal, Smartphone, Sparkles, Terminal, Trash2, Video, X, XCircle, BookOpen } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DEFAULT_LIBRARY_STYLE, useAppContext } from '../AppContext';
@@ -11,14 +13,17 @@ import { isVideoPath, toFileUrl } from '../media';
 import libraryBannerUrl from '../../assets/library-banner.png';
 import { ApiProvidersSettings } from './ApiChat';
 import { AgyAccountsSettings } from './AgyAccounts';
+import { PluginsSettings } from './PluginsSettings';
 import { McpSettings } from './McpSettings';
+import { animatedEffectsAllowed } from '../plans';
 import { MultiLaunchPanel } from './MultiLaunchPanel';
 import type { CliHarness, ProviderId } from '../types';
 
-const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
-  { id: 'antigravity', label: 'Google Antigravity', command: 'agy' },
-  { id: 'openai', label: 'OpenAI Codex', command: 'codex' },
+const providers = (): { id: ProviderId; label: string; command: string }[] => [
+  { id: 'antigravity', label: tr("Google Antigravity"), command: 'agy' },
+  { id: 'openai', label: tr("OpenAI Codex"), command: 'codex' },
   { id: 'anthropic', label: 'Anthropic Claude', command: 'claude' },
+  { id: 'hermes', label: 'Hermes Agent', command: 'hermes' },
   { id: 'cursor', label: 'Cursor Agent', command: 'agent / cursor-agent' },
   { id: 'opencode', label: 'OpenCode', command: 'opencode' },
   { id: 'freebuff', label: 'FreeBuff', command: 'freebuff' },
@@ -26,6 +31,12 @@ const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
 
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
+  const lang = useLanguage();
+  // One language for every screen; voice recognition follows along.
+  const chooseLanguage = (next: Language) => {
+    setLanguage(next);
+    updateVoiceSettings({ language: next });
+  };
   const {
     provider,
     setProvider,
@@ -100,7 +111,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   }, []);
   const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null);
   const [statusNotice, setStatusNotice] = useState('');
-  const [customName, setCustomName] = useState('Mein Theme');
+  const [customName, setCustomName] = useState(tr("Mein Theme"));
   const [customBackground, setCustomBackground] = useState('#101010');
   const [customSurface, setCustomSurface] = useState('#18181b');
   const [customText, setCustomText] = useState('#f4f4f5');
@@ -115,7 +126,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     availableVersion: '',
     downloaded: false,
     percent: 0,
-    message: 'Bereit',
+    message: tr("Bereit"),
     error: '',
     feedUrl: '',
   });
@@ -185,6 +196,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const saveCustomTheme = () => {
     if (!customName.trim()) return;
     if (customMediaOnly && !customMedia) return;
+    if (!animatedEffectsAllowed() && customMedia && isVideoPath(customMedia)) {
+      window.alert(tr("Video-Hintergründe gibt es ab dem Pro-Plan."));
+      return;
+    }
     const activeCustom = customThemes.find((item) => item.id === theme);
     const currentBase = activeCustom?.mediaOnly ? activeCustom.baseTheme || 'modern-dark' : theme;
     const editing = editingThemeId ? customThemes.find((item) => item.id === editingThemeId) : undefined;
@@ -198,7 +213,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       accent: customAccent,
       backgroundImage: customMedia && !isVideoPath(customMedia) ? customMedia : undefined,
       backgroundMedia: customMedia || undefined,
-      animatedGradient: customAnimatedGradient,
+      animatedGradient: customAnimatedGradient && animatedEffectsAllowed(),
     };
     if (editingThemeId) updateCustomTheme(editingThemeId, input);
     else createCustomTheme(input);
@@ -228,8 +243,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/5 shrink-0">
           <div>
-            <h2 className="text-lg text-white font-semibold">Einstellungen</h2>
-            <p className="text-xs text-zinc-600 mt-0.5">Provider, CLI-Status, Projekt und Darstellung</p>
+            <h2 className="text-lg text-white font-semibold">{tr("Einstellungen")}</h2>
+            <p className="text-xs text-zinc-600 mt-0.5">{tr("Provider, CLI-Status, Projekt und Darstellung")}</p>
           </div>
           <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white transition-colors">
             <X className="w-5 h-5" />
@@ -239,11 +254,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         {/* Tab-Navigation */}
         <div className="flex border-b border-white/5 bg-[#120f12] px-6 gap-4 shrink-0 overflow-x-auto custom-scrollbar">
           {[
-            { id: 'general', label: 'Allgemein', icon: Settings },
-            { id: 'voice', label: 'Sprache', icon: Mic },
-            { id: 'appearance', label: 'Aussehen', icon: Palette },
+            { id: 'general', label: tr("Allgemein"), icon: Settings },
+            { id: 'voice', label: tr("Spracheingabe"), icon: Mic },
+            { id: 'appearance', label: tr("Aussehen"), icon: Palette },
             { id: 'mcp', label: 'MCP', icon: Plug },
-            { id: 'plugins', label: 'Plugins', icon: Puzzle },
+            { id: 'plugins', label: tr("Plugins"), icon: Puzzle },
           ].map((t) => {
             const active = activeTab === t.id;
             return (
@@ -283,11 +298,41 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             >
               <section>
                 <div className="section-label flex items-center gap-2">
+                  <Languages className="w-3.5 h-3.5" />
+                  {tr("Sprache")}
+                </div>
+                <p className="mt-2 text-[11px] leading-4 text-zinc-600">
+                  {tr("Gilt für die gesamte App – Oberfläche und Spracheingabe.")}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {LANGUAGES.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => chooseLanguage(item.id)}
+                      aria-pressed={lang === item.id}
+                      className={`flex items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm transition-colors ${
+                        lang === item.id
+                          ? 'border-orange-400/60 bg-orange-400/10 text-zinc-100'
+                          : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{item.id}</span>
+                        {item.id === 'de' ? 'Deutsch' : 'English'}
+                      </span>
+                      {lang === item.id && <CheckCircle2 className="h-4 w-4 text-orange-300" />}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <div className="section-label flex items-center gap-2">
                   <KeyRound className="w-3.5 h-3.5" />
-                  AI-Anbieter
+                  {tr("AI-Anbieter")}
                 </div>
                 <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Hier hinterlegte Anbieter kannst du auf Home unter "Chat starten" auswaehlen. API-Keys werden lokal auf diesem PC gespeichert.
+                  {tr("Hier hinterlegte Anbieter kannst du im API-Chat auswaehlen. API-Keys werden lokal auf diesem PC gespeichert.")}
                 </p>
                 <ApiProvidersSettings />
               </section>
@@ -295,12 +340,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Trash2 className="w-3.5 h-3.5" />
-                  Chats
+                  {tr("Chats")}
                 </div>
                 <button
                   onClick={() => {
                     if (!chats.length) return;
-                    if (window.confirm(`Alle ${chats.length} Chats und Workspaces loeschen? Das kann nicht rueckgaengig gemacht werden.`)) {
+                    if (window.confirm(tr("Alle {count} Chats und Workspaces loeschen? Das kann nicht rueckgaengig gemacht werden.", { count: chats.length }))) {
                       clearAllChats();
                     }
                   }}
@@ -308,21 +353,21 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   className="mt-3 inline-flex items-center gap-2 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300 hover:bg-red-500/20 disabled:opacity-40"
                 >
                   <Trash2 className="w-4 h-4" />
-                  Alle Chats loeschen ({chats.length})
+                  {tr("Alle Chats loeschen (")}{chats.length})
                 </button>
               </section>
 
               {!mobileMode && (
               <section>
                 <div className="section-label flex items-center justify-between">
-                  CLI-Anbieter
+                  {tr("CLI-Anbieter")}
                   <button onClick={refreshCliStatus} className="flex items-center gap-1 normal-case tracking-normal hover:text-white">
                     <RefreshCw className="w-3 h-3" />
-                    Neu pruefen
+                    {tr("Neu pruefen")}
                   </button>
                 </div>
                 <div className="space-y-2 mt-3">
-                  {PROVIDERS.map((item) => {
+                  {providers().map((item) => {
                     const status = cliStatus[item.id];
                     const providerUsage = usage.providerLimits?.[item.id];
                     return (
@@ -343,7 +388,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                           <div className="text-right">
                             <div className={`flex items-center gap-1 text-[11px] ${status.installed ? 'text-emerald-400' : 'text-red-400'}`}>
                               {status.installed ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                              {status.installed ? 'Bereit' : 'Fehlt'}
+                              {status.installed ? tr("Bereit") : tr("Fehlt")}
                             </div>
                             <div className="text-[9px] text-zinc-700 mt-0.5">{status.version}</div>
                           </div>
@@ -351,8 +396,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         <div className="flex items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
                           <div className="min-w-0 text-[10px] text-zinc-600 truncate">
                             {providerUsage?.available
-                              ? `${providerUsage.remainingTokens?.toLocaleString('de-DE') || '?'} Tokens uebrig`
-                              : providerUsage?.label || 'Limit noch nicht abgefragt'}
+                              ? tr('{count} Tokens uebrig', { count: providerUsage.remainingTokens?.toLocaleString(locale()) || '?' })
+                              : providerUsage?.label || tr("Limit noch nicht abgefragt")}
                           </div>
                           <div className="flex shrink-0 gap-2">
                             {!status.installed && (
@@ -363,7 +408,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                   try {
                                     setStatusNotice(await installCli(item.id));
                                   } catch (error) {
-                                    setStatusNotice(error instanceof Error ? error.message : 'Installation konnte nicht gestartet werden.');
+                                    setStatusNotice(error instanceof Error ? error.message : tr("Installation konnte nicht gestartet werden."));
                                   } finally {
                                     setBusyProvider(null);
                                   }
@@ -371,7 +416,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                 className="inline-flex items-center gap-1 rounded-md border border-amber-400/20 px-2 py-1 text-[10px] text-amber-200 hover:bg-amber-400/10"
                               >
                                 {busyProvider === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                                Installieren
+                                {tr("Installieren")}
                               </button>
                             )}
                             {status.installed && (
@@ -381,10 +426,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                   setStatusNotice('');
                                   try {
                                     const info = await refreshProviderUsage(item.id);
-                                    window.alert(info?.raw || info?.error || info?.label || 'Keine Terminalausgabe erhalten.');
-                                    setStatusNotice(info?.label || 'Limit-Abfrage beendet.');
+                                    window.alert(info?.raw || info?.error || info?.label || tr("Keine Terminalausgabe erhalten."));
+                                    setStatusNotice(info?.label || tr("Limit-Abfrage beendet."));
                                   } catch (error) {
-                                    setStatusNotice(error instanceof Error ? error.message : 'Limit konnte nicht abgerufen werden.');
+                                    setStatusNotice(error instanceof Error ? error.message : tr("Limit konnte nicht abgerufen werden."));
                                   } finally {
                                     setBusyProvider(null);
                                   }
@@ -392,7 +437,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                 className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[10px] text-zinc-300 hover:bg-white/5"
                               >
                                 {busyProvider === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                                Limit abrufen
+                                {tr("Limit abrufen")}
                               </button>
                             )}
                           </div>
@@ -406,12 +451,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               )}
 
               <section>
-                <div className="section-label">Aktives Projekt</div>
+                <div className="section-label">{tr("Aktives Projekt")}</div>
                 <button onClick={addProject} className="panel !p-3 w-full mt-3 flex items-center gap-3 text-left hover:border-white/15">
                   <FolderOpen className="w-4 h-4 text-amber-400/70" />
                   <div className="min-w-0">
-                    <div className="text-sm text-zinc-200">{selectedProject?.title || 'Projektordner auswaehlen'}</div>
-                    <div className="text-[10px] text-zinc-600 truncate">{selectedProject?.path || 'Noch kein Ordner gewaehlt'}</div>
+                    <div className="text-sm text-zinc-200">{selectedProject?.title || tr("Projektordner auswaehlen")}</div>
+                    <div className="text-[10px] text-zinc-600 truncate">{selectedProject?.path || tr("Noch kein Ordner gewaehlt")}</div>
                   </div>
                 </button>
               </section>
@@ -420,18 +465,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
-                  Terminal-Startpfad
+                  {tr("Terminal-Startpfad")}
                 </div>
                 <input
                   type="text"
                   value={terminalStartPath}
                   onChange={(event) => setTerminalStartPath(event.target.value)}
                   className="input w-full mt-3"
-                  placeholder="z. B. C:\Workspace (Leerlassen für Standard-Projektpfad)"
+                  placeholder={tr("z. B. C:\\Workspace (Leerlassen für Standard-Projektpfad)")}
                   autoComplete="off"
                 />
                 <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Bestimmt den Standardordner beim Start einer neuen Terminal-Sitzung. Ohne Pfad wird das aktive Projekt oder der Benutzerordner verwendet.
+                  {tr("Bestimmt den Standardordner beim Start einer neuen Terminal-Sitzung. Ohne Pfad wird das aktive Projekt oder der Benutzerordner verwendet.")}
                 </p>
               </section>
               )}
@@ -444,11 +489,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         <SlidersHorizontal className="w-4 h-4" />
                       </div>
                       <div>
-                        <span className="text-sm font-semibold text-white block">Multi-Start Button</span>
+                        <span className="text-sm font-semibold text-white block">{tr("Multi-Start Button")}</span>
                         <span className="text-xs text-zinc-400">
                           {multiLaunchConfig.mode === 'custom'
-                            ? `Individuell: "${multiLaunchConfig.buttonLabel || 'Antigravity starten'}" (${multiLaunchConfig.slots.length} Terminals)`
-                            : `Standard: "${multiLaunchConfig.buttonLabel || 'Antigravity starten'}" (${agyAccounts.length} Accounts)`}
+                            ? `Individuell: "${multiLaunchConfig.buttonLabel || tr("Antigravity starten")}" (${multiLaunchConfig.slots.length} Terminals)`
+                            : `Standard: "${multiLaunchConfig.buttonLabel || tr("Antigravity starten")}" (${agyAccounts.length} Accounts)`}
                         </span>
                       </div>
                     </div>
@@ -457,7 +502,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       onClick={() => setShowMultiLaunch(true)}
                       className="px-3.5 py-1.5 rounded-lg border border-orange-500/30 bg-orange-500/15 text-orange-200 hover:bg-orange-500/25 text-xs font-medium transition-colors"
                     >
-                      Button anpassen
+                      {tr("Button anpassen")}
                     </button>
                   </div>
                 </section>
@@ -467,7 +512,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
-                  CLI-Harnesses
+                  {tr("CLI-Harnesses")}
                 </div>
                 <div className="space-y-2 mt-3">
                   {cliHarnesses.map((harness) => {
@@ -479,7 +524,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                           value={harness.icon}
                           onChange={(event) => update({ icon: event.target.value })}
                           className="input !w-[110px] shrink-0"
-                          title="Icon"
+                          title={tr("Icon")}
                         >
                           {Object.keys(HARNESS_ICONS).map((name) => (
                             <option key={name} value={name}>{name}</option>
@@ -502,13 +547,13 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                           value={harness.command}
                           onChange={(event) => update({ command: event.target.value })}
                           className="input flex-1 min-w-0 font-mono"
-                          placeholder="Start-Command, z. B. claude"
+                          placeholder={tr("Start-Command, z. B. claude")}
                           autoComplete="off"
                         />
                         <button
                           onClick={() => setCliHarnesses((current) => current.filter((item) => item.id !== harness.id))}
                           className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10"
-                          title="Entfernen"
+                          title={tr("Entfernen")}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -519,16 +564,16 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     onClick={() =>
                       setCliHarnesses((current) => [
                         ...current,
-                        { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: 'Neuer Harness', command: '', icon: 'Terminal' },
+                        { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: tr("Neuer Harness"), command: '', icon: tr("Terminal") },
                       ])
                     }
                     className="text-xs text-orange-300 hover:text-orange-200"
                   >
-                    + Harness hinzufuegen
+                    {tr("+ Harness hinzufuegen")}
                   </button>
                 </div>
                 <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Diese Harnesses kannst du auf Home unter "Workspace starten" auswaehlen. Der Start-Command wird in jedem Terminal automatisch ausgefuehrt.
+                  {tr("Diese Harnesses kannst du auf Home unter \"Workspace starten\" auswaehlen. Der Start-Command wird in jedem Terminal automatisch ausgefuehrt.")}
                 </p>
               </section>
               )}
@@ -538,7 +583,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <div className="section-label flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5" />
-                    Terminal-Präfix & Suffix
+                    {tr("Terminal-Präfix & Suffix")}
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-400">
                     <input
@@ -547,35 +592,35 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       onChange={(event) => setTerminalPrefixSuffixEnabled(event.target.checked)}
                       className="rounded bg-white/5 border-white/10 text-orange-500 focus:ring-0"
                     />
-                    <span>Aktivieren</span>
+                    <span>{tr("Aktivieren")}</span>
                   </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div>
-                    <label className="text-[11px] text-zinc-400">Präfix (Davor schreiben)</label>
+                    <label className="text-[11px] text-zinc-400">{tr("Präfix (Davor schreiben)")}</label>
                     <input
                       type="text"
                       value={terminalPrefix}
                       onChange={(event) => setTerminalPrefix(event.target.value)}
                       className="input w-full mt-1.5"
-                      placeholder="z. B. echo '"
+                      placeholder={tr("z. B. echo '")}
                       autoComplete="off"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-zinc-400">Suffix (Danach schreiben)</label>
+                    <label className="text-[11px] text-zinc-400">{tr("Suffix (Danach schreiben)")}</label>
                     <input
                       type="text"
                       value={terminalSuffix}
                       onChange={(event) => setTerminalSuffix(event.target.value)}
                       className="input w-full mt-1.5"
-                      placeholder="z. B. ' && ls"
+                      placeholder={tr("z. B. ' && ls")}
                       autoComplete="off"
                     />
                   </div>
                 </div>
                 <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Fügt vor und nach jeder eingegebenen Nachricht automatisch diesen Text ein, wenn aktiviert.
+                  {tr("Fügt vor und nach jeder eingegebenen Nachricht automatisch diesen Text ein, wenn aktiviert.")}
                 </p>
               </section>
               )}
@@ -584,27 +629,27 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
-                  Terminal-Triggerwörter
+                  {tr("Terminal-Triggerwörter")}
                 </div>
                 <input
                   type="text"
                   value={terminalTriggerWords}
                   onChange={(event) => setTerminalTriggerWords(event.target.value)}
                   className="input w-full mt-3"
-                  placeholder="z. B. error, failed, warning (Kommagetrennt)"
+                  placeholder={tr("z. B. error, failed, warning (Kommagetrennt)")}
                   autoComplete="off"
                 />
                 <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  Wenn eines dieser Wörter (kommagetrennt) im Terminal ausgegeben wird, wird eine Desktop-Benachrichtigung gesendet.
+                  {tr("Wenn eines dieser Wörter (kommagetrennt) im Terminal ausgegeben wird, wird eine Desktop-Benachrichtigung gesendet.")}
                 </p>
               </section>
               )}
 
               <section>
                 <div className="section-label flex items-center justify-between">
-                  Updates
+                  {tr("Updates")}
                   <span className="normal-case tracking-normal text-zinc-600">
-                    {updateStatus.currentVersion ? `v${updateStatus.currentVersion}` : 'Version unbekannt'}
+                    {updateStatus.currentVersion ? `v${updateStatus.currentVersion}` : tr("Version unbekannt")}
                   </span>
                 </div>
                 <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-4">
@@ -620,12 +665,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         ) : (
                           <RefreshCw className="h-4 w-4 text-zinc-500" />
                         )}
-                        {updateStatus.message || 'Bereit'}
+                        {updateStatus.message || tr("Bereit")}
                       </div>
                       <div className="mt-1 truncate text-[10px] text-zinc-600">
                         {updateStatus.availableVersion
                           ? `Update-Version: ${updateStatus.availableVersion}`
-                          : updateStatus.feedUrl || 'GitHub Releases'}
+                          : updateStatus.feedUrl || tr("GitHub Releases")}
                       </div>
                     </div>
                     <button
@@ -638,7 +683,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       ) : (
                         <RefreshCw className="h-3 w-3" />
                       )}
-                      Auf Update suchen
+                      {tr("Auf Update suchen")}
                     </button>
                   </div>
                   {updateStatus.status === 'downloading' && (
@@ -656,7 +701,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       disabled={updateBusy}
                       className="primary-button mt-3 w-full"
                     >
-                      {updateBusy ? 'Starte Installation...' : 'Jetzt neu starten und installieren'}
+                      {updateBusy ? tr("Starte Installation...") : tr("Jetzt neu starten und installieren")}
                     </button>
                   )}
                 </div>
@@ -665,12 +710,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Smartphone className="w-3.5 h-3.5" />
-                  Mobile Modus
+                  {tr("Mobile Modus")}
                 </div>
                 <div className="mt-3 space-y-3">
                   <SettingToggle
-                    label="Mobile Modus aktivieren"
-                    description="Optimiert die Oberflaeche fuer Smartphones. Verbinde dich mit einem PC oder VPS als KI-Server. CLI-Status und Terminal werden ausgeblendet."
+                    label={tr("Mobile Modus aktivieren")}
+                    description={tr("Optimiert die Oberflaeche fuer Smartphones. Verbinde dich mit einem PC oder VPS als KI-Server. CLI-Status und Terminal werden ausgeblendet.")}
                     checked={mobileMode}
                     onChange={setMobileMode}
                   />
@@ -680,7 +725,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       className="w-full flex items-center justify-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-2.5 text-sm text-amber-200 hover:bg-amber-400/10 transition-colors"
                     >
                       <BookOpen className="w-4 h-4" />
-                      Verbindungsanleitung oeffnen
+                      {tr("Verbindungsanleitung oeffnen")}
                     </button>
                   )}
                 </div>
@@ -689,12 +734,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Music2 className="w-3.5 h-3.5" />
-                  Spotify-Widget
+                  {tr("Spotify-Widget")}
                 </div>
                 <div className="mt-3">
                   <SettingToggle
-                    label="Mini-Widget anzeigen"
-                    description="Zeigt aktuellen Windows/Spotify-Song als frei platzierbares Widget."
+                    label={tr("Mini-Widget anzeigen")}
+                    description={tr("Zeigt aktuellen Windows/Spotify-Song als frei platzierbares Widget.")}
                     checked={spotifyWidgetEnabled}
                     onChange={setSpotifyWidgetEnabled}
                   />
@@ -714,28 +759,28 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         : 'bg-white/5 text-zinc-500 border border-white/10'
                     }`}
                   >
-                    {discordRpcEnabled ? 'Aktiviert' : 'Deaktiviert'}
+                    {discordRpcEnabled ? tr("Aktiviert") : tr("Deaktiviert")}
                   </span>
                 </div>
                 <div className="mt-3 space-y-3">
                   <SettingToggle
-                    label="Discord-Status aktivieren"
-                    description="Zeigt deinen aktuellen FancyCode-Status, gewähltes KI-Modell und aktiven Agenten in Discord an."
+                    label={tr("Discord-Status aktivieren")}
+                    description={tr("Zeigt deinen aktuellen FancyCode Desktop-Status, gewähltes KI-Modell und aktiven Agenten in Discord an.")}
                     checked={discordRpcEnabled}
                     onChange={setDiscordRpcEnabled}
                   />
                   {discordRpcEnabled && (
                     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 space-y-2">
-                      <div className="text-xs text-zinc-300 font-medium">Benutzerdefinierter Status-Text (Bereit)</div>
+                      <div className="text-xs text-zinc-300 font-medium">{tr("Benutzerdefinierter Status-Text (Bereit)")}</div>
                       <input
                         value={discordIdleMessage}
                         onChange={(event) => setDiscordIdleMessage(event.target.value)}
                         className="input w-full"
                         maxLength={128}
-                        placeholder="Bereit"
+                        placeholder={tr("Bereit")}
                       />
                       <p className="text-[11px] leading-4 text-zinc-500">
-                        Dieser Text ersetzt &quot;Bereit&quot;, solange kein Agent laeuft.
+                        {tr("Dieser Text ersetzt &quot;Bereit&quot;, solange kein Agent laeuft.")}
                       </p>
                     </div>
                   )}
@@ -750,7 +795,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   }}
                   className="text-[11px] text-zinc-600 hover:text-white"
                 >
-                  Einrichtungsassistent erneut oeffnen
+                  {tr("Einrichtungsassistent erneut oeffnen")}
                 </button>
               </div>
             </motion.div>
@@ -765,20 +810,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
           {activeTab === 'plugins' && (
             <motion.div key="plugins" variants={tabContentVariants} initial="initial" animate="animate" exit="exit" className="space-y-7">
-              {ownerPc && !mobileMode ? (
-                <>
-                  <p className="text-[11px] leading-4 text-zinc-500">
-                    Zusaetzliche Bausteine, die nur dieser Rechner nutzt. Sie sind nicht Teil der normalen Auslieferung.
-                  </p>
+              <PluginsSettings />
+              {ownerPc && !mobileMode && (
+                <section className="border-t border-white/5 pt-4">
+                  <h3 className="mb-3 text-sm font-semibold text-zinc-200">{tr("Nur dieser Rechner")}</h3>
                   <AgyAccountsSettings onClose={onClose} />
-                </>
-              ) : (
-                <section className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center">
-                  <Puzzle className="mx-auto w-5 h-5 text-zinc-600" />
-                  <div className="mt-3 text-sm text-zinc-300">Keine Plugins installiert</div>
-                  <p className="mt-1 text-[11px] leading-4 text-zinc-500">
-                    Zusaetzliche Bausteine erscheinen hier, sobald sie fuer diesen Rechner freigeschaltet sind.
-                  </p>
                 </section>
               )}
             </motion.div>
@@ -802,16 +838,16 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Palette className="w-3.5 h-3.5" />
-                  Theme Gallery fuer {PROVIDERS.find((item) => item.id === provider)?.label}
+                  {tr("Theme Gallery fuer")} {providers().find((item) => item.id === provider)?.label}
                 </div>
                 <div className="mt-2 text-[11px] text-zinc-600">
-                  Jeder Anbieter speichert sein eigenes Theme. Aktiv: {themeByProvider[provider] || theme}
+                  {tr("Jeder Anbieter speichert sein eigenes Theme. Aktiv:")} {themeByProvider[provider] || theme}
                 </div>
                 <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
                   <div>
-                    <div className="text-sm text-zinc-200">Hintergrund hinter Chat-Leiste anzeigen</div>
+                    <div className="text-sm text-zinc-200">{tr("Hintergrund hinter Chat-Leiste anzeigen")}</div>
                     <div className="mt-0.5 text-[10px] text-zinc-600">
-                      Entfernt das dunkle Verlauf-Band unter der Eingabe, damit Theme oder Bild bis nach unten sichtbar bleiben.
+                      {tr("Entfernt das dunkle Verlauf-Band unter der Eingabe, damit Theme oder Bild bis nach unten sichtbar bleiben.")}
                     </div>
                   </div>
                   <input
@@ -823,59 +859,59 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 </label>
                 <div className="mt-3 grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
                   <ThemeSlider
-                    label="Seitenleiste transparent"
+                    label={tr("Seitenleiste transparent")}
                     value={sidebarTransparency}
                     onChange={setSidebarTransparency}
-                    description="Macht die linke Chat-/Projektleiste durchsichtig, damit Theme, Bild oder Video dahinter sichtbar bleibt."
+                    description={tr("Macht die linke Chat-/Projektleiste durchsichtig, damit Theme, Bild oder Video dahinter sichtbar bleibt.")}
                   />
                   <ThemeSlider
-                    label="Flaechen transparent"
+                    label={tr("Flaechen transparent")}
                     value={surfaceTransparency}
                     onChange={setSurfaceTransparency}
-                    description="Reduziert die Deckkraft von Panels, Eingaben und Karten im Programm."
+                    description={tr("Reduziert die Deckkraft von Panels, Eingaben und Karten im Programm.")}
                   />
                   <ThemeSlider
-                    label="Terminal transparent"
+                    label={tr("Terminal transparent")}
                     value={terminalTransparency}
                     onChange={setTerminalTransparency}
-                    description="Reduziert die Deckkraft des Hintergrunds im Terminal-Modus."
+                    description={tr("Reduziert die Deckkraft des Hintergrunds im Terminal-Modus.")}
                   />
                   <ThemeSlider
-                    label="Glassmorphism Weichzeichner"
+                    label={tr("Glassmorphism Weichzeichner")}
                     value={glassBlurStrength}
                     onChange={setGlassBlurStrength}
                     min={0}
                     max={40}
                     step={1}
                     unit="px"
-                    description="Bestimmt die Blur-Stärke der Apple-Glas-Themes und transparenten Flächen."
+                    description={tr("Bestimmt die Blur-Stärke der Apple-Glas-Themes und transparenten Flächen.")}
                   />
                   <ThemeSlider
-                    label="Glassmorphism Sättigung"
+                    label={tr("Glassmorphism Sättigung")}
                     value={glassSaturation}
                     onChange={setGlassSaturation}
                     min={50}
                     max={200}
                     step={5}
                     unit="%"
-                    description="Steuert die Farbsättigung des Milchglas-Hintergrunds."
+                    description={tr("Steuert die Farbsättigung des Milchglas-Hintergrunds.")}
                   />
                   <ThemeSlider
-                    label="Eckenabrundung (Border Radius)"
+                    label={tr("Eckenabrundung (Border Radius)")}
                     value={appBorderRadius}
                     onChange={setAppBorderRadius}
                     min={0}
                     max={24}
                     step={1}
                     unit="px"
-                    description="Passt die Rundung aller Panels, Buttons und Eingabefelder im Programm an."
+                    description={tr("Passt die Rundung aller Panels, Buttons und Eingabefelder im Programm an.")}
                   />
                 </div>
                 <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
                   <div>
-                    <div className="text-sm text-zinc-200">Apple Glass-Glow Rand & Schatten</div>
+                    <div className="text-sm text-zinc-200">{tr("Apple Glass-Glow Rand & Schatten")}</div>
                     <div className="mt-0.5 text-[10px] text-zinc-600">
-                      Fügt einen feinen, hellen Außenrand und weichen Schlagschatten für den echten Apple-Design-Look hinzu.
+                      {tr("Fügt einen feinen, hellen Außenrand und weichen Schlagschatten für den echten Apple-Design-Look hinzu.")}
                     </div>
                   </div>
                   <input
@@ -886,17 +922,17 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   />
                 </label>
                 {customThemes.length === 0 && (
-                  <p className="mt-3 text-[11px] text-zinc-600">Noch keine Themes. Erstelle unten dein erstes Theme.</p>
+                  <p className="mt-3 text-[11px] text-zinc-600">{tr("Noch keine Themes. Erstelle unten dein erstes Theme.")}</p>
                 )}
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   {[...customThemes.map((item) => ({
                     id: item.id,
                     label: item.name,
                     mood: item.backgroundMedia || item.backgroundImage
-                      ? `${isVideoPath(item.backgroundMedia || item.backgroundImage || '') ? 'Video' : 'Bild'}${item.mediaOnly ? ' (nur Hintergrund)' : ''}`
+                      ? `${isVideoPath(item.backgroundMedia || item.backgroundImage || '') ? tr("Video") : tr("Bild")}${item.mediaOnly ? tr("(nur Hintergrund)") : ''}`
                       : item.animatedGradient
-                        ? 'Animierter Verlauf'
-                        : 'Eigenes Theme',
+                        ? tr("Animierter Verlauf")
+                        : tr("Eigenes Theme"),
                     colors: item.mediaOnly ? [] : [item.background, item.surface, item.accent],
                     media: item.backgroundMedia || item.backgroundImage || '',
                     custom: true,
@@ -929,7 +965,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                 editCustomTheme(item.id);
                               }}
                               className="inline-flex rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
-                              title="Theme bearbeiten"
+                              title={tr("Theme bearbeiten")}
                             >
                               <Edit2 className="w-3 h-3" />
                             </span>
@@ -940,7 +976,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                 if (editingThemeId === item.id) setEditingThemeId(null);
                               }}
                               className="inline-flex rounded-md p-1 text-zinc-500 hover:bg-red-500/10 hover:text-red-300"
-                              title="Theme loeschen"
+                              title={tr("Theme loeschen")}
                             >
                               <Trash2 className="w-3 h-3" />
                             </span>
@@ -954,21 +990,21 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.025] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-medium text-white">
-                      {editingThemeId ? 'Eigenes Theme bearbeiten' : 'Eigenes Theme erstellen'}
+                      {editingThemeId ? tr("Eigenes Theme bearbeiten") : tr("Eigenes Theme erstellen")}
                     </div>
                     {editingThemeId && (
                       <button
                         onClick={() => setEditingThemeId(null)}
                         className="text-[11px] text-zinc-500 hover:text-white"
                       >
-                        Bearbeitung abbrechen
+                        {tr("Bearbeitung abbrechen")}
                       </button>
                     )}
                   </div>
                   <label className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/15 px-3 py-2">
                     <span>
-                      <span className="block text-xs text-zinc-300">Nur Hintergrund (Bild/Video)</span>
-                      <span className="block text-[10px] text-zinc-600">Aendert nichts ausser dem Hintergrund. Farben bleiben vom aktuellen Theme.</span>
+                      <span className="block text-xs text-zinc-300">{tr("Nur Hintergrund (Bild/Video)")}</span>
+                      <span className="block text-[10px] text-zinc-600">{tr("Aendert nichts ausser dem Hintergrund. Farben bleiben vom aktuellen Theme.")}</span>
                     </span>
                     <input
                       type="checkbox"
@@ -982,14 +1018,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       value={customName}
                       onChange={(event) => setCustomName(event.target.value)}
                       className="input col-span-2 w-full"
-                      placeholder="Theme-Name"
+                      placeholder={tr("Theme-Name")}
                     />
                     {!customMediaOnly && (
                       <>
-                        <ThemeColor label="Hintergrund" value={customBackground} onChange={setCustomBackground} />
-                        <ThemeColor label="Flaechen" value={customSurface} onChange={setCustomSurface} />
-                        <ThemeColor label="Text" value={customText} onChange={setCustomText} />
-                        <ThemeColor label="Akzent" value={customAccent} onChange={setCustomAccent} />
+                        <ThemeColor label={tr("Hintergrund")} value={customBackground} onChange={setCustomBackground} />
+                        <ThemeColor label={tr("Flaechen")} value={customSurface} onChange={setCustomSurface} />
+                        <ThemeColor label={tr("Text")} value={customText} onChange={setCustomText} />
+                        <ThemeColor label={tr("Akzent")} value={customAccent} onChange={setCustomAccent} />
                       </>
                     )}
                   </div>
@@ -1002,7 +1038,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5"
                     >
                       {isVideoPath(customMedia) ? <Video className="w-4 h-4" /> : <Image className="w-4 h-4" />}
-                      Hintergrundbild/-video waehlen
+                      {tr("Hintergrundbild/-video waehlen")}
                     </button>
                     {customMedia && (
                       <button
@@ -1016,13 +1052,17 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   </div>
                   {customMedia && <ThemeCover media={customMedia} />}
                   {!customMediaOnly && (
-                  <label className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/15 px-3 py-2">
-                    <span className="text-xs text-zinc-300">Animierten Farbverlauf aktivieren</span>
+                  <label className={`mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/15 px-3 py-2 ${animatedEffectsAllowed() ? '' : 'opacity-60'}`}>
+                    <span className="text-xs text-zinc-300">
+                      {tr("Animierten Farbverlauf aktivieren")}
+                      {!animatedEffectsAllowed() && <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">{tr("ab Pro")}</span>}
+                    </span>
                     <input
                       type="checkbox"
-                      checked={customAnimatedGradient}
+                      checked={customAnimatedGradient && animatedEffectsAllowed()}
+                      disabled={!animatedEffectsAllowed()}
                       onChange={(event) => setCustomAnimatedGradient(event.target.checked)}
-                      className="h-4 w-4 accent-amber-300"
+                      className="h-4 w-4 accent-amber-300 disabled:cursor-not-allowed"
                     />
                   </label>
                   )}
@@ -1031,7 +1071,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     disabled={customMediaOnly && !customMedia}
                     className="primary-button mt-4 w-full disabled:opacity-50"
                   >
-                    {editingThemeId ? 'Theme speichern und fuer Anbieter nutzen' : 'Theme erstellen und fuer Anbieter nutzen'}
+                    {editingThemeId ? tr("Theme speichern und fuer Anbieter nutzen") : tr("Theme erstellen und fuer Anbieter nutzen")}
                   </button>
                 </div>
               </section>
@@ -1039,13 +1079,13 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Image className="w-3.5 h-3.5" />
-                  Library anpassen
+                  {tr("Library anpassen")}
                 </div>
                 <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
                   <div>
-                    <div className="text-sm text-zinc-200">Banner-Hintergrund anzeigen</div>
+                    <div className="text-sm text-zinc-200">{tr("Banner-Hintergrund anzeigen")}</div>
                     <div className="mt-0.5 text-[10px] text-zinc-600">
-                      Schaltet das Bild im Library-Banner mit dem Projekt-hinzufuegen-Button ein oder aus.
+                      {tr("Schaltet das Bild im Library-Banner mit dem Projekt-hinzufuegen-Button ein oder aus.")}
                     </div>
                   </div>
                   <input
@@ -1056,7 +1096,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   />
                 </label>
                 <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
-                  <div className="text-xs font-medium text-zinc-300">Banner-Design</div>
+                  <div className="text-xs font-medium text-zinc-300">{tr("Banner-Design")}</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -1067,7 +1107,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                           : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
                       }`}
                     >
-                      Kein Banner (Clean)
+                      {tr("Kein Banner (Clean)")}
                     </button>
                     <button
                       type="button"
@@ -1079,7 +1119,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       }`}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      Anime-Banner
+                      {tr("Anime-Banner")}
                     </button>
                     <button
                       type="button"
@@ -1091,16 +1131,16 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       }`}
                     >
                       {isVideoPath(libraryStyle.bannerMedia) ? <Video className="w-3.5 h-3.5" /> : <Image className="w-3.5 h-3.5" />}
-                      Eigenes Bild/Video waehlen
+                      {tr("Eigenes Bild/Video waehlen")}
                     </button>
                     {libraryStyle.bannerMedia && (
                       <button
                         type="button"
                         onClick={() => setLibraryStyle((current) => ({ ...current, bannerMedia: '' }))}
                         className="text-xs text-zinc-500 hover:text-red-300"
-                        title="Banner entfernen"
+                        title={tr("Banner entfernen")}
                       >
-                        Entfernen
+                        {tr("Entfernen")}
                       </button>
                     )}
                   </div>
@@ -1125,53 +1165,53 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
                   {libraryStyle.bannerMedia && libraryStyle.bannerMedia !== 'anime' && (
                     <input
-                      value={libraryStyle.bannerMedia.startsWith('data:') ? 'Lokale Datei geladen' : libraryStyle.bannerMedia}
+                      value={libraryStyle.bannerMedia.startsWith('data:') ? tr("Lokale Datei geladen") : libraryStyle.bannerMedia}
                       disabled={libraryStyle.bannerMedia.startsWith('data:')}
                       onChange={(event) => setLibraryStyle((current) => ({ ...current, bannerMedia: event.target.value }))}
                       className="input w-full text-xs font-mono"
-                      placeholder="Pfad oder Bild-URL (z.B. https://...)"
+                      placeholder={tr("Pfad oder Bild-URL (z.B. https://...)")}
                     />
                   )}
 
                   {libraryStyle.bannerMedia && <ThemeCover media={libraryStyle.bannerMedia} />}
                   <ThemeSlider
-                    label="Banner-Aufhellung"
+                    label={tr("Banner-Aufhellung")}
                     value={libraryStyle.bannerOverlay}
                     onChange={(value) => setLibraryStyle((current) => ({ ...current, bannerOverlay: value }))}
                     max={100}
                     unit="%"
-                    description="Wie stark das Banner hinter dem Text aufgehellt wird. 0 = Bild/Video voll sichtbar."
+                    description={tr("Wie stark das Banner hinter dem Text aufgehellt wird. 0 = Bild/Video voll sichtbar.")}
                   />
                   <input
                     value={libraryStyle.bannerTitle}
                     onChange={(event) => setLibraryStyle((current) => ({ ...current, bannerTitle: event.target.value }))}
                     className="input w-full"
-                    placeholder="Banner-Titel (leer = Standard)"
+                    placeholder={tr("Banner-Titel (leer = Standard)")}
                   />
                   <input
                     value={libraryStyle.bannerText}
                     onChange={(event) => setLibraryStyle((current) => ({ ...current, bannerText: event.target.value }))}
                     className="input w-full"
-                    placeholder="Banner-Text (leer = Standard)"
+                    placeholder={tr("Banner-Text (leer = Standard)")}
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <ThemeColor
-                      label="Seiten-Hintergrund"
+                      label={tr("Seiten-Hintergrund")}
                       value={libraryStyle.pageBackground || '#f7f8fb'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, pageBackground: value }))}
                     />
                     <ThemeColor
-                      label="Karten & Banner"
+                      label={tr("Karten & Banner")}
                       value={libraryStyle.cardBackground || '#ffffff'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, cardBackground: value }))}
                     />
                     <ThemeColor
-                      label="Text"
+                      label={tr("Text")}
                       value={libraryStyle.textColor || '#111827'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, textColor: value }))}
                     />
                     <ThemeColor
-                      label="Akzent & Buttons"
+                      label={tr("Akzent & Buttons")}
                       value={libraryStyle.accentColor || '#111827'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, accentColor: value }))}
                     />
@@ -1180,7 +1220,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     onClick={() => setLibraryStyle(DEFAULT_LIBRARY_STYLE)}
                     className="text-[11px] text-zinc-500 hover:text-white"
                   >
-                    Library auf Standard zuruecksetzen
+                    {tr("Library auf Standard zuruecksetzen")}
                   </button>
                 </div>
               </section>

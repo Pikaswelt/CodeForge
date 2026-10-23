@@ -88,6 +88,16 @@ fi
 # ── systemd Service ─────────────────────────────────────────────
 echo "[4/5] Richte systemd-Dienst ein..."
 
+# The token must not land in the unit file, which every local user can read.
+ENV_FILE=/etc/codeforge-remote.env
+install -m 600 /dev/null "$ENV_FILE"
+cat > "$ENV_FILE" <<EOF_ENV
+CODEFORGE_TOKEN=${TOKEN}
+CODEFORGE_HOST=0.0.0.0
+CODEFORGE_PORT=${PORT}
+PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
+EOF_ENV
+
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
 Description=FancyCode Remote Server
@@ -98,9 +108,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-Environment=PORT=${PORT}
-Environment=CODEFORGE_TOKEN=${TOKEN}
-Environment=CODEFORGE_HOST=0.0.0.0
+EnvironmentFile=${ENV_FILE}
 ExecStart=/usr/bin/node ${INSTALL_DIR}/codeforge-remote-server.mjs
 Restart=always
 RestartSec=5
@@ -146,7 +154,7 @@ echo "    systemctl restart ${SERVICE_NAME}  – Neustarten"
 echo "    journalctl -u ${SERVICE_NAME} -f   – Logs anzeigen"
 echo ""
 echo "  Kopplungsmodus starten:"
-echo "    curl -X POST http://localhost:${PORT}/pair/start"
+echo "    curl -X POST -H \"Authorization: Bearer ${TOKEN}\" http://localhost:${PORT}/pair/start"
 echo ""
 echo "  CLI lokal nutzen:"
 echo "    node /opt/codeforge/codeforge-cli.mjs --url http://localhost:${PORT} --token ${TOKEN} --interactive"

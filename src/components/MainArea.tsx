@@ -1,5 +1,8 @@
+import { tr } from '../i18n';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { fancycodeBridge } from '../fancycode/bridge';
+import { FancyCodePanel } from '../fancycode/FancyCodePanel';
 import {
   AppWindow,
   Blocks,
@@ -39,7 +42,7 @@ import {
   LogIn,
   SlidersHorizontal,
 } from 'lucide-react';
-import { useAppContext } from '../AppContext';
+import { harnessProvider, useAppContext } from '../AppContext';
 import InputArea from './InputArea';
 import { harnessIcon } from '../harnessIcons';
 import { ApiChatSetup, ApiChatView } from './ApiChat';
@@ -102,8 +105,13 @@ type LibraryItem =
 export default function MainArea() {
   const { mainView, activeHomeTab } = useAppContext();
   const viewKey = activeHomeTab ? `tab-${activeHomeTab.id}` : `view-${mainView}`;
+  const showFancyCode = mainView === 'fancycode' && !activeHomeTab;
 
   return (
+    <>
+      {/* Bleibt eingehängt, damit laufende FancyCode-Aufgaben beim Ansichtswechsel weiterlaufen. */}
+      <FancyCodeHost visible={showFancyCode} />
+      {!showFancyCode && (
     <AnimatePresence mode="wait">
       <motion.div
         key={viewKey}
@@ -124,6 +132,20 @@ export default function MainArea() {
         )}
       </motion.div>
     </AnimatePresence>
+      )}
+    </>
+  );
+}
+
+// FancyCode-Agent im ausgewählten Projekt (grafisch, wie Claude Code in Claude Desktop).
+function FancyCodeHost({ visible }: { visible: boolean }) {
+  const { selectedProject, addProject } = useAppContext();
+  const bridge = useMemo(() => fancycodeBridge(), []);
+  if (!bridge) return null;
+  return (
+    <div className="flex-1 min-w-0 h-full flex-col relative overflow-hidden" style={{ display: visible ? 'flex' : 'none' }}>
+      <FancyCodePanel bridge={bridge} cwd={selectedProject?.path || ''} onPickFolder={addProject} emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode arbeitet dann direkt darin.")} />
+    </div>
   );
 }
 
@@ -159,7 +181,7 @@ function LibraryView() {
       action: () => {
         void window.agentWorkspace?.openPath(folder.path);
       },
-      cta: 'Oeffnen',
+      cta: tr("Oeffnen"),
       active: false,
     })),
     ...apps.map((app) => ({
@@ -172,7 +194,7 @@ function LibraryView() {
       tags: app.tags || [],
       app,
       action: () => void launchLibraryApp(app),
-      cta: 'Ausfuehren',
+      cta: tr("Ausfuehren"),
       active: false,
     })),
   ].filter((item) => {
@@ -208,32 +230,32 @@ function LibraryView() {
           <div className="min-w-0">
             <div className="library-kicker">
               <LayoutGrid className="h-4 w-4" />
-              Projekt Library
+              {tr("Projekt Library")}
             </div>
-            <h1>{libraryStyle.bannerTitle || 'Alle Projekte, Apps und Handy Apps an einem Ort.'}</h1>
+            <h1>{libraryStyle.bannerTitle || tr("Alle Projekte, Apps und Handy Apps an einem Ort.")}</h1>
             <p>
-              {libraryStyle.bannerText || 'Sammle lokale Projekte, Programme und mobile Apps in einer cleanen Uebersicht und starte sie direkt.'}
+              {libraryStyle.bannerText || tr("Sammle lokale Projekte, Programme und mobile Apps in einer cleanen Uebersicht und starte sie direkt.")}
             </p>
           </div>
           <div className="library-actions relative">
             <button onClick={() => setAddMenuOpen((value) => !value)} className="library-button primary">
               <Plus className="h-4 w-4" />
-              Projekt hinzufuegen
+              {tr("Projekt hinzufuegen")}
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
             {addMenuOpen && (
               <div className="library-add-menu">
                 <button onClick={() => { setAddMenuOpen(false); void addLibraryProject(); }}>
                   <FileCode2 className="h-4 w-4" />
-                  Projektordner oeffnen
+                  {tr("Projektordner oeffnen")}
                 </button>
                 <button onClick={() => { setAddMenuOpen(false); void createLibraryNewProject(); }}>
                   <FolderIcon />
-                  Neues Projekt erstellen
+                  {tr("Neues Projekt erstellen")}
                 </button>
                 <button onClick={() => { setAddMenuOpen(false); setShowProjectForm(true); }}>
                   <AppWindow className="h-4 w-4" />
-                  Projekt mit Release anlegen
+                  {tr("Projekt mit Release anlegen")}
                 </button>
               </div>
             )}
@@ -246,21 +268,21 @@ function LibraryView() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Projekte, Apps oder Quellen suchen..."
+              placeholder={tr("Projekte, Apps oder Quellen suchen...")}
             />
           </div>
           <div className="library-stats">
-            <LibraryStat label="Projekte" value={libraryProjects.length} />
-            <LibraryStat label="Programme" value={apps.length} />
-            <LibraryStat label="Handy Apps" value={mobileCount} />
+            <LibraryStat label={tr("Projekte")} value={libraryProjects.length} />
+            <LibraryStat label={tr("Programme")} value={apps.length} />
+            <LibraryStat label={tr("Handy Apps")} value={mobileCount} />
           </div>
         </section>
 
         <section className="library-tags">
           <div className="library-tags-header">
             <div>
-              <h2>Tags</h2>
-              <p>Tags fuer deine lokalen Programme erstellen und loeschen.</p>
+              <h2>{tr("Tags")}</h2>
+              <p>{tr("Tags fuer deine lokalen Programme erstellen und loeschen.")}</p>
             </div>
             <button
               onClick={() => {
@@ -270,19 +292,19 @@ function LibraryView() {
               className="library-button"
             >
               <Plus className="h-4 w-4" />
-              Tag erstellen
+              {tr("Tag erstellen")}
             </button>
           </div>
           <div className="library-tag-list">
             {libraryTags.map((tag) => (
               <span key={tag}>
                 {tag}
-                <button onClick={() => deleteLibraryTag(tag)} title="Tag loeschen">
+                <button onClick={() => deleteLibraryTag(tag)} title={tr("Tag loeschen")}>
                   <X className="h-3 w-3" />
                 </button>
               </span>
             ))}
-            {libraryTags.length === 0 && <small>Noch keine Tags.</small>}
+            {libraryTags.length === 0 && <small>{tr("Noch keine Tags.")}</small>}
           </div>
         </section>
 
@@ -313,14 +335,14 @@ function LibraryView() {
               <h2>{item.title}</h2>
               {'app' in item && item.app.description && <p title={item.app.description}>{item.app.description}</p>}
               <p title={item.subtitle}>{item.subtitle}</p>
-              {'executable' in item && <p title={item.executable}>Ausfuehrung: {item.executable}</p>}
+              {'executable' in item && <p title={item.executable}>{tr("Ausfuehrung:")} {item.executable}</p>}
               {'tags' in item && item.tags.length > 0 && (
                 <div className="library-card-tags">
                   {item.tags.map((tag) => <span key={tag}>{tag}</span>)}
                 </div>
               )}
               <div className="library-card-footer">
-                <span>{item.type}</span>
+                <span>{tr(item.type)}</span>
                 <button onClick={item.action}>
                   {item.cta}
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -331,11 +353,11 @@ function LibraryView() {
           {allItems.length === 0 && (
             <div className="library-empty">
               <LayoutGrid className="h-8 w-8" />
-              <h2>Noch keine Eintraege gefunden</h2>
-              <p>Fuege Projektordner oder Apps hinzu, dann erscheint deine gesamte Arbeitswelt hier.</p>
+              <h2>{tr("Noch keine Eintraege gefunden")}</h2>
+              <p>{tr("Fuege Projektordner oder Apps hinzu, dann erscheint deine gesamte Arbeitswelt hier.")}</p>
               <button onClick={() => setShowProjectForm(true)} className="library-button primary">
                 <Plus className="h-4 w-4" />
-                Erstes Projekt anlegen
+                {tr("Erstes Projekt anlegen")}
               </button>
             </div>
           )}
@@ -378,7 +400,7 @@ function LibraryView() {
               setEditingApp(null);
             }}
             onDelete={() => {
-              if (window.confirm(`Programm "${editingApp.name}" entfernen?`)) {
+              if (window.confirm(tr('Programm "{name}" entfernen?', { name: editingApp.name }))) {
                 removeLibraryApp(editingApp.id);
                 setEditingApp(null);
               }
@@ -424,7 +446,7 @@ function LibraryContextMenu({
   }, [onClose]);
 
   const addNewTag = () => {
-    const tag = window.prompt('Tag erstellen und zuweisen:')?.trim();
+    const tag = window.prompt(tr("Tag erstellen und zuweisen:"))?.trim();
     if (!tag) return;
     onCreateTag(tag);
     onUpdate({ tags: [...new Set([...(app.tags || []), tag])] });
@@ -441,17 +463,17 @@ function LibraryContextMenu({
     <div className="library-context-menu" style={{ left: x, top: y }} onClick={(event) => event.stopPropagation()}>
       <button onClick={() => { onLaunch(); onClose(); }}>
         <Play className="h-3.5 w-3.5" />
-        Ausfuehren
+        {tr("Ausfuehren")}
       </button>
       <button onClick={onEdit}>
         <FileText className="h-3.5 w-3.5" />
-        Bearbeiten
+        {tr("Bearbeiten")}
       </button>
       <div className="library-context-divider" />
       {[
-        ['latest', 'Latest Release ausfuehren'],
-        ['installer', 'Installer ausfuehren'],
-        ['program', 'Programm ausfuehren'],
+        ['latest', tr("Latest Release ausfuehren")],
+        ['installer', tr("Installer ausfuehren")],
+        ['program', tr("Programm ausfuehren")],
       ].map(([id, label]) => (
         <button key={id} onClick={() => onUpdate({ runTarget: id as HomeApp['runTarget'] })}>
           <Check className={`h-3.5 w-3.5 ${(app.runTarget || 'latest') === id ? 'opacity-100' : 'opacity-0'}`} />
@@ -461,7 +483,7 @@ function LibraryContextMenu({
       <div className="library-context-divider" />
       <button onClick={addNewTag}>
         <Plus className="h-3.5 w-3.5" />
-        Tag erstellen
+        {tr("Tag erstellen")}
       </button>
       {tags.map((tag) => (
         <button key={tag} onClick={() => toggleTag(tag)}>
@@ -473,12 +495,12 @@ function LibraryContextMenu({
       <button
         className="danger"
         onClick={() => {
-          if (window.confirm(`Programm "${app.name}" entfernen?`)) onRemove();
+          if (window.confirm(tr('Programm "{name}" entfernen?', { name: app.name }))) onRemove();
           onClose();
         }}
       >
         <Trash2 className="h-3.5 w-3.5" />
-        Entfernen
+        {tr("Entfernen")}
       </button>
     </div>
   );
@@ -492,7 +514,7 @@ function describeRunTarget(app: HomeApp) {
       : target === 'program'
         ? app.programPath
         : app.latestReleasePath;
-  const label = target === 'installer' ? 'Installer' : target === 'program' ? 'Programm' : 'Latest Release';
+  const label = target === 'installer' ? tr("Installer") : target === 'program' ? tr("Programm") : tr("Latest Release");
   return `${label}: ${filePath || app.executablePath || app.path}`;
 }
 
@@ -522,7 +544,7 @@ function LibraryProjectForm({
     const nextPath = await window.agentWorkspace?.selectProjectFolder();
     if (!nextPath) return;
     setFolderPath(nextPath);
-    if (!name.trim()) setName(nextPath.split(/[\\/]/).filter(Boolean).at(-1) || 'Projekt');
+    if (!name.trim()) setName(nextPath.split(/[\\/]/).filter(Boolean).at(-1) || tr("Projekt"));
   };
   const pickFile = async (setter: (value: string) => void, title: string, application = false) => {
     const nextPath = application
@@ -536,32 +558,32 @@ function LibraryProjectForm({
       <div className="modal-card library-project-form">
         <div className="library-project-form-header">
           <div>
-            <h2>{initialApp ? 'Projekt bearbeiten' : 'Projekt zur Library hinzufuegen'}</h2>
-            <p>Ordner reicht aus. Dateien kannst du jetzt oder spaeter in dieser Maske hinterlegen.</p>
+            <h2>{initialApp ? tr("Projekt bearbeiten") : tr("Projekt zur Library hinzufuegen")}</h2>
+            <p>{tr("Ordner reicht aus. Dateien kannst du jetzt oder spaeter in dieser Maske hinterlegen.")}</p>
           </div>
-          <button onClick={onClose} title="Schliessen">
+          <button onClick={onClose} title={tr("Schliessen")}>
             <X className="h-4 w-4" />
           </button>
         </div>
         <div className="library-project-form-body">
           <label>
-            Projektname
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="z.B. Meine App" />
+            {tr("Projektname")}
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder={tr("z.B. Meine App")} />
           </label>
           <label>
-            Beschreibung
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Kurzbeschreibung fuer die Library..." />
+            {tr("Beschreibung")}
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder={tr("Kurzbeschreibung fuer die Library...")} />
           </label>
-          <FilePickRow label="Projektordner" value={folderPath} onPick={pickFolder} />
-          <FilePickRow label="Latest Release Datei" value={latestReleasePath} onPick={() => pickFile(setLatestReleasePath, 'Latest-Release-Datei auswaehlen')} />
-          <FilePickRow label="Installer Datei" value={installerPath} onPick={() => pickFile(setInstallerPath, 'Installer-Datei auswaehlen', true)} />
-          <FilePickRow label="Programm Datei" value={programPath} onPick={() => pickFile(setProgramPath, 'Programm-Datei auswaehlen', true)} />
+          <FilePickRow label={tr("Projektordner")} value={folderPath} onPick={pickFolder} />
+          <FilePickRow label={tr("Latest Release Datei")} value={latestReleasePath} onPick={() => pickFile(setLatestReleasePath, tr('Latest-Release-Datei auswaehlen'))} />
+          <FilePickRow label={tr("Installer Datei")} value={installerPath} onPick={() => pickFile(setInstallerPath, tr('Installer-Datei auswaehlen'), true)} />
+          <FilePickRow label={tr("Programm Datei")} value={programPath} onPick={() => pickFile(setProgramPath, tr('Programm-Datei auswaehlen'), true)} />
           <div className="library-run-targets">
-            <span>Beim Ausfuehren starten</span>
+            <span>{tr("Beim Ausfuehren starten")}</span>
             {[
-              ['latest', 'Latest Release'],
-              ['installer', 'Installer'],
-              ['program', 'Programm'],
+              ['latest', tr("Latest Release")],
+              ['installer', tr("Installer")],
+              ['program', tr("Programm")],
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -579,10 +601,10 @@ function LibraryProjectForm({
           {onDelete && (
             <button onClick={onDelete} className="library-button danger mr-auto">
               <Trash2 className="h-3.5 w-3.5" />
-              Loeschen
+              {tr("Loeschen")}
             </button>
           )}
-          <button onClick={onClose} className="library-button">Abbrechen</button>
+          <button onClick={onClose} className="library-button">{tr("Abbrechen")}</button>
           <button
             disabled={!canSave || saving}
             onClick={async () => {
@@ -592,14 +614,14 @@ function LibraryProjectForm({
               try {
                 await onSubmit({ name, description, folderPath, latestReleasePath, installerPath, programPath, runTarget });
               } catch (submitError) {
-                setError(submitError instanceof Error ? submitError.message : 'Projekt konnte nicht gespeichert werden.');
+                setError(submitError instanceof Error ? submitError.message : tr("Projekt konnte nicht gespeichert werden."));
               } finally {
                 setSaving(false);
               }
             }}
             className="library-button primary"
           >
-            {saving ? 'Speichern...' : initialApp ? 'Speichern' : 'Erstellen'}
+            {saving ? tr("Speichern...") : initialApp ? tr("Speichern") : tr("Erstellen")}
           </button>
         </div>
       </div>
@@ -612,9 +634,9 @@ function FilePickRow({ label, value, onPick }: { label: string; value: string; o
     <div className="library-file-row">
       <div>
         <span>{label}</span>
-        <small title={value}>{value || 'Noch nicht ausgewaehlt'}</small>
+        <small title={value}>{value || tr("Noch nicht ausgewaehlt")}</small>
       </div>
-      <button type="button" onClick={onPick}>Auswaehlen</button>
+      <button type="button" onClick={onPick}>{tr("Auswaehlen")}</button>
     </div>
   );
 }
@@ -636,8 +658,8 @@ function classifyProject(title: string, path: string) {
   const value = `${title} ${path}`.toLowerCase();
   if (value.includes('antigravity')) return 'Antigravity';
   if (value.includes('codex')) return 'Codex';
-  if (value.includes('fancycode') || value.includes('codeforge') || value.includes('name\\name') || value.includes('name/name')) return 'FancyCode';
-  return 'FancyCode';
+  if (value.includes('fancycode') || value.includes('codeforge') || value.includes('name\\name') || value.includes('name/name')) return 'FancyCode Desktop';
+  return 'FancyCode Desktop';
 }
 
 function isMobileProject(path: string) {
@@ -691,7 +713,7 @@ function HomeTabsView() {
                   closeHomeTab(tab.id);
                 }}
                 className="rounded p-0.5 text-zinc-600 hover:bg-red-500/10 hover:text-red-300"
-                title="Tab schliessen"
+                title={tr("Tab schliessen")}
               >
                 <X className="h-3 w-3" />
               </span>
@@ -737,7 +759,7 @@ function HomeTabsView() {
           <button
             onClick={() => reloadHomeTab(activeHomeTab.id)}
             className="rounded-md p-2 text-zinc-500 hover:bg-white/5 hover:text-white"
-            title="Tab neu laden"
+            title={tr("Tab neu laden")}
           >
             <RotateCw className="h-4 w-4" />
           </button>
@@ -748,14 +770,14 @@ function HomeTabsView() {
                 : reloadHomeTab(activeHomeTab.id)
             }
             className="rounded-md p-2 text-zinc-500 hover:bg-white/5 hover:text-white"
-            title={activeHomeTab.kind === 'web' ? 'Extern oeffnen' : 'App einbetten'}
+            title={activeHomeTab.kind === 'web' ? tr("Extern oeffnen") : tr("App einbetten")}
           >
             <ExternalLink className="h-4 w-4" />
           </button>
           <button
             onClick={() => closeHomeTab(activeHomeTab.id)}
             className="rounded-md p-2 text-zinc-500 hover:bg-white/5 hover:text-white"
-            title="Tab schliessen"
+            title={tr("Tab schliessen")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -836,7 +858,7 @@ function WebHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
 function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<'idle' | 'starting' | 'embedded' | 'launched' | 'failed'>('idle');
-  const [message, setMessage] = useState('App wird in den Tab eingebettet...');
+  const [message, setMessage] = useState(tr("App wird in den Tab eingebettet..."));
 
   const readBounds = () => {
     const rect = hostRef.current?.getBoundingClientRect();
@@ -851,7 +873,7 @@ function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
 
   const attach = async () => {
     setStatus('starting');
-    setMessage('App wird gestartet und eingebettet...');
+    setMessage(tr("App wird gestartet und eingebettet..."));
     try {
       const result = await window.agentWorkspace?.attachNativeTab({
         tabId: tab.id,
@@ -863,18 +885,18 @@ function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
         // Linux and macOS start the app in its own window; there is nothing to embed.
         if (result?.launched) {
           setStatus('launched');
-          setMessage(result.message || 'Die App laeuft in einem eigenen Fenster.');
+          setMessage(result.message || tr("Die App laeuft in einem eigenen Fenster."));
           return;
         }
         setStatus('failed');
-        setMessage(result?.message || 'Die App konnte nicht in den Tab eingebettet werden.');
+        setMessage(result?.message || tr("Die App konnte nicht in den Tab eingebettet werden."));
         return;
       }
       setStatus('embedded');
-      setMessage('App ist in diesem Tab eingebettet.');
+      setMessage(tr("App ist in diesem Tab eingebettet."));
     } catch (error) {
       setStatus('failed');
-      setMessage(error instanceof Error ? error.message : 'Die App konnte nicht in den Tab eingebettet werden.');
+      setMessage(error instanceof Error ? error.message : tr("Die App konnte nicht in den Tab eingebettet werden."));
     }
   };
 
@@ -941,14 +963,14 @@ function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
               <div className="mt-5 flex justify-center gap-2">
                 <button onClick={() => void attach()} className="secondary-button">
                   <RotateCw className="h-4 w-4" />
-                  Erneut versuchen
+                  {tr("Erneut versuchen")}
                 </button>
                 <button
                   onClick={() => window.agentWorkspace?.launchApplication(tab.path)}
                   className="secondary-button"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  Extern starten
+                  {tr("Extern starten")}
                 </button>
               </div>
             )}
@@ -967,13 +989,13 @@ function NativeHomeTab({ tab, active }: { tab: HomeAppTab; active: boolean }) {
 const startedTerminalTabs = new Set<string>();
 
 const TOOLBAR_BUTTONS = [
-  { key: 'showStartCommandButton', label: 'Start-Befehl' },
-  { key: 'showSftpButton', label: 'SFTP (nur V-Server)' },
-  { key: 'showPasteButton', label: 'Einfügen' },
-  { key: 'showMicButton', label: 'Spracheingabe' },
-  { key: 'showGridButton', label: 'Grid' },
-  { key: 'showFullscreenButton', label: 'Vollbild' },
-  { key: 'showRestartButton', label: 'Neustarten' },
+  { key: 'showStartCommandButton', label: tr("Start-Befehl") },
+  { key: 'showSftpButton', label: tr("SFTP (nur V-Server)") },
+  { key: 'showPasteButton', label: tr("Einfügen") },
+  { key: 'showMicButton', label: tr("Spracheingabe") },
+  { key: 'showGridButton', label: tr("Grid") },
+  { key: 'showFullscreenButton', label: tr("Vollbild") },
+  { key: 'showRestartButton', label: tr("Neustarten") },
 ] as const;
 
 // Picks which buttons the terminal toolbar shows. Also opens on right-click on the toolbar.
@@ -1002,13 +1024,13 @@ function ToolbarButtonsMenu() {
       <button
         onClick={() => setOpen((current) => !current)}
         className={`p-1.5 rounded border transition-colors ${open ? 'bg-white/10 border-white/20 text-white' : 'bg-zinc-800 border-white/10 text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
-        title="Buttons ein-/ausblenden"
+        title={tr("Buttons ein-/ausblenden")}
       >
         <SlidersHorizontal className="w-3.5 h-3.5" />
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-2 z-50 w-56 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-md p-2 shadow-xl">
-          <div className="px-2 pb-1.5 pt-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Buttons anzeigen</div>
+          <div className="px-2 pb-1.5 pt-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">{tr("Buttons anzeigen")}</div>
           {TOOLBAR_BUTTONS.map((item) => (
             <label key={item.key} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs text-zinc-300 hover:bg-white/5 cursor-pointer select-none">
               <input
@@ -1029,6 +1051,7 @@ function ToolbarButtonsMenu() {
 const getAgentCommand = (provider: string) => {
   if (provider === 'antigravity') return 'agy';
   if (provider === 'anthropic') return 'claude';
+  if (provider === 'hermes') return 'hermes';
   if (provider === 'openai') return 'codex';
   if (provider === 'cursor') return 'cursor';
   if (provider === 'freebuff') return 'freebuff';
@@ -1280,8 +1303,8 @@ function TerminalInstance({
             let matched = false;
             for (const word of words) {
               if (payload.text.toLowerCase().includes(word.toLowerCase())) {
-                new Notification('Terminal Trigger', {
-                  body: `Trigger-Wort "${word}" im Terminal gefunden!`,
+                new Notification(tr('Terminal Trigger'), {
+                  body: tr('Trigger-Wort "{word}" im Terminal gefunden!', { word }),
                   silent: false
                 });
                 matched = true;
@@ -1474,7 +1497,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const [editingTitle, setEditingTitle] = useState('');
 
   const currentChat = chats.find((c) => c.id === chat.id) || chat;
-  const tabs = currentChat.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
+  const tabs = currentChat.terminalTabs || [{ id: chat.id, title: tr("Terminal 1") }];
   const activeTabId = currentChat.activeTerminalTabId || chat.id;
   const terminalLayout = currentChat.terminalLayout || 'single';
   // Phones and tablets stack grid terminals in one scrollable column.
@@ -1566,7 +1589,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
         ? server.name
         : !local && chat.vserver
           ? chat.vserver.name
-          : shellType === 'powershell' ? 'PowerShell' : 'Terminal';
+          : shellType === 'powershell' ? 'PowerShell' : tr("Terminal");
     const newTab: TerminalTab = {
       id: newTabId,
       title: server ? label : `${label} ${tabs.length + 1}`,
@@ -1579,7 +1602,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     setChats((current) =>
       current.map((c) => {
         if (c.id === chat.id) {
-          const oldTabs = c.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
+          const oldTabs = c.terminalTabs || [{ id: chat.id, title: tr("Terminal 1") }];
           const newTabs = [...oldTabs, newTab];
           return {
             ...c,
@@ -1682,7 +1705,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     setChats((current) =>
       current.map((c) => {
         if (c.id === chat.id) {
-          const oldTabs = c.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
+          const oldTabs = c.terminalTabs || [{ id: chat.id, title: tr("Terminal 1") }];
           return {
             ...c,
             terminalTabs: oldTabs.map((t) =>
@@ -1702,7 +1725,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     setChats((current) =>
       current.map((c) => {
         if (c.id === chat.id) {
-          const oldTabs = c.terminalTabs || [{ id: chat.id, title: 'Terminal 1' }];
+          const oldTabs = c.terminalTabs || [{ id: chat.id, title: tr("Terminal 1") }];
           return {
             ...c,
             terminalTabs: oldTabs.map((t) =>
@@ -1766,7 +1789,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                     <span
                       className="flex items-center gap-1.5 truncate max-w-[120px]"
                       onDoubleClick={() => startEditing(tab.id, tab.title)}
-                      title="Doppelklick zum Umbenennen"
+                      title={tr("Doppelklick zum Umbenennen")}
                     >
                       {tab.location !== 'local' && (tab.vserver || chat.vserver) && <Server className="w-3 h-3 shrink-0 text-sky-400" />}
                       <span className="truncate">{tab.title}</span>
@@ -1791,7 +1814,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
               onTouchStart={handlePlusTouchStart}
               onTouchEnd={handlePlusTouchEnd}
               className="p-1.5 rounded-lg bg-zinc-800/60 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-white/5 hover:border-white/10 transition-all duration-150 shadow-sm select-none"
-              title="Neues Terminal-Tab (gedrückt halten für PowerShell)"
+              title={tr("Neues Terminal-Tab (gedrückt halten für PowerShell)")}
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -1836,17 +1859,17 @@ function TerminalChatView({ chat }: { chat: Chat }) {
               className="sr-only"
             />
             <div className={`w-2 h-2 rounded-full transition-colors duration-150 ${terminalStartCommandEnabled ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
-            <span>Start-Befehl</span>
+            <span>{tr("Start-Befehl")}</span>
           </label>}
 
           {activeServer && voice.showSftpButton && (
             <button
               onClick={() => setSftpServer(activeServer)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-sky-400/20 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-xs cursor-pointer select-none transition-colors duration-150"
-              title={`SFTP-Dateien von ${activeServer.name}`}
+              title={tr("SFTP-Dateien von {server}", { server: activeServer.name })}
             >
               <FolderOpen className="w-3.5 h-3.5" />
-              <span>SFTP</span>
+              <span>{tr("SFTP")}</span>
             </button>
           )}
 
@@ -1862,10 +1885,10 @@ function TerminalChatView({ chat }: { chat: Chat }) {
               }
             }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/5 bg-zinc-900/50 text-zinc-400 hover:text-zinc-300 hover:bg-white/5 text-xs cursor-pointer select-none transition-colors duration-150"
-            title="Zwischenablage einfügen"
+            title={tr("Zwischenablage einfügen")}
           >
             <Clipboard className="w-3.5 h-3.5" />
-            <span>Einfügen</span>
+            <span>{tr("Einfügen")}</span>
           </button>}
 
           {voice.enabled && voice.showMicButton && <button
@@ -1875,7 +1898,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 ? 'bg-red-500/10 border-red-500/30 text-red-400 font-medium animate-pulse'
                 : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
             }`}
-            title="Spracheingabe aktivieren (Alt+S oder Ctrl+Shift+S)"
+            title={tr("Spracheingabe aktivieren (Alt+S oder Ctrl+Shift+S)")}
           >
             {listening ? (
               <span className="relative flex h-2 w-2 mr-0.5">
@@ -1885,7 +1908,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             ) : (
               <Mic className="w-3.5 h-3.5" />
             )}
-            <span>{listening ? (dictation.busy ? 'Erkenne...' : 'Aufnahme...') : 'Spracheingabe'}</span>
+            <span>{listening ? (dictation.busy ? tr("Erkenne...") : tr("Aufnahme...")) : tr("Spracheingabe")}</span>
           </button>}
 
           <div className="h-4 w-px bg-white/10" />
@@ -1907,16 +1930,16 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
                 : 'bg-zinc-800 border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white'
             }`}
-            title={terminalLayout === 'grid' ? 'Grid-Layout deaktivieren' : 'Grid-Layout aktivieren (bis zu 8 Terminals)'}
+            title={terminalLayout === 'grid' ? tr("Grid-Layout deaktivieren") : tr("Grid-Layout aktivieren (bis zu 8 Terminals)")}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Grid</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">{tr("Grid")}</span>
           </button>}
 
           {voice.showFullscreenButton && <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-1.5 rounded bg-zinc-800 border border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
-            title={isFullscreen ? 'Fullscreen beenden' : 'Fullscreen aktivieren'}
+            title={isFullscreen ? tr("Fullscreen beenden") : tr("Fullscreen aktivieren")}
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>}
@@ -1924,7 +1947,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             onClick={handleRestart}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-800 border border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white text-[10px] uppercase font-bold tracking-wider transition-colors"
           >
-            Neustarten
+            {tr("Neustarten")}
           </button>}
 
           <ToolbarButtonsMenu />
@@ -1966,12 +1989,12 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             ))}
             {!stacked && tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
               <div key={`empty-${i}`} className="border border-dashed border-white/5 rounded-lg flex flex-col items-center justify-center bg-black/10">
-                <span className="text-[10px] text-zinc-600 uppercase font-mono">Kein Tab</span>
+                <span className="text-[10px] text-zinc-600 uppercase font-mono">{tr("Kein Tab")}</span>
                 <button
                   onClick={() => handleAddTab('cmd')}
                   className="mt-2 text-[10px] text-amber-500/80 hover:text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1"
                 >
-                  <Plus className="w-3 h-3" /> Hinzufügen
+                  <Plus className="w-3 h-3" /> {tr("Hinzufügen")}
                 </button>
               </div>
             ))}
@@ -2009,13 +2032,15 @@ function HomeView() {
   const {
     cliHarnesses,
     startWorkspace,
+    startHarnessChat,
     selectedProject,
     agyAccounts,
     startAgyAccounts,
     multiLaunchConfig,
     startMultiLaunch,
+    setMainView,
   } = useAppContext();
-  const [picking, setPicking] = useState<false | 'workspace' | 'chat' | 'vserver' | 'agy' | 'running' | 'multilaunch'>(false);
+  const [picking, setPicking] = useState<false | 'workspace' | 'harness' | 'chat' | 'vserver' | 'agy' | 'running' | 'multilaunch'>(false);
   const [harnessId, setHarnessId] = useState(() => cliHarnesses[0]?.id || '');
   const [grid, setGrid] = useState(true);
   const [count, setCount] = useState(1);
@@ -2031,15 +2056,33 @@ function HomeView() {
     try {
       await startAgyAccounts(undefined, server);
     } catch (err) {
-      setAgyError(err instanceof Error ? err.message : 'Antigravity konnte nicht gestartet werden.');
+      setAgyError(err instanceof Error ? err.message : tr("Antigravity konnte nicht gestartet werden."));
       setAgyStarting(false);
       setPicking(false);
     }
   };
 
+  // GUI-Chat mit der Harness: geschrieben wird im Chatfenster, die CLI laeuft dahinter.
+  const startHarness = (harness: CliHarness) => {
+    setPicking(false);
+    if (harness.command === 'fancycode') {
+      setMainView('fancycode');
+      return;
+    }
+    const fallback = (err: unknown) => {
+      setError(err instanceof Error ? err.message : tr("Harness konnte nicht gestartet werden."));
+    };
+    if (harnessProvider(harness.command)) {
+      void startHarnessChat(harness).catch(fallback);
+      return;
+    }
+    // Unknown CLI: run it in a terminal tab instead of the chat window.
+    void startWorkspace({ harnessId: harness.id, grid: false, count: 1 }).catch(fallback);
+  };
+
   const handleStartAgy = () => {
     if (agyAccounts.length === 0) {
-      setAgyError('Noch keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen unter "Antigravity Accounts" hinzu.');
+      setAgyError(tr("Noch keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen unter \"Antigravity Accounts\" hinzu."));
       return;
     }
     // Without saved V-Servers there is nothing to choose: start on this PC.
@@ -2049,7 +2092,7 @@ function HomeView() {
 
   const handleStartMulti = async () => {
     if (multiLaunchConfig.mode === 'default' && agyAccounts.length === 0) {
-      setAgyError('Noch keine Antigravity-Accounts angelegt. Lege sie in den Einstellungen an oder passe den Button auf "Individuell" an.');
+      setAgyError(tr("Noch keine Antigravity-Accounts angelegt. Lege sie in den Einstellungen an oder passe den Button auf \"Individuell\" an."));
       return;
     }
     setAgyStarting(true);
@@ -2057,7 +2100,7 @@ function HomeView() {
     try {
       await startMultiLaunch();
     } catch (err) {
-      setAgyError(err instanceof Error ? err.message : 'Multi-Launch konnte nicht gestartet werden.');
+      setAgyError(err instanceof Error ? err.message : tr("Multi-Launch konnte nicht gestartet werden."));
       setAgyStarting(false);
     }
   };
@@ -2068,7 +2111,7 @@ function HomeView() {
     try {
       await startWorkspace({ harnessId, grid, count });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Workspace konnte nicht gestartet werden.');
+      setError(err instanceof Error ? err.message : tr("Workspace konnte nicht gestartet werden."));
       setStarting(false);
     }
   };
@@ -2081,7 +2124,7 @@ function HomeView() {
         </div>
         <h1 className="text-3xl text-white font-medium text-center tracking-tight">Home</h1>
         <p className="text-sm text-zinc-600 mt-3 text-center max-w-lg">
-          {selectedProject ? `Workspace startet in ${selectedProject.path}` : 'Ohne Projekt nutzt FancyCode einen eigenen Arbeitsordner.'}
+          {selectedProject ? `Workspace startet in ${selectedProject.path}` : tr("Ohne Projekt nutzt FancyCode Desktop einen eigenen Arbeitsordner.")}
         </p>
 
         {!picking ? (
@@ -2094,20 +2137,20 @@ function HomeView() {
                 <Play className="w-4 h-4 fill-current" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-zinc-100">Workspace starten</span>
-                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Terminals mit Agent im Projektordner</span>
+                <span className="block text-sm font-medium text-zinc-100">{tr("Workspace starten")}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">{tr("Terminals mit Agent im Projektordner")}</span>
               </span>
             </button>
             <button
-              onClick={() => setPicking('chat')}
+              onClick={() => setPicking('harness')}
               className="tile-animate flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-500/25 bg-sky-500/10 text-sky-300">
-                <MessageSquare className="w-4 h-4" />
+                <Bot className="w-4 h-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-zinc-100">Chat starten</span>
-                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Schreiben mit deinem API-Schluessel</span>
+                <span className="block text-sm font-medium text-zinc-100">{tr("Harness starten")}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">{tr("CLI-Agent im Chat-Tab starten")}</span>
               </span>
             </button>
             <button
@@ -2118,8 +2161,8 @@ function HomeView() {
                 <Server className="w-4 h-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-zinc-100">V-Server</span>
-                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Per SSH auf einem Server arbeiten</span>
+                <span className="block text-sm font-medium text-zinc-100">{tr("V-Server")}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">{tr("Per SSH auf einem Server arbeiten")}</span>
               </span>
             </button>
             <button
@@ -2130,8 +2173,8 @@ function HomeView() {
                 <LogIn className="w-4 h-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-zinc-100">Laufende Sessions</span>
-                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">Aktive Terminals fortsetzen</span>
+                <span className="block text-sm font-medium text-zinc-100">{tr("Laufende Sessions")}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">{tr("Aktive Terminals fortsetzen")}</span>
               </span>
             </button>
             <div className="sm:col-span-2 flex items-stretch gap-1 rounded-2xl border border-orange-500/25 bg-gradient-to-br from-orange-500/[0.14] via-orange-500/[0.05] to-transparent p-1.5 transition-colors hover:border-orange-500/40">
@@ -2144,10 +2187,10 @@ function HomeView() {
                 disabled={agyStarting}
                 title={
                   multiLaunchConfig.mode === 'custom'
-                    ? `${multiLaunchConfig.buttonLabel || 'Antigravity starten'} (${multiLaunchConfig.slots.length} Terminals)`
+                    ? `${multiLaunchConfig.buttonLabel || tr("Antigravity starten")} (${multiLaunchConfig.slots.length} Terminals)`
                     : agyAccounts.length
                       ? `${agyAccounts.length} Antigravity-Accounts nebeneinander starten`
-                      : 'Accounts in den Einstellungen anlegen oder Button anpassen'
+                      : tr("Accounts in den Einstellungen anlegen oder Button anpassen")
                 }
                 className="flex flex-1 items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-white/5 disabled:opacity-50"
               >
@@ -2156,14 +2199,14 @@ function HomeView() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-white">
-                    {multiLaunchConfig.buttonLabel || 'Antigravity starten'}
+                    {multiLaunchConfig.buttonLabel || tr("Antigravity starten")}
                   </span>
                   <span className="mt-0.5 block truncate text-[11px] text-orange-200/70">
                     {multiLaunchConfig.mode === 'custom'
-                      ? `${multiLaunchConfig.slots.length} Terminals nach eigener Belegung`
+                      ? tr("{count} Terminals nach eigener Belegung", { count: multiLaunchConfig.slots.length })
                       : agyAccounts.length
                         ? `${agyAccounts.length} Account${agyAccounts.length === 1 ? '' : 's'} nebeneinander`
-                        : 'Accounts in den Einstellungen anlegen'}
+                        : tr("Accounts in den Einstellungen anlegen")}
                   </span>
                 </span>
               </button>
@@ -2171,7 +2214,7 @@ function HomeView() {
                 type="button"
                 onClick={() => setPicking('multilaunch')}
                 className="px-3 flex items-center justify-center text-orange-300/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors border-l border-orange-500/20"
-                title="Start-Button anpassen (Aktionen, V-Server, Claude Code, Agy frei belegen)"
+                title={tr("Start-Button anpassen (Aktionen, V-Server, Claude Code, Agy frei belegen)")}
               >
                 <SlidersHorizontal className="w-4 h-4" />
               </button>
@@ -2181,7 +2224,7 @@ function HomeView() {
                 {agyError}{' '}
                 {agyAccounts.length === 0 && (
                   <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true }))} className="text-orange-300 hover:underline">
-                    Einstellungen oeffnen
+                    {tr("Einstellungen oeffnen")}
                   </button>
                 )}
               </div>
@@ -2189,6 +2232,50 @@ function HomeView() {
           </div>
         ) : picking === 'multilaunch' ? (
           <MultiLaunchPanel onCancel={() => setPicking(false)} onStart={() => { setPicking(false); void handleStartMulti(); }} />
+        ) : picking === 'harness' ? (
+          <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-5">
+            <div>
+              <div className="section-label">{tr("Harness starten")}</div>
+              <p className="text-xs text-zinc-500 mt-2">
+                {tr("Die CLI laeuft in einem Chat-Tab. Du schreibst im Fenster, ausgefuehrt wird die CLI im Projektordner.")}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {cliHarnesses.filter((harness) => harness.command).map((harness) => {
+                const Icon = harnessIcon(harness.icon);
+                return (
+                  <button
+                    key={harness.id}
+                    onClick={() => startHarness(harness)}
+                    title={harness.command}
+                    className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-left transition-colors hover:bg-white/[0.07]"
+                  >
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                      harness.command === 'fancycode'
+                        ? 'border-orange-400/40 bg-orange-500/10 text-orange-300'
+                        : 'border-white/10 bg-white/[0.04] text-zinc-300'
+                    }`}>
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-zinc-100">{harness.name}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+                        {harness.command === 'fancycode' ? tr("im Panel oeffnen") : tr("im Chat-Tab starten")}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <button onClick={() => setPicking('chat')} className="text-xs text-zinc-500 hover:text-zinc-200">
+                {tr("Stattdessen API-Chat mit eigenem Schluessel")}
+              </button>
+              <button onClick={() => setPicking(false)} className="text-xs text-zinc-400 hover:text-zinc-200">
+                {tr("Abbrechen")}
+              </button>
+            </div>
+          </section>
         ) : picking === 'chat' ? (
           <ApiChatSetup onCancel={() => setPicking(false)} />
         ) : picking === 'vserver' ? (
@@ -2198,9 +2285,9 @@ function HomeView() {
         ) : picking === 'agy' ? (
           <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-4">
             <div>
-              <div className="section-label">Antigravity starten auf</div>
+              <div className="section-label">{tr("Antigravity starten auf")}</div>
               <p className="text-xs text-zinc-500 mt-2">
-                {agyAccounts.length} Account{agyAccounts.length === 1 ? '' : 's'} nebeneinander. Auf einem V-Server muss agy installiert sein; jeder Account meldet sich dort einmal separat an.
+                {agyAccounts.length} Account{agyAccounts.length === 1 ? '' : 's'} {tr("nebeneinander. Auf einem V-Server muss agy installiert sein; jeder Account meldet sich dort einmal separat an.")}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -2210,7 +2297,7 @@ function HomeView() {
                 className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-sm text-zinc-200 hover:bg-white/[0.07] disabled:opacity-50"
               >
                 <Monitor className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span className="truncate">Dieser PC</span>
+                <span className="truncate">{tr("Dieser PC")}</span>
               </button>
               {savedServers.map((server) => (
                 <button
@@ -2227,18 +2314,18 @@ function HomeView() {
             </div>
             <div className="flex justify-end">
               <button onClick={() => setPicking(false)} disabled={agyStarting} className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50">
-                Abbrechen
+                {tr("Abbrechen")}
               </button>
             </div>
           </section>
         ) : (
           <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-6">
             <div>
-              <div className="section-label">CLI-Harness</div>
+              <div className="section-label">{tr("CLI-Harness")}</div>
               {cliHarnesses.length === 0 ? (
                 <p className="text-xs text-zinc-500 mt-3">
-                  Keine Harnesses angelegt.{' '}
-                  <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true }))} className="text-orange-300 hover:underline">In den Einstellungen hinzufuegen</button>
+                  {tr("Keine Harnesses angelegt.")}{' '}
+                  <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true }))} className="text-orange-300 hover:underline">{tr("In den Einstellungen hinzufuegen")}</button>
                 </p>
               ) : (
                 <div className="grid grid-cols-2 gap-2 mt-3">
@@ -2254,7 +2341,7 @@ function HomeView() {
                         <Icon className={`w-5 h-5 shrink-0 ${selected ? 'text-orange-300' : 'text-zinc-400'}`} />
                         <span className="min-w-0">
                           <span className="block text-sm text-white truncate">{harness.name}</span>
-                          <span className="block text-[11px] font-mono text-zinc-500 truncate">{harness.command || 'kein Befehl'}</span>
+                          <span className="block text-[11px] font-mono text-zinc-500 truncate">{harness.command || tr("kein Befehl")}</span>
                         </span>
                       </button>
                     );
@@ -2265,21 +2352,21 @@ function HomeView() {
 
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="section-label">Grid</div>
-                <p className="text-[11px] text-zinc-600 mt-1">Terminals nebeneinander statt als Tabs anzeigen.</p>
+                <div className="section-label">{tr("Grid")}</div>
+                <p className="text-[11px] text-zinc-600 mt-1">{tr("Terminals nebeneinander statt als Tabs anzeigen.")}</p>
               </div>
               <button
                 onClick={() => setGrid((value) => !value)}
                 className={`relative w-11 h-6 rounded-full transition-colors ${grid ? 'bg-orange-500' : 'bg-white/10'}`}
                 aria-pressed={grid}
-                title={grid ? 'Grid aus' : 'Grid an'}
+                title={grid ? tr("Grid aus") : tr("Grid an")}
               >
                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${grid ? 'left-[22px]' : 'left-0.5'}`} />
               </button>
             </div>
 
             <div>
-              <div className="section-label">Anzahl Terminals</div>
+              <div className="section-label">{tr("Anzahl Terminals")}</div>
               <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mt-3">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
                   <button
@@ -2297,7 +2384,7 @@ function HomeView() {
 
             <div className="flex gap-2">
               <button onClick={() => setPicking(false)} className="flex-1 rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
-                Abbrechen
+                {tr("Abbrechen")}
               </button>
               <button
                 onClick={handleStart}
@@ -2305,7 +2392,7 @@ function HomeView() {
                 className="primary-button flex-[2] !py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
-                <span>Starten</span>
+                <span>{tr("Starten")}</span>
               </button>
             </div>
           </section>
@@ -2340,7 +2427,10 @@ function ChatView() {
     );
   }
 
-  if (selectedChat.mode === 'terminal' || (selectedChat.mode === 'standard' && provider !== 'antigravity')) {
+  if (
+    selectedChat.mode === 'terminal' ||
+    (selectedChat.mode === 'standard' && provider !== 'antigravity' && !selectedChat.gui)
+  ) {
     return <TerminalChatView chat={selectedChat} />;
   }
 
@@ -2354,14 +2444,14 @@ function ChatView() {
               {selectedChat.mode === 'lyz-dev' && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[10px] text-emerald-300">
                   <Gamepad2 className="h-3 w-3" />
-                  Lyz Dev
+                  {tr("Lyz Dev")}
                 </span>
               )}
             </div>
             <p className="text-[11px] text-zinc-600 mt-1">{selectedProject?.path}</p>
             {selectedChat.requiredMcpServer && (
               <p className="mt-1 text-[11px] text-zinc-600">
-                Unity-MCP: {selectedChat.requiredMcpServer.name} ({selectedChat.requiredMcpServer.source})
+                {tr("Unity-MCP:")} {selectedChat.requiredMcpServer.name} ({selectedChat.requiredMcpServer.source})
               </p>
             )}
           </div>
@@ -2407,7 +2497,7 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Messag
         {message.sender !== 'user' && (
           <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-zinc-600 mb-2">
             <Bot className="w-3 h-3" />
-            {message.sender === 'system' ? 'System' : 'Agent'}
+            {message.sender === 'system' ? tr("System") : 'Agent'}
           </div>
         )}
         <MessageContent message={message} />
@@ -2439,7 +2529,7 @@ function CodexMessage({ message }: { message: Message }) {
         >
           <span className="flex min-w-0 items-center gap-2">
             <Bot className="h-3.5 w-3.5 text-emerald-300" />
-            <span className="truncate">Antwort</span>
+            <span className="truncate">{tr("Antwort")}</span>
             {message.runDurationMs && (
               <span className="text-[11px] text-zinc-600">{formatDuration(message.runDurationMs)}</span>
             )}
@@ -2483,7 +2573,7 @@ function CodexMessage({ message }: { message: Message }) {
             onClick={() => setShowRaw((value) => !value)}
             className="flex items-center gap-2 text-[12px] text-zinc-600 hover:text-zinc-300"
           >
-            Raw-Ausgabe
+            {tr("Raw-Ausgabe")}
             {showRaw ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
           {showRaw && (
@@ -2672,14 +2762,14 @@ function AgentFormattedOutput({
       {terminalBlocks.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-white/10 bg-black/25">
           <div className="border-b border-white/10 px-3 py-2 text-[11px] uppercase tracking-wide text-zinc-600">
-            Terminal
+            {tr("Terminal")}
           </div>
           <div className="divide-y divide-white/5">
             {terminalBlocks.slice(0, 8).map((block, index) => (
               <div key={`${block.command}-${index}`} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-[12px]">
                 <code className="truncate text-zinc-300">{block.command}</code>
                 <span className={block.status === 'ok' ? 'text-emerald-400' : block.status === 'failed' ? 'text-red-400' : 'text-zinc-500'}>
-                  {block.status === 'ok' ? 'ok' : block.status === 'failed' ? 'fehler' : 'ausgefuehrt'}
+                  {block.status === 'ok' ? 'ok' : block.status === 'failed' ? tr('fehler') : tr('ausgefuehrt')}
                 </span>
               </div>
             ))}
@@ -2754,7 +2844,7 @@ function ResponseStyledOutput({ text, mode }: { text: string; mode: ResponseDisp
 
 function formatTerminalNarrative(text: string) {
   if (/windows sandbox:\s*spawn setup refresh/i.test(text)) {
-    return 'Der Agent konnte keine lokalen Befehle starten: `windows sandbox: spawn setup refresh`. Das Projekt wurde nicht veraendert.';
+    return tr('Der Agent konnte keine lokalen Befehle starten: `windows sandbox: spawn setup refresh`. Das Projekt wurde nicht veraendert.');
   }
   const lines = text
     .split('\n')
@@ -2840,7 +2930,7 @@ function DiffBlock({ diff }: { diff: ParsedDiff }) {
           <span className="font-mono text-[11px] text-emerald-400">+{diff.additions}</span>
           <span className="font-mono text-[11px] text-red-400">-{diff.deletions}</span>
         </div>
-        <button onClick={copy} className="p-1.5 text-zinc-500 hover:text-zinc-200" title="Diff kopieren">
+        <button onClick={copy} className="p-1.5 text-zinc-500 hover:text-zinc-200" title={tr("Diff kopieren")}>
           {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>
@@ -2892,7 +2982,7 @@ function ChangedFilesCard({
           </div>
           <div>
             <div className="text-sm font-medium text-white">
-              {files.length} {files.length === 1 ? 'Datei' : 'Dateien'} bearbeitet
+              {files.length} {files.length === 1 ? tr("Datei") : tr("Dateien")} bearbeitet
             </div>
             <div className="font-mono text-[12px]">
               <span className="text-emerald-400">+{totalAdditions}</span>
@@ -2906,7 +2996,7 @@ function ChangedFilesCard({
           disabled={!selectedProject || files.length === 0}
           className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 disabled:opacity-40"
         >
-          Oeffnen
+          {tr("Oeffnen")}
         </button>
       </div>
       <div className="divide-y divide-white/5">
@@ -2978,12 +3068,12 @@ function RunStatus({ provider }: { provider: ReturnType<typeof useAppContext>['p
         <div className="mb-2 flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-zinc-500">
           <span className="flex items-center gap-2">
             <Terminal className="h-3.5 w-3.5 text-emerald-300" />
-            {isOriginal ? 'Original Terminal' : 'Raw Terminal'}
+            {isOriginal ? tr("Original Terminal") : tr("Raw Terminal")}
           </span>
           <span>{elapsed}s</span>
         </div>
         <pre ref={preRef} className={`overflow-auto whitespace-pre-wrap break-words rounded-lg border border-emerald-400/15 bg-black/55 p-3 font-mono text-[11px] leading-5 text-emerald-100 custom-scrollbar ${isOriginal ? 'max-h-[60vh]' : 'max-h-72'}`}>
-          {tailTerminalOutput(runStats?.liveOutput || `${providerName} startet... Warte auf Terminal-Ausgabe.`)}
+          {tailTerminalOutput(runStats?.liveOutput || tr("{provider} startet... Warte auf Terminal-Ausgabe.", { provider: providerName }))}
           <span className="terminal-cursor"> </span>
         </pre>
       </div>
@@ -3000,9 +3090,9 @@ function RunStatus({ provider }: { provider: ReturnType<typeof useAppContext>['p
             <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-zinc-100">{runStats?.phase || 'Startet Agent'}</div>
+            <div className="truncate text-sm font-medium text-zinc-100">{runStats?.phase || tr("Startet Agent")}</div>
             <div className="mt-0.5 truncate text-[11px] text-zinc-600">
-              {providerName} - {runStats?.model || 'Modell'} - {elapsed}s - {commandCount} Befehle
+              {providerName} - {runStats?.model || tr("Modell")} - {elapsed}s - {commandCount} {tr("Befehle")}
             </div>
           </div>
         </div>
@@ -3019,7 +3109,7 @@ function RunStatus({ provider }: { provider: ReturnType<typeof useAppContext>['p
         <div className="flex items-center justify-between gap-3 text-[12px] font-medium uppercase tracking-wide text-zinc-500">
           <span className="flex items-center gap-2">
             <Clock className="h-3.5 w-3.5 text-sky-300" />
-            Timeline
+            {tr("Timeline")}
           </span>
           <span>{formatDuration(elapsed * 1000)}</span>
         </div>
@@ -3044,17 +3134,17 @@ function RunStatus({ provider }: { provider: ReturnType<typeof useAppContext>['p
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-wide text-zinc-600">{providerName} arbeitet</div>
-            <div className="mt-2 text-xl font-semibold tracking-tight text-white">{runStats?.phase || 'Startet Agent'}</div>
+            <div className="mt-2 text-xl font-semibold tracking-tight text-white">{runStats?.phase || tr("Startet Agent")}</div>
             <div className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-400">
-              {extractReadableProgress(runStats?.liveOutput || '')[0] || 'Der Agent sammelt Kontext und bereitet die naechsten Schritte vor.'}
+              {extractReadableProgress(runStats?.liveOutput || '')[0] || tr("Der Agent sammelt Kontext und bereitet die naechsten Schritte vor.")}
             </div>
           </div>
           <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-300" />
         </div>
         <div className="mt-5 grid grid-cols-3 gap-2">
-          <RunMetric label="Zeit" value={formatDuration(elapsed * 1000)} />
-          <RunMetric label="Befehle" value={String(commandCount)} />
-          <RunMetric label="Dateien" value={String(runStats?.files.length || 0)} />
+          <RunMetric label={tr("Zeit")} value={formatDuration(elapsed * 1000)} />
+          <RunMetric label={tr("Befehle")} value={String(commandCount)} />
+          <RunMetric label={tr("Dateien")} value={String(runStats?.files.length || 0)} />
         </div>
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-black/35">
           <div className="run-progress h-full w-3/4 rounded-full" />
@@ -3068,21 +3158,21 @@ function RunStatus({ provider }: { provider: ReturnType<typeof useAppContext>['p
       <div className="run-feed-visible forge-feed-visible run-timeline">
         <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-zinc-500">
           <span className="forge-feed-dot" />
-          FancyCode Laufspur
+          {tr("FancyCode Desktop Laufspur")}
         </div>
         {progressItems.map((item, index) => (
           <RunProgressRow key={`${item.text}-${index}`} item={item} />
         ))}
         <div className="flex items-center gap-2 text-[13px] text-zinc-500">
           <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-300" />
-          <span>{providerName} arbeitet in FancyCode...</span>
+          <span>{providerName} {tr("arbeitet in FancyCode Desktop...")}</span>
         </div>
       </div>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="min-w-0">
             <div className="text-[11px] text-zinc-600 truncate">
-              {runStats?.phase || 'Startet Agent'} - {elapsed}s - {runStats?.model || ''}
+              {runStats?.phase || tr("Startet Agent")} - {elapsed}s - {runStats?.model || ''}
             </div>
           </div>
         </div>
@@ -3148,6 +3238,7 @@ function providerLabel(provider: ReturnType<typeof useAppContext>['provider']) {
   if (provider === 'antigravity') return 'Antigravity';
   if (provider === 'openai') return 'Codex';
   if (provider === 'anthropic') return 'Claude';
+  if (provider === 'hermes') return 'Hermes';
   if (provider === 'cursor') return 'Cursor';
   if (provider === 'freebuff') return 'FreeBuff';
   return 'OpenCode';
@@ -3167,7 +3258,7 @@ function buildProgressItems(
   const intro =
     runStats?.outputLines && lines[0]
       ? lines[0]
-      : `${providerName} ist gestartet und sammelt Kontext im Projekt.`;
+      : tr("{provider} ist gestartet und sammelt Kontext im Projekt.", { provider: providerName });
 
   items.push({ kind: 'text', text: intro });
 
@@ -3175,7 +3266,7 @@ function buildProgressItems(
   if (commandCount > 0) {
     items.push({
       kind: 'meta',
-      text: `${commandCount} ${commandCount === 1 ? 'Befehl' : 'Befehle'} ausgefuehrt`,
+      text: `${commandCount} ${commandCount === 1 ? tr("Befehl") : tr("Befehle")} ausgefuehrt`,
       icon: 'terminal',
     });
   }
@@ -3188,14 +3279,14 @@ function buildProgressItems(
     const fileCount = runStats.files.length;
     items.push({
       kind: 'meta',
-      text: `${fileCount} ${fileCount === 1 ? 'Datei' : 'Dateien'} erkannt`,
+      text: `${fileCount} ${fileCount === 1 ? tr("Datei") : tr("Dateien")} erkannt`,
       icon: 'files',
     });
   }
 
   items.push({
     kind: 'meta',
-    text: `${runStats?.phase || 'Startet Agent'}, ${formatDuration(elapsed * 1000)} aktiv`,
+    text: `${runStats?.phase || tr("Startet Agent")}, ${formatDuration(elapsed * 1000)} aktiv`,
     icon: 'done',
   });
 
@@ -3240,8 +3331,8 @@ function WorkspaceView() {
       <div className="max-w-md mx-auto space-y-6">
         <Header
           icon={Terminal}
-          title="Workspace"
-          subtitle="Terminals und Agents direkt in der App."
+          title={tr("Workspace")}
+          subtitle={tr("Terminals und Agents direkt in der App.")}
         />
 
         <section className="panel flex flex-col items-center justify-center p-8 text-center border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl">
@@ -3249,9 +3340,9 @@ function WorkspaceView() {
             <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-6">
               <Terminal className="w-8 h-8" />
             </div>
-            <h3 className="text-lg font-semibold text-white mb-2">Terminal</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">{tr("Terminal")}</h3>
             <p className="text-xs text-zinc-500 max-w-sm mb-6 leading-relaxed">
-              Öffne ein Terminal direkt in der App. Du kannst Befehle eingeben und der Agent führt sie aus.
+              {tr("Öffne ein Terminal direkt in der App. Du kannst Befehle eingeben und der Agent führt sie aus.")}
             </p>
 
             <button
@@ -3259,7 +3350,7 @@ function WorkspaceView() {
               className="primary-button !py-3 !px-6 w-full flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
             >
               <Terminal className="w-4 h-4 text-white" />
-              <span>Terminal öffnen</span>
+              <span>{tr("Terminal öffnen")}</span>
             </button>
           </div>
         </section>

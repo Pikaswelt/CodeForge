@@ -1,13 +1,13 @@
 'use strict';
-// FancyCode MCP server (stdio). Lets an agent such as Claude Code or agy manage FancyCode's
+// FancyCode Desktop MCP server (stdio). Lets an agent such as Claude Code or agy manage FancyCode Desktop's
 // terminal sessions: see what each terminal shows, send tasks and keys, wait for results, and
 // start or reopen sessions.
 //
-// Reading and writing go straight to the session host (works while FancyCode is closed) or, for
+// Reading and writing go straight to the session host (works while FancyCode Desktop is closed) or, for
 // V-Server tabs, to their tmux session over SSH. Starting sessions and opening workspaces goes
-// through FancyCode's control pipe so everything also appears in the FancyCode window.
+// through FancyCode Desktop's control pipe so everything also appears in the FancyCode Desktop window.
 //
-// Started as: node mcp-server.cjs --data <FancyCode user data folder>
+// Started as: node mcp-server.cjs --data <FancyCode Desktop user data folder>
 
 const fs = require('node:fs');
 const net = require('node:net');
@@ -23,7 +23,7 @@ const hostDir = path.join(userDataDir, 'session-host');
 const sessions = createSessionClient({ userDataDir, isPackaged: true, resourcesPath: '' });
 
 function log(...parts) {
-  process.stderr.write(`[codeforge-mcp] ${parts.join(' ')}\n`);
+  process.stderr.write(`[fancycode-mcp] ${parts.join(' ')}\n`);
 }
 
 function readJson(file, fallback) {
@@ -37,7 +37,7 @@ function readJson(file, fallback) {
 const readState = () => readJson(path.join(hostDir, 'control-state.json'), { workspaces: [], accounts: [], servers: [] });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// ---------- control pipe (FancyCode window) ----------
+// ---------- control pipe (FancyCode Desktop window) ----------
 
 let control = null;
 let controlSeq = 0;
@@ -84,7 +84,7 @@ function connectControl() {
     const drop = () => {
       clearTimeout(timer);
       if (control === socket) control = null;
-      for (const { reject } of controlPending.values()) reject(new Error('Verbindung zu FancyCode verloren.'));
+      for (const { reject } of controlPending.values()) reject(new Error('Verbindung zu FancyCode Desktop verloren.'));
       controlPending.clear();
       if (!ready) resolve(null);
     };
@@ -93,13 +93,13 @@ function connectControl() {
   });
 }
 
-// Opens FancyCode when it is not running, then talks to its window.
+// Opens FancyCode Desktop when it is not running, then talks to its window.
 async function ensureControl() {
   if (control && !control.destroyed) return control;
   control = await connectControl();
   if (control) return control;
   const info = readJson(path.join(hostDir, 'control.json'), null);
-  if (!info || !info.exe || !fs.existsSync(info.exe)) throw new Error('FancyCode laeuft nicht und wurde nicht gefunden. Bitte FancyCode einmal starten.');
+  if (!info || !info.exe || !fs.existsSync(info.exe)) throw new Error('FancyCode Desktop laeuft nicht und wurde nicht gefunden. Bitte FancyCode Desktop einmal starten.');
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   spawn(info.exe, [], { detached: true, stdio: 'ignore', env }).unref();
@@ -111,7 +111,7 @@ async function ensureControl() {
       return control;
     }
   }
-  throw new Error('FancyCode wurde gestartet, antwortet aber nicht.');
+  throw new Error('FancyCode Desktop wurde gestartet, antwortet aber nicht.');
 }
 
 async function askFancyCode(op, args = {}, timeoutMs = 30000) {
@@ -123,9 +123,73 @@ async function askFancyCode(op, args = {}, timeoutMs = 30000) {
     result,
     sleep(timeoutMs + 2000).then(() => {
       controlPending.delete(id);
-      throw new Error('FancyCode hat nicht rechtzeitig geantwortet.');
+      throw new Error('FancyCode Desktop hat nicht rechtzeitig geantwortet.');
     }),
   ]);
+}
+
+// ---------- popups, questions and forms in the FancyCode Desktop window ----------
+// Terminals of FancyCode Desktop set these, and the agent passes its environment on to this server.
+const ownSessionId = process.env.FANCYCODE_SESSION_ID || process.env.CODEFORGE_SESSION_ID || '';
+const insideDesktop = process.env.FANCYCODE_DESKTOP === '1' || Boolean(ownSessionId);
+let clientName = '';
+
+// Popups never start FancyCode Desktop: without an open window they are skipped.
+async function askOpenWindow(op, args, timeoutMs = 30000) {
+  if (!(control && !control.destroyed)) control = await connectControl();
+  if (!control) throw new Error('FancyCode Desktop ist gerade nicht offen, das Popup wurde nicht gezeigt.');
+  return askFancyCode(op, args, timeoutMs);
+}
+
+const CLIENT_NAMES = { 'claude-code': 'Claude Code', fancycode: 'FancyCode', opencode: 'OpenCode', 'codex-mcp-client': 'Codex', antigravity: 'Antigravity', 'gemini-cli-mcp-client': 'Gemini CLI' };
+const clientLabel = () => CLIENT_NAMES[clientName] || clientName;
+
+const POPUP_KINDS = ['info', 'success', 'warning', 'error'];
+
+function popupBase(args) {
+  return {
+    title: String(args.title || '').slice(0, 120),
+    message: String(args.message || '').slice(0, 1200),
+    kind: POPUP_KINDS.includes(args.kind) ? args.kind : 'info',
+    sessionId: String(args.session_id || ownSessionId || ''),
+    source: clientLabel(),
+  };
+}
+
+const FIELD_TYPES = ['text', 'textarea', 'number', 'select', 'checkbox', 'radio'];
+
+function cleanFields(fields) {
+  if (!Array.isArray(fields) || !fields.length) throw new Error('fields fehlt (mindestens ein Feld).');
+  return fields.slice(0, 12).map((field, index) => {
+    const type = FIELD_TYPES.includes(field?.type) ? field.type : 'text';
+    const options = Array.isArray(field?.options) ? field.options.slice(0, 12).map((option) => String(option).slice(0, 80)) : [];
+    if ((type === 'select' || type === 'radio') && !options.length) throw new Error(`Feld ${field?.name || index + 1}: options fehlt.`);
+    return {
+      name: String(field?.name || `feld${index + 1}`).slice(0, 40),
+      label: String(field?.label || field?.name || `Feld ${index + 1}`).slice(0, 120),
+      type,
+      options,
+      placeholder: String(field?.placeholder || '').slice(0, 120),
+      default: field?.default === undefined ? undefined : field.default,
+      required: Boolean(field?.required),
+      help: String(field?.help || '').slice(0, 200),
+    };
+  });
+}
+
+const answerTimeout = (args) => Math.min(1800, Math.max(15, Number(args.timeout_seconds) || 600)) * 1000;
+
+function contextText() {
+  const lines = [];
+  if (!insideDesktop) {
+    lines.push('Dieser Agent laeuft NICHT in einem Terminal von FancyCode Desktop. Popups erscheinen trotzdem im FancyCode Desktop-Fenster, falls es offen ist.');
+  } else {
+    const info = ownSessionId ? findTab(ownSessionId) : null;
+    lines.push('Dieser Agent laeuft in FancyCode Desktop.');
+    if (ownSessionId) lines.push(`Eigenes Terminal: session_id ${ownSessionId}${info ? ` ("${info.tab.title}" im Workspace "${info.workspace.title}")` : ''}. Diese Session nie selbst mit fancycode_send/fancycode_keys steuern.`);
+  }
+  lines.push(`FancyCode Desktop-Fenster offen: ${control && !control.destroyed ? 'ja' : 'nein'}. Popups (fancycode_notify), Fragen (fancycode_ask) und Formulare (fancycode_form) sind verfuegbar.`);
+  return lines.join('\n');
 }
 
 // ---------- sessions: lookup, read, write ----------
@@ -191,7 +255,7 @@ function tidy(lines, maxLines) {
 }
 
 // Where a session lives right now: in the local session host, or only in tmux on a V-Server.
-// Cached briefly so codeforge_wait does not open new SSH connections for every poll.
+// Cached briefly so fancycode_wait does not open new SSH connections for every poll.
 const locateCache = new Map();
 async function locate(sessionId) {
   const cached = locateCache.get(sessionId);
@@ -224,7 +288,7 @@ async function readSession(sessionId, scrollback = 0, maxLines = 120) {
     const snap = await sessions.snapshot(sessionId);
     if (snap) return tidy(await renderScreen(snap.buffer, snap.cols, snap.rows, scrollback), maxLines + scrollback);
   }
-  throw new Error(`Session ${sessionId} laeuft nicht. Mit codeforge_overview nachsehen oder mit codeforge_open_workspace / codeforge_start_* starten.`);
+  throw new Error(`Session ${sessionId} laeuft nicht. Mit fancycode_overview nachsehen oder mit fancycode_open_workspace / fancycode_start_* starten.`);
 }
 
 const HOST_KEYS = {
@@ -339,7 +403,7 @@ async function overview() {
   const usedTmux = new Set();
   for (const workspace of state.workspaces || []) {
     const tabs = workspace.terminalTabs?.length ? workspace.terminalTabs : [{ id: workspace.workspaceId, title: workspace.title }];
-    lines.push(`Workspace "${workspace.title}" (workspace_id: ${workspace.workspaceId})${workspace.open ? ' - in FancyCode offen' : ''}`);
+    lines.push(`Workspace "${workspace.title}" (workspace_id: ${workspace.workspaceId})${workspace.open ? ' - in FancyCode Desktop offen' : ''}`);
     for (const tab of tabs) {
       known.add(tab.id);
       const server = tab.location === 'local' ? undefined : tab.vserver || workspace.vserver;
@@ -349,7 +413,7 @@ async function overview() {
       const status = hostIds.has(tab.id)
         ? 'laeuft'
         : tmuxName && tmux?.has(tmuxName)
-          ? 'laeuft auf dem Server (nicht in FancyCode verbunden)'
+          ? 'laeuft auf dem Server (nicht in FancyCode Desktop verbunden)'
           : server && tmux === null
             ? 'unbekannt (Server nicht erreichbar)'
             : 'beendet';
@@ -369,7 +433,7 @@ async function overview() {
     const tmux = tmuxByServer.get(server.id);
     const extra = [...(tmux || [])].filter((name) => !usedTmux.has(`${server.id}:${name}`) && name.startsWith('cf-agy-'));
     if (extra.length) {
-      lines.push(`Auf ${server.name} laufen Antigravity-Accounts ohne offenen Workspace (mit codeforge_start_antigravity server="${server.name}" wieder verbinden): ${extra.map((name) => accountName(name.slice(7)) || name).join(', ')}`);
+      lines.push(`Auf ${server.name} laufen Antigravity-Accounts ohne offenen Workspace (mit fancycode_start_antigravity server="${server.name}" wieder verbinden): ${extra.map((name) => accountName(name.slice(7)) || name).join(', ')}`);
     }
   }
   if (!lines.length) lines.push('Keine Workspaces gespeichert.');
@@ -383,12 +447,78 @@ async function overview() {
 
 const TOOLS = [
   {
-    name: 'codeforge_overview',
-    description: 'Listet alle FancyCode-Workspaces mit ihren Terminals (session_id, Titel, PC oder V-Server, Antigravity-Account, Status) sowie die gespeicherten Accounts und V-Server. Zuerst aufrufen.',
+    name: 'fancycode_context',
+    description: 'Sagt, ob dieser Agent gerade in einem Terminal von FancyCode Desktop laeuft, und welches seine eigene session_id ist.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'codeforge_read',
+    name: 'fancycode_notify',
+    description: 'Zeigt dem Nutzer ein Popup im FancyCode Desktop-Fenster (im Hintergrund zusaetzlich als System-Benachrichtigung). Darunter ein Button, der zum Terminal des Agenten springt. Nutzen beim Start einer laengeren Aufgabe, wenn sie fertig ist (kind success) oder wenn der Nutzer etwas tun muss.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Kurz, z. B. "Aufgabe fertig".' },
+        message: { type: 'string', description: 'Ein bis zwei Saetze.' },
+        kind: { type: 'string', enum: POPUP_KINDS },
+        button_label: { type: 'string', description: 'Beschriftung des Buttons (Standard "Zur Arbeit").' },
+        session_id: { type: 'string', description: 'Terminal, zu dem der Button springt (Standard: das eigene).' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'fancycode_ask',
+    description: 'Stellt dem Nutzer eine Frage als Popup mit 2-6 Antwort-Buttons und wartet auf die Antwort (Standard 10 Minuten). allow_text=true erlaubt zusaetzlich eine freie Antwort. Gibt die gewaehlte Antwort zurueck.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+        options: { type: 'array', items: { type: 'string' }, description: '2-6 kurze Antworten.' },
+        details: { type: 'string', description: 'Optionale Erklaerung unter der Frage.' },
+        allow_text: { type: 'boolean' },
+        timeout_seconds: { type: 'number' },
+      },
+      required: ['question', 'options'],
+    },
+  },
+  {
+    name: 'fancycode_form',
+    description: 'Zeigt dem Nutzer ein Formular als Popup und wartet, bis er es abschickt (Standard 10 Minuten). Felder: text, textarea, number, select/radio (mit options), checkbox. Gibt die Werte als JSON zurueck. Keine Passwoerter oder Schluessel abfragen.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        message: { type: 'string', description: 'Optionale Erklaerung ueber den Feldern.' },
+        fields: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Schluessel in der Antwort.' },
+              label: { type: 'string' },
+              type: { type: 'string', enum: FIELD_TYPES },
+              options: { type: 'array', items: { type: 'string' } },
+              placeholder: { type: 'string' },
+              default: {},
+              required: { type: 'boolean' },
+              help: { type: 'string' },
+            },
+            required: ['name', 'label'],
+          },
+        },
+        submit_label: { type: 'string' },
+        timeout_seconds: { type: 'number' },
+      },
+      required: ['title', 'fields'],
+    },
+  },
+  {
+    name: 'fancycode_overview',
+    description: 'Listet alle FancyCode Desktop-Workspaces mit ihren Terminals (session_id, Titel, PC oder V-Server, Antigravity-Account, Status) sowie die gespeicherten Accounts und V-Server. Zuerst aufrufen.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'fancycode_read',
     description: 'Zeigt, was gerade in einem Terminal zu sehen ist (gerenderter Bildschirm, auch fuer TUIs wie agy oder Claude Code).',
     inputSchema: {
       type: 'object',
@@ -401,7 +531,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_send',
+    name: 'fancycode_send',
     description: 'Schreibt Text in ein Terminal, z. B. eine Aufgabe fuer den Agenten darin, und schickt ihn standardmaessig mit Enter ab.',
     inputSchema: {
       type: 'object',
@@ -414,7 +544,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_keys',
+    name: 'fancycode_keys',
     description: 'Drueckt Tasten in einem Terminal, z. B. ["esc"], ["ctrl+c"], ["down","enter"], ["y"]. Moeglich: enter, esc, tab, shift+tab, backspace, space, up, down, left, right, pageup, pagedown, home, end, delete, ctrl+<buchstabe> und einzelne Zeichen.',
     inputSchema: {
       type: 'object',
@@ -423,7 +553,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_wait',
+    name: 'fancycode_wait',
     description: 'Wartet, bis sich ein Terminal eine Weile nicht mehr veraendert (Agent fertig oder wartet auf Eingabe) oder ein bestimmter Text erscheint, und gibt dann den Bildschirm zurueck.',
     inputSchema: {
       type: 'object',
@@ -437,8 +567,8 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_start_antigravity',
-    description: 'Startet Antigravity (agy) fuer gespeicherte Accounts nebeneinander in FancyCode, auf diesem PC oder einem V-Server. Laeuft ein Account auf dem Server schon, wird er wieder verbunden. resume=true setzt die letzte agy-Unterhaltung jedes Accounts fort. Optional bekommt jeder Account danach dieselbe Aufgabe.',
+    name: 'fancycode_start_antigravity',
+    description: 'Startet Antigravity (agy) fuer gespeicherte Accounts nebeneinander in FancyCode Desktop, auf diesem PC oder einem V-Server. Laeuft ein Account auf dem Server schon, wird er wieder verbunden. resume=true setzt die letzte agy-Unterhaltung jedes Accounts fort. Optional bekommt jeder Account danach dieselbe Aufgabe.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -450,7 +580,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_start_terminal',
+    name: 'fancycode_start_terminal',
     description: 'Oeffnet einen neuen Workspace mit einem oder mehreren Terminals (bis 6), optional mit Startbefehl (z. B. "claude", "codex", "agy --dangerously-skip-permissions") und auf einem V-Server.',
     inputSchema: {
       type: 'object',
@@ -467,7 +597,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_add_terminal',
+    name: 'fancycode_add_terminal',
     description: 'Fuegt einem bestehenden Workspace ein Terminal hinzu (max. 6). Ohne server laeuft es auf diesem PC. manager=true oeffnet das Manager-Fenster (Claude Code ohne Rueckfragen, steuert die anderen ueber diesen MCP-Server).',
     inputSchema: {
       type: 'object',
@@ -482,7 +612,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_layout',
+    name: 'fancycode_layout',
     description: 'Stellt in einem offenen Workspace das Layout um (grid = alle Terminals nebeneinander, single = eins gross) und/oder holt ein Terminal nach vorne.',
     inputSchema: {
       type: 'object',
@@ -495,13 +625,13 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_ui_snapshot',
-    description: 'Listet alles Bedienbare, was gerade im FancyCode-Fenster sichtbar ist (Buttons, Felder, Schalter, Tabs, Menues) mit einer Kennung [eN] und dem Zustand. Damit laesst sich jede FancyCode-Funktion bedienen (Einstellungen, Projekte, Chats, Library, Themes, Automationen ...). Kennungen gelten bis zum naechsten Snapshot.',
+    name: 'fancycode_ui_snapshot',
+    description: 'Listet alles Bedienbare, was gerade im FancyCode Desktop-Fenster sichtbar ist (Buttons, Felder, Schalter, Tabs, Menues) mit einer Kennung [eN] und dem Zustand. Damit laesst sich jede FancyCode Desktop-Funktion bedienen (Einstellungen, Projekte, Chats, Library, Themes, Automationen ...). Kennungen gelten bis zum naechsten Snapshot.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'codeforge_ui_click',
-    description: 'Klickt ein Element aus codeforge_ui_snapshot an (button: left, right fuer Kontextmenue, double). Gibt danach einen neuen Snapshot zurueck.',
+    name: 'fancycode_ui_click',
+    description: 'Klickt ein Element aus fancycode_ui_snapshot an (button: left, right fuer Kontextmenue, double). Gibt danach einen neuen Snapshot zurueck.',
     inputSchema: {
       type: 'object',
       properties: { ref: { type: 'string', description: 'z. B. e12' }, button: { type: 'string', enum: ['left', 'right', 'double'] } },
@@ -509,8 +639,8 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_ui_type',
-    description: 'Tippt Text in ein Feld aus codeforge_ui_snapshot (bei Auswahllisten: den Namen der Option). clear=true ersetzt den bisherigen Inhalt, submit=true drueckt danach Enter. Gibt danach einen neuen Snapshot zurueck.',
+    name: 'fancycode_ui_type',
+    description: 'Tippt Text in ein Feld aus fancycode_ui_snapshot (bei Auswahllisten: den Namen der Option). clear=true ersetzt den bisherigen Inhalt, submit=true drueckt danach Enter. Gibt danach einen neuen Snapshot zurueck.',
     inputSchema: {
       type: 'object',
       properties: { ref: { type: 'string' }, text: { type: 'string' }, clear: { type: 'boolean' }, submit: { type: 'boolean' } },
@@ -518,32 +648,35 @@ const TOOLS = [
     },
   },
   {
-    name: 'codeforge_ui_key',
-    description: 'Drueckt eine Taste/Tastenkombination im FancyCode-Fenster, z. B. "Escape" (Dialog schliessen), "ctrl+," (Einstellungen), "alt+s" (Spracheingabe). Gibt danach einen neuen Snapshot zurueck.',
+    name: 'fancycode_ui_key',
+    description: 'Drueckt eine Taste/Tastenkombination im FancyCode Desktop-Fenster, z. B. "Escape" (Dialog schliessen), "ctrl+," (Einstellungen), "alt+s" (Spracheingabe). Gibt danach einen neuen Snapshot zurueck.',
     inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
   },
   {
-    name: 'codeforge_screenshot',
-    description: 'Bild des FancyCode-Fensters, um das Ergebnis von UI-Aktionen zu sehen.',
+    name: 'fancycode_screenshot',
+    description: 'Bild des FancyCode Desktop-Fensters, um das Ergebnis von UI-Aktionen zu sehen.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'codeforge_open_workspace',
-    description: 'Oeffnet einen gespeicherten Workspace in FancyCode wieder; seine Terminals verbinden sich mit den laufenden Sessions.',
+    name: 'fancycode_open_workspace',
+    description: 'Oeffnet einen gespeicherten Workspace in FancyCode Desktop wieder; seine Terminals verbinden sich mit den laufenden Sessions.',
     inputSchema: { type: 'object', properties: { workspace_id: { type: 'string' } }, required: ['workspace_id'] },
   },
   {
-    name: 'codeforge_stop',
+    name: 'fancycode_stop',
     description: 'Beendet einen ganzen Workspace (workspace_id) oder ein einzelnes Terminal (session_id), inklusive der tmux-Session auf dem V-Server.',
     inputSchema: { type: 'object', properties: { workspace_id: { type: 'string' }, session_id: { type: 'string' } } },
   },
 ];
 
 const INSTRUCTIONS = [
-  'FancyCode verwaltet Terminal-Workspaces mit KI-Agenten (Antigravity/agy, Claude Code, Codex) auf diesem PC und auf V-Servern.',
-  'Ablauf: codeforge_overview -> codeforge_read um den Stand zu sehen -> codeforge_send fuer Aufgaben -> codeforge_wait bis der Agent fertig ist -> codeforge_read.',
-  'Bei Rueckfragen im Terminal (z. B. Auswahlmenues) mit codeforge_keys antworten. Vor dem Senden pruefen, ob der Agent gerade arbeitet (dann erst warten).',
-  'Fuer alles andere in FancyCode (Einstellungen, Projekte, Chats, Library, Themes, Automationen ...): codeforge_ui_snapshot, dann codeforge_ui_click / codeforge_ui_type / codeforge_ui_key; codeforge_screenshot zeigt das Ergebnis.',
+  insideDesktop
+    ? `Du laeufst gerade in FancyCode Desktop${ownSessionId ? ` (eigenes Terminal: session_id ${ownSessionId})` : ''}. Wenn eine laengere Aufgabe fertig ist, schick mit fancycode_notify ein Popup (kind success); Entscheidungen mit wenigen Antworten per fancycode_ask, mehrere Angaben auf einmal per fancycode_form.`
+    : 'Popups (fancycode_notify), Fragen (fancycode_ask) und Formulare (fancycode_form) erscheinen im FancyCode Desktop-Fenster, wenn es offen ist.',
+  'FancyCode Desktop verwaltet Terminal-Workspaces mit KI-Agenten (Antigravity/agy, Claude Code, Codex) auf diesem PC und auf V-Servern.',
+  'Ablauf: fancycode_overview -> fancycode_read um den Stand zu sehen -> fancycode_send fuer Aufgaben -> fancycode_wait bis der Agent fertig ist -> fancycode_read.',
+  'Bei Rueckfragen im Terminal (z. B. Auswahlmenues) mit fancycode_keys antworten. Vor dem Senden pruefen, ob der Agent gerade arbeitet (dann erst warten).',
+  'Fuer alles andere in FancyCode Desktop (Einstellungen, Projekte, Chats, Library, Themes, Automationen ...): fancycode_ui_snapshot, dann fancycode_ui_click / fancycode_ui_type / fancycode_ui_key; fancycode_screenshot zeigt das Ergebnis.',
 ].join('\n');
 
 function text(value) {
@@ -551,18 +684,57 @@ function text(value) {
 }
 
 async function callTool(name, args = {}) {
+  // Older registrations (from before the rename to FancyCode) still call the codeforge_* names.
+  if (typeof name === 'string' && name.startsWith('codeforge_')) name = `fancycode_${name.slice(10)}`;
   switch (name) {
-    case 'codeforge_overview':
+    case 'fancycode_context':
+      if (!(control && !control.destroyed)) control = await connectControl();
+      return text(contextText());
+    case 'fancycode_notify':
+      await askOpenWindow('notify', { ...popupBase(args), buttonLabel: String(args.button_label || '').slice(0, 40) });
+      return text('Popup gezeigt.');
+    case 'fancycode_ask': {
+      const options = (Array.isArray(args.options) ? args.options : []).slice(0, 6).map((option) => String(option).slice(0, 80)).filter(Boolean);
+      if (!options.length && !args.allow_text) throw new Error('options fehlt.');
+      const timeoutMs = answerTimeout(args);
+      const answer = await askOpenWindow(
+        'ask',
+        { ...popupBase({ ...args, title: args.question, message: args.details }), question: String(args.question || '').slice(0, 300), options, allowText: Boolean(args.allow_text), timeoutMs },
+        timeoutMs,
+      ).catch((error) => {
+        if (/rechtzeitig/.test(error.message)) return { timedOut: true };
+        throw error;
+      });
+      if (answer?.timedOut) return text('Keine Antwort (Zeit abgelaufen). Im Chat nachfragen statt zu raten.');
+      if (answer?.dismissed) return text('Der Nutzer hat die Frage geschlossen, ohne zu antworten.');
+      return text(`Antwort: ${answer?.answer ?? ''}`);
+    }
+    case 'fancycode_form': {
+      const fields = cleanFields(args.fields);
+      const timeoutMs = answerTimeout(args);
+      const answer = await askOpenWindow(
+        'form',
+        { ...popupBase(args), fields, submitLabel: String(args.submit_label || '').slice(0, 40), timeoutMs },
+        timeoutMs,
+      ).catch((error) => {
+        if (/rechtzeitig/.test(error.message)) return { timedOut: true };
+        throw error;
+      });
+      if (answer?.timedOut) return text('Formular nicht abgeschickt (Zeit abgelaufen). Im Chat nachfragen statt zu raten.');
+      if (answer?.dismissed) return text('Der Nutzer hat das Formular geschlossen, ohne es abzuschicken.');
+      return text(JSON.stringify(answer?.values ?? {}, null, 2));
+    }
+    case 'fancycode_overview':
       return text(await overview());
-    case 'codeforge_read':
+    case 'fancycode_read':
       return text(await readSession(args.session_id, Math.max(0, Number(args.scrollback_lines) || 0), Math.max(5, Number(args.max_lines) || 120)) || '(leerer Bildschirm)');
-    case 'codeforge_send':
+    case 'fancycode_send':
       await sendText(args.session_id, String(args.text ?? ''), args.submit !== false);
-      return text('Gesendet. Mit codeforge_wait auf das Ergebnis warten.');
-    case 'codeforge_keys':
+      return text('Gesendet. Mit fancycode_wait auf das Ergebnis warten.');
+    case 'fancycode_keys':
       await sendKeys(args.session_id, Array.isArray(args.keys) ? args.keys : [args.keys]);
       return text('Tasten gesendet.');
-    case 'codeforge_wait': {
+    case 'fancycode_wait': {
       const result = await waitForSession(args.session_id, {
         idleSeconds: Math.max(1, Number(args.idle_seconds) || 5),
         timeoutSeconds: Math.min(900, Math.max(5, Number(args.timeout_seconds) || 180)),
@@ -570,11 +742,11 @@ async function callTool(name, args = {}) {
       });
       return text(`${result.reason}.\n\n${result.screen}`);
     }
-    case 'codeforge_start_antigravity': {
+    case 'fancycode_start_antigravity': {
       const workspace = await askFancyCode('start-agy', { accounts: args.accounts, server: args.server, resume: Boolean(args.resume) });
       const ids = workspace.tabs.map((tab) => tab.sessionId);
       const ready = await waitForSessions(ids);
-      let note = ready ? 'Alle Terminals laufen.' : 'Noch nicht alle Terminals laufen (FancyCode-Fenster pruefen).';
+      let note = ready ? 'Alle Terminals laufen.' : 'Noch nicht alle Terminals laufen (FancyCode Desktop-Fenster pruefen).';
       // The task goes to the agy accounts only, not to the manager window.
       const agyIds = workspace.tabs.filter((tab) => tab.agyAccountId).map((tab) => tab.sessionId);
       if (args.task && ready) {
@@ -584,13 +756,13 @@ async function callTool(name, args = {}) {
       }
       return text(`${note}\nworkspace_id: ${workspace.workspaceId}\n${workspace.tabs.map((tab) => `- session_id: ${tab.sessionId} | ${tab.title}${tab.server ? ` | auf ${tab.server}` : ''}`).join('\n')}`);
     }
-    case 'codeforge_start_terminal': {
+    case 'fancycode_start_terminal': {
       const workspace = await askFancyCode('start-terminals', { title: args.title, tabs: args.tabs });
       const ids = workspace.tabs.map((tab) => tab.sessionId);
       const ready = await waitForSessions(ids);
       return text(`${ready ? 'Terminals laufen.' : 'Noch nicht alle Terminals laufen.'}\nworkspace_id: ${workspace.workspaceId}\n${workspace.tabs.map((tab) => `- session_id: ${tab.sessionId} | ${tab.title}${tab.command ? ` | ${tab.command}` : ''}${tab.server ? ` | auf ${tab.server}` : ''}`).join('\n')}`);
     }
-    case 'codeforge_add_terminal': {
+    case 'fancycode_add_terminal': {
       const workspace = await askFancyCode('add-tab', {
         workspaceId: args.workspace_id,
         command: args.command,
@@ -602,36 +774,36 @@ async function callTool(name, args = {}) {
       const ready = await waitForSessions([added.sessionId], 20000);
       return text(`${ready ? 'Terminal laeuft.' : 'Terminal startet noch.'}\n- session_id: ${added.sessionId} | ${added.title}${added.command ? ` | ${added.command}` : ''}${added.server ? ` | auf ${added.server}` : ' | auf diesem PC'}`);
     }
-    case 'codeforge_layout':
+    case 'fancycode_layout':
       await askFancyCode('layout', { workspaceId: args.workspace_id, layout: args.layout, activeSessionId: args.active_session_id });
       return text('Layout geaendert.');
-    case 'codeforge_ui_snapshot':
+    case 'fancycode_ui_snapshot':
       return text(await askFancyCode('ui-snapshot'));
-    case 'codeforge_ui_click':
+    case 'fancycode_ui_click':
       return text(await askFancyCode('ui-click', { ref: args.ref, button: args.button }));
-    case 'codeforge_ui_type':
+    case 'fancycode_ui_type':
       return text(await askFancyCode('ui-type', { ref: args.ref, text: args.text, clear: args.clear, submit: args.submit }));
-    case 'codeforge_ui_key':
+    case 'fancycode_ui_key':
       return text(await askFancyCode('ui-key', { key: args.key }));
-    case 'codeforge_screenshot': {
+    case 'fancycode_screenshot': {
       const shot = await askFancyCode('screenshot');
       return { content: [{ type: 'image', data: shot.data, mimeType: shot.mimeType }] };
     }
-    case 'codeforge_open_workspace': {
+    case 'fancycode_open_workspace': {
       await askFancyCode('open-workspace', { workspaceId: args.workspace_id });
       const state = readState();
       const workspace = (state.workspaces || []).find((item) => item.workspaceId === args.workspace_id);
       if (workspace) await waitForSessions(workspace.tabs.map((tab) => tab.sessionId), 20000);
-      return text('Workspace ist in FancyCode geoeffnet.');
+      return text('Workspace ist in FancyCode Desktop geoeffnet.');
     }
-    case 'codeforge_stop': {
+    case 'fancycode_stop': {
       if (args.workspace_id) {
         await askFancyCode('end-workspace', { workspaceId: args.workspace_id });
         return text('Workspace beendet.');
       }
       if (args.session_id) {
         const info = findTab(args.session_id);
-        // With FancyCode open, the tab also disappears from the window; otherwise just end it.
+        // With FancyCode Desktop open, the tab also disappears from the window; otherwise just end it.
         const viaUi = await connectControl().then((socket) => {
           if (socket) socket.destroy();
           return Boolean(socket);
@@ -652,6 +824,15 @@ async function callTool(name, args = {}) {
   }
 }
 
+// One popup per agent start, only when FancyCode Desktop is open (it is never started for this).
+function announceConnection() {
+  const name = clientLabel() || 'einem Agenten';
+  void askOpenWindow('notify', {
+    ...popupBase({ title: `Verbunden mit ${name}` }),
+    connect: true,
+  }).catch(() => {});
+}
+
 // ---------- JSON-RPC over stdio ----------
 
 function respond(id, result, error) {
@@ -665,10 +846,12 @@ async function handle(message) {
   try {
     switch (method) {
       case 'initialize':
+        clientName = String(params?.clientInfo?.name || '').slice(0, 60);
+        announceConnection();
         respond(id, {
           protocolVersion: params?.protocolVersion || '2025-06-18',
           capabilities: { tools: {} },
-          serverInfo: { name: 'codeforge', version: VERSION },
+          serverInfo: { name: 'fancycode', version: VERSION },
           instructions: INSTRUCTIONS,
         });
         return;

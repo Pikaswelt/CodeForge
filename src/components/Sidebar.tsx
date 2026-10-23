@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -16,6 +17,7 @@ import {
   Terminal,
   Trash2,
   X,
+  Zap,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import AccountMenu from './AccountMenu';
@@ -92,7 +94,7 @@ export default function Sidebar({
         >
           {renderActiveBg(mainView === 'library')}
           <LayoutGrid className="w-4 h-4" />
-          Library
+          {tr("Library")}
         </motion.button>
         <motion.button
           onClick={() => selectChat(null)}
@@ -112,7 +114,7 @@ export default function Sidebar({
         >
           {renderActiveBg(searchOpen)}
           <Search className="w-4 h-4" />
-          Suche
+          {tr("Suche")}
         </motion.button>
         <AnimatePresence initial={false}>
           {searchOpen && (
@@ -127,7 +129,7 @@ export default function Sidebar({
                 autoFocus
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Projekte und Chats filtern..."
+                placeholder={tr("Projekte und Chats filtern...")}
                 className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white/25"
               />
             </motion.div>
@@ -142,7 +144,19 @@ export default function Sidebar({
           >
             {renderActiveBg(mainView === 'workspace')}
             <Terminal className="w-4 h-4" />
-            Workspace
+            {tr("Workspace")}
+          </motion.button>
+        )}
+        {!mobileMode && (
+          <motion.button
+            onClick={() => setMainView('fancycode')}
+            whileHover={{ x: 4 }}
+            whileTap={{ scale: 0.98 }}
+            className={navClass(mainView === 'fancycode')}
+          >
+            {renderActiveBg(mainView === 'fancycode')}
+            <Zap className="w-4 h-4" />
+            FancyCode
           </motion.button>
         )}
       </div>
@@ -158,9 +172,9 @@ export default function Sidebar({
 
       <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-          Projekte
+          {tr("Projekte")}
         </span>
-        <button onClick={() => setProjectEditor('new')} className="p-1 text-zinc-500 hover:text-white" title="Projekt erstellen">
+        <button onClick={() => setProjectEditor('new')} className="p-1 text-zinc-500 hover:text-white" title={tr("Projekt erstellen")}>
           <Plus className="w-4 h-4" />
         </button>
       </div>
@@ -172,15 +186,15 @@ export default function Sidebar({
               onClick={() => setProjectEditor('new')}
               className="p-4 w-full rounded-xl border border-dashed border-emerald-300/20 text-left hover:bg-white/[0.03]"
             >
-              <div className="text-sm text-zinc-300">Neues Projekt erstellen</div>
-              <div className="text-xs text-zinc-600 mt-1">Ordner anlegen und direkt darin starten.</div>
+              <div className="text-sm text-zinc-300">{tr("Neues Projekt erstellen")}</div>
+              <div className="text-xs text-zinc-600 mt-1">{tr("Ordner anlegen und direkt darin starten.")}</div>
             </button>
             <button
               onClick={addProject}
               className="p-4 w-full rounded-xl border border-dashed border-white/10 text-left hover:bg-white/[0.03]"
             >
-              <div className="text-sm text-zinc-300">Projektordner hinzufuegen</div>
-              <div className="text-xs text-zinc-600 mt-1">Vorhandenen Ordner als Projekt oeffnen.</div>
+              <div className="text-sm text-zinc-300">{tr("Projektordner hinzufuegen")}</div>
+              <div className="text-xs text-zinc-600 mt-1">{tr("Vorhandenen Ordner als Projekt oeffnen.")}</div>
             </button>
           </div>
         ) : (
@@ -201,7 +215,7 @@ export default function Sidebar({
               onIconChange={(icon) => updateProjectIcon(folder.id, icon)}
               onEdit={() => setProjectEditor(folder)}
               onDelete={() => {
-                if (window.confirm(`Projekt "${folder.title}" aus FancyCode entfernen? Zugehoerige Chats werden ebenfalls geloescht.`)) {
+                if (window.confirm(tr('Projekt "{title}" aus FancyCode Desktop entfernen? Zugehoerige Chats werden ebenfalls geloescht.', { title: folder.title }))) {
                   deleteProject(folder.id);
                 }
               }}
@@ -223,7 +237,7 @@ export default function Sidebar({
               projectEditor === 'new'
                 ? undefined
                 : () => {
-                    if (window.confirm(`Projekt "${projectEditor.title}" aus FancyCode entfernen? Zugehoerige Chats werden ebenfalls geloescht.`)) {
+                    if (window.confirm(tr('Projekt "{title}" aus FancyCode Desktop entfernen? Zugehoerige Chats werden ebenfalls geloescht.', { title: projectEditor.title }))) {
                       deleteProject(projectEditor.id);
                       setProjectEditor(null);
                     }
@@ -241,7 +255,7 @@ export default function Sidebar({
           className={navClass(settingsMenuOpen)}
         >
           <Settings className="w-4 h-4" />
-          Einstellungen
+          {tr("Einstellungen")}
         </motion.button>
         {settingsMenuOpen && (
           <AccountMenu
@@ -277,7 +291,7 @@ function ProjectEditorModal({
     const nextPath = await window.agentWorkspace?.selectProjectFolder();
     if (!nextPath) return;
     setPath(nextPath);
-    if (!title.trim()) setTitle(nextPath.split(/[\\/]/).filter(Boolean).at(-1) || 'Projekt');
+    if (!title.trim()) setTitle(nextPath.split(/[\\/]/).filter(Boolean).at(-1) || tr("Projekt"));
   };
 
   return (
@@ -296,22 +310,22 @@ function ProjectEditorModal({
       >
         <div className="library-project-form-header">
           <div>
-            <h2>{folder ? 'Projekt bearbeiten' : 'Projekt erstellen'}</h2>
-            <p>Name reicht aus. Ohne Ordner legt FancyCode einen neuen Projektordner an.</p>
+            <h2>{folder ? tr("Projekt bearbeiten") : tr("Projekt erstellen")}</h2>
+            <p>{tr("Name reicht aus. Ohne Ordner legt FancyCode Desktop einen neuen Projektordner an.")}</p>
           </div>
-          <button onClick={onClose} title="Schliessen">
+          <button onClick={onClose} title={tr("Schliessen")}>
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="library-project-form-body">
           <label>
-            Projektname
-            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="z.B. Meine App" />
+            {tr("Projektname")}
+            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={tr("z.B. Meine App")} />
           </label>
           <label>
-            Icon
-            <input value={icon} onChange={(event) => setIcon(event.target.value.slice(0, 8))} placeholder="Optional, z.B. CF" />
+            {tr("Icon")}
+            <input value={icon} onChange={(event) => setIcon(event.target.value.slice(0, 8))} placeholder={tr("Optional, z.B. CF")} />
           </label>
           <ProjectPathRow value={path} onPick={pickFolder} />
           {error && <div className="library-form-error">{error}</div>}
@@ -321,10 +335,10 @@ function ProjectEditorModal({
           {onDelete && (
             <button onClick={onDelete} className="library-button danger mr-auto">
               <Trash2 className="h-3.5 w-3.5" />
-              Loeschen
+              {tr("Loeschen")}
             </button>
           )}
-          <button onClick={onClose} className="library-button">Abbrechen</button>
+          <button onClick={onClose} className="library-button">{tr("Abbrechen")}</button>
           <button
             disabled={!canSave || saving}
             onClick={async () => {
@@ -340,7 +354,7 @@ function ProjectEditorModal({
                   isScratch: folder?.isScratch,
                 });
               } catch (saveError) {
-                setError(saveError instanceof Error ? saveError.message : 'Projekt konnte nicht gespeichert werden.');
+                setError(saveError instanceof Error ? saveError.message : tr("Projekt konnte nicht gespeichert werden."));
               } finally {
                 setSaving(false);
               }
@@ -348,7 +362,7 @@ function ProjectEditorModal({
             className="library-button primary"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {folder ? 'Speichern' : 'Erstellen'}
+            {folder ? tr("Speichern") : tr("Erstellen")}
           </button>
         </div>
       </motion.div>
@@ -360,10 +374,10 @@ function ProjectPathRow({ value, onPick }: { value: string; onPick(): void }) {
   return (
     <div className="library-file-row">
       <div>
-        <span>Projektordner</span>
-        <small title={value}>{value || 'Noch nicht ausgewaehlt - wird neu erstellt'}</small>
+        <span>{tr("Projektordner")}</span>
+        <small title={value}>{value || tr("Noch nicht ausgewaehlt - wird neu erstellt")}</small>
       </div>
-      <button type="button" onClick={onPick}>Auswaehlen</button>
+      <button type="button" onClick={onPick}>{tr("Auswaehlen")}</button>
     </div>
   );
 }
@@ -384,12 +398,12 @@ function AppTabs({
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
           <AppWindow className="h-3.5 w-3.5" />
-          App-Tabs
+          {tr("App-Tabs")}
         </div>
         <button
           onClick={() => void onAdd()}
           className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-white"
-          title="Projekt mit Release, Installer und Programmdatei hinzufuegen"
+          title={tr("Projekt mit Release, Installer und Programmdatei hinzufuegen")}
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -403,7 +417,7 @@ function AppTabs({
               title={app.path}
             >
               <button
-                onClick={() => void onLaunch(app).catch((error) => window.alert(error instanceof Error ? error.message : 'App konnte nicht geoeffnet werden.'))}
+                onClick={() => void onLaunch(app).catch((error) => window.alert(error instanceof Error ? error.message : tr("App konnte nicht geoeffnet werden.")))}
                 className="flex min-w-0 items-center gap-1.5 text-left text-[11px] text-zinc-300 hover:text-white"
               >
                 <ExternalLink className="h-3 w-3 shrink-0 text-zinc-500" />
@@ -413,7 +427,7 @@ function AppTabs({
                 <button
                   onClick={() => onRemove(app.id)}
                   className="hidden rounded p-0.5 text-zinc-600 hover:bg-red-500/10 hover:text-red-300 group-hover:block"
-                  title="App-Tab entfernen"
+                  title={tr("App-Tab entfernen")}
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -426,7 +440,7 @@ function AppTabs({
           onClick={() => void onAdd()}
           className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-left text-[11px] text-zinc-500 hover:border-white/20 hover:text-zinc-300"
         >
-          Projekt mit Release, Installer und Programmdatei hinzufuegen
+          {tr("Projekt mit Release, Installer und Programmdatei hinzufuegen")}
         </button>
       )}
     </div>
@@ -476,7 +490,7 @@ function ProjectSection({
           title={folder.path}
         >
           {folder.icon ? (
-            <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-white/10 text-sm" title="Projekt-Icon">
+            <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-white/10 text-sm" title={tr("Projekt-Icon")}>
               {folder.icon}
             </span>
           ) : (
@@ -485,10 +499,10 @@ function ProjectSection({
           <span className="truncate">{folder.title}</span>
         </button>
         <div className="hidden group-hover:flex items-center">
-          <button onClick={onEdit} className="p-1 hover:text-white" title="Bearbeiten">
+          <button onClick={onEdit} className="p-1 hover:text-white" title={tr("Bearbeiten")}>
             <Edit2 className="w-3 h-3" />
           </button>
-          <button onClick={onDelete} className="p-1 hover:text-red-400" title="Entfernen">
+          <button onClick={onDelete} className="p-1 hover:text-red-400" title={tr("Entfernen")}>
             <Trash2 className="w-3 h-3" />
           </button>
         </div>
@@ -521,7 +535,7 @@ function ProjectSection({
                 <span className="truncate">{chat.title}</span>
               </motion.button>
             ))}
-            {chats.length === 0 && <div className="pl-9 py-1 text-xs text-zinc-700">Keine Chats</div>}
+            {chats.length === 0 && <div className="pl-9 py-1 text-xs text-zinc-700">{tr("Keine Chats")}</div>}
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,11 +1,11 @@
 'use strict';
-// FancyCode session host: owns the terminal processes (PTYs) so they keep running while
-// FancyCode is closed, restarted or updated. FancyCode talks to it over a local pipe
+// FancyCode Desktop session host: owns the terminal processes (PTYs) so they keep running while
+// FancyCode Desktop is closed, restarted or updated. FancyCode Desktop talks to it over a local pipe
 // (newline-delimited JSON) and re-attaches to running sessions by id.
 //
-// Started by FancyCode as:  node session-host.cjs <node-pty dir> <pipe path> <token file>
+// Started by FancyCode Desktop as:  node session-host.cjs <node-pty dir> <pipe path> <token file>
 // With --daemon it re-spawns itself detached and exits, so the host is not part of
-// FancyCode's process tree (FancyCode tree-kills itself on quit).
+// FancyCode Desktop's process tree (FancyCode Desktop tree-kills itself on quit).
 
 const fs = require('node:fs');
 const net = require('node:net');

@@ -1,5 +1,5 @@
 /**
- * FancyCode Auto-Updater
+ * FancyCode Desktop Auto-Updater
  *
  * Reads latest.yml (Windows) or latest-linux.yml (Linux) from the newest public
  * GitHub release, downloads the matching artifact in the background
@@ -17,6 +17,7 @@
 const { spawn, spawnSync } = require('node:child_process');
 const { shell } = require('electron');
 const crypto = require('node:crypto');
+const { mt } = require('./i18n.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -85,11 +86,11 @@ async function fetchLatestMetadata() {
     headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
   });
   if (response.status === 404) {
-    throw new Error(`Kein Release gefunden (${feedFile} fehlt in ${UPDATE_OWNER}/${UPDATE_REPO}).`);
+    throw new Error(mt('Kein Release gefunden ({feed} fehlt in {owner}/{repo}).', { feed: feedFile, owner: UPDATE_OWNER, repo: UPDATE_REPO }));
   }
-  if (!response.ok) throw new Error(`Update-Server nicht erreichbar (${response.status}).`);
+  if (!response.ok) throw new Error(mt('Update-Server nicht erreichbar ({status}).', { status: response.status }));
   const metadata = parseLatestYml(await response.text());
-  if (!metadata.version || !metadata.fileName) throw new Error(`${feedFile} ist unvollstaendig.`);
+  if (!metadata.version || !metadata.fileName) throw new Error(mt('{feed} ist unvollstaendig.', { feed: feedFile }));
   return { ...metadata, downloadUrl: `${RELEASE_BASE_URL}${encodeURIComponent(metadata.fileName)}` };
 }
 
@@ -130,7 +131,7 @@ function setupUpdater({ app, mainWindow }) {
       return targetPath;
     }
     const response = await fetch(metadata.downloadUrl, { headers: { 'cache-control': 'no-cache' } });
-    if (!response.ok || !response.body) throw new Error(`Installer konnte nicht geladen werden (${response.status}).`);
+    if (!response.ok || !response.body) throw new Error(mt('Installer konnte nicht geladen werden ({status}).', { status: response.status }));
     const total = Number(response.headers.get('content-length')) || 0;
     const reader = response.body.getReader();
     const chunks = [];
@@ -159,7 +160,7 @@ function setupUpdater({ app, mainWindow }) {
     setState({ status: 'downloading', percent: 100, receivedBytes: received, totalBytes: total || received, message: 'Pruefe Download...' });
     const buffer = Buffer.concat(chunks);
     if (metadata.sha512 && sha512Of(buffer) !== metadata.sha512) {
-      throw new Error('Download beschaedigt (Pruefsumme stimmt nicht).');
+      throw new Error(mt('Download beschaedigt (Pruefsumme stimmt nicht).'));
     }
     fs.rmSync(pendingDir(), { recursive: true, force: true });
     fs.mkdirSync(pendingDir(), { recursive: true });
@@ -183,10 +184,10 @@ function setupUpdater({ app, mainWindow }) {
           availableVersion: metadata.version,
           downloaded: false,
           percent: 0,
-          message: 'FancyCode ist aktuell.',
+          message: mt('FancyCode Desktop ist aktuell.'),
         });
       }
-      setState({ status: 'downloading', availableVersion: metadata.version, percent: 0, message: `Update ${metadata.version} gefunden.` });
+      setState({ status: 'downloading', availableVersion: metadata.version, percent: 0, message: mt('Update {version} gefunden.', { version: metadata.version }) });
       downloadPromise = download(metadata);
       const installerPath = await downloadPromise;
       return setState({
@@ -199,7 +200,7 @@ function setupUpdater({ app, mainWindow }) {
     } catch (error) {
       return setState({
         status: 'error',
-        message: input.manual ? 'Update fehlgeschlagen.' : 'Update-Pruefung fehlgeschlagen.',
+        message: input.manual ? mt('Update fehlgeschlagen.') : mt('Update-Pruefung fehlgeschlagen.'),
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -209,7 +210,7 @@ function setupUpdater({ app, mainWindow }) {
 
   function installUpdate() {
     if (!state.installerPath || !fs.existsSync(state.installerPath)) {
-      setState({ status: 'error', message: 'Update-Datei fehlt.', error: 'Bitte erneut nach Updates suchen.', downloaded: false });
+      setState({ status: 'error', message: mt('Update-Datei fehlt.'), error: mt('Bitte erneut nach Updates suchen.'), downloaded: false });
       return false;
     }
     setState({ status: 'installing', installing: true, message: 'Installiere Update...' });
@@ -235,9 +236,9 @@ function setupUpdater({ app, mainWindow }) {
       return true;
     }
 
-    // Runs after FancyCode exits: shows a small progress window, kills leftover
+    // Runs after FancyCode Desktop exits: shows a small progress window, kills leftover
     // processes from the install dir (terminal helpers lock files), installs
-    // silently, falls back to a clean install and restarts FancyCode.
+    // silently, falls back to a clean install and restarts FancyCode Desktop.
     const ps = (value) => value.replace(/'/g, "''");
     const versionText = state.availableVersion ? ` auf ${state.availableVersion}` : '';
     const script = `
@@ -253,7 +254,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'FancyCode Update'
+$form.Text = 'FancyCode Desktop Update'
 $form.ClientSize = New-Object System.Drawing.Size(420, 110)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'
@@ -265,7 +266,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 27)
 $form.ForeColor = [System.Drawing.Color]::White
 if (Test-Path $exe) { try { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe) } catch {} }
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'FancyCode wird aktualisiert${ps(versionText)}'
+$title.Text = 'FancyCode Desktop wird aktualisiert${ps(versionText)}'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
 $title.Location = New-Object System.Drawing.Point(18, 14)
 $title.Size = New-Object System.Drawing.Size(390, 24)
@@ -306,7 +307,7 @@ function Wait-Proc($proc, $from, $to, $text, $timeoutSec) {
   }
   return $true
 }
-Step 'Warte bis FancyCode beendet ist...' 3
+Step mt('Warte bis FancyCode Desktop beendet ist...') 3
 $t = 0
 while ((Get-Process -Id $appPid) -and $t -lt 120) { Start-Sleep -Milliseconds 250; [System.Windows.Forms.Application]::DoEvents(); $t++ }
 function Stop-AppProcesses {
@@ -334,7 +335,7 @@ if (-not $finished -or $proc.ExitCode -ne 0 -or -not (Test-Path $exe)) {
   [void](Wait-Proc $proc 60 95 'Installiere neu...' 300)
   Log "clean install exit $($proc.ExitCode)"
 }
-Step 'Fertig. Starte FancyCode...' 100
+Step 'Fertig. Starte FancyCode Desktop...' 100
 Start-Sleep -Milliseconds 600
 Start-Process -FilePath $exe
 $form.Close()
@@ -342,8 +343,8 @@ Log 'done'
 `;
     const scriptPath = path.join(pendingDir(), 'install-update.ps1');
     fs.writeFileSync(scriptPath, `﻿${script}`, 'utf8');
-    // Launch through WMI so the script is not a child of FancyCode: nothing
-    // that ends FancyCode's process tree can kill the installer halfway.
+    // Launch through WMI so the script is not a child of FancyCode Desktop: nothing
+    // that ends FancyCode Desktop's process tree can kill the installer halfway.
     const commandLine = `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`;
     const launched = spawnSync('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-Command',
@@ -388,7 +389,7 @@ async function fetchReleaseNotes({ version = '', limit = 6 } = {}) {
   const now = Date.now();
   if (now - releasesCache.at > RELEASES_CACHE_MS) {
     const response = await fetch(`${RELEASES_API}?per_page=20`, {
-      headers: { accept: 'application/vnd.github+json', 'user-agent': 'FancyCode' },
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'FancyCode Desktop' },
     });
     if (!response.ok) throw new Error(`GitHub antwortete mit ${response.status}.`);
     const payload = await response.json();

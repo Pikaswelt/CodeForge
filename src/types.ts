@@ -1,4 +1,4 @@
-export type ProviderId = 'antigravity' | 'openai' | 'anthropic' | 'cursor' | 'opencode' | 'freebuff';
+export type ProviderId = 'antigravity' | 'openai' | 'anthropic' | 'hermes' | 'cursor' | 'opencode' | 'freebuff';
 export type AccessMode = 'read-only' | 'workspace-write' | 'full';
 export type ReasoningEffort = 'low' | 'medium' | 'high';
 export type WorkDisplayMode = 'codeforge' | 'raw-terminal' | 'compact' | 'timeline' | 'focus';
@@ -89,6 +89,9 @@ export type Chat = {
   folderId: string;
   messages: Message[];
   mode?: 'standard' | 'lyz-dev' | 'terminal' | 'api';
+  // Harness chat: the CLI runs headless, the window shows messages like a normal chat.
+  gui?: boolean;
+  agent?: { provider: ProviderId; model: string };
   pluginName?: string;
   requiredMcpServer?: {
     id: string;
@@ -166,7 +169,7 @@ export type MultiLaunchConfig = {
 
 export const DEFAULT_MULTI_LAUNCH_CONFIG: MultiLaunchConfig = {
   mode: 'default',
-  buttonLabel: 'Antigravity starten',
+  buttonLabel: '',
   layout: 'grid',
   slots: [
     { id: 'slot-1', name: 'Antigravity 1', tool: 'agy', command: 'agy', targetType: 'local' },
@@ -341,7 +344,7 @@ export type McpToolInfo = {
   description?: string;
 };
 
-// A server FancyCode has actually spoken to: the handshake plus the tools an agent would get.
+// A server FancyCode Desktop has actually spoken to: the handshake plus the tools an agent would get.
 export type McpSessionInfo = {
   id: string;
   transport: McpServerInfo['transport'];

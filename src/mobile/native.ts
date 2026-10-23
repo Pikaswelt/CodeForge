@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 // Server data the native SSH side needs. The private key stays in app storage on the phone
@@ -86,6 +87,6 @@ export function errorCode(error: unknown) {
 }
 
 export function errorMessage(error: unknown) {
-  const message = (error as Error)?.message || String(error || 'Unbekannter Fehler');
+  const message = (error as Error)?.message || String(error || tr("Unbekannter Fehler"));
   return message.replace(/^Error:\s*/, '');
 }

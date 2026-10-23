@@ -1,3 +1,4 @@
+import { tr, useLanguage } from '../i18n';
 import { useEffect, useMemo, useRef } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { FolderOpen, Home, MessageSquare, Settings, SquareTerminal } from 'lucide-react';
@@ -5,6 +6,7 @@ import { StoreProvider, useStore, type Tab } from './store';
 import { Native, isNativeApp, mediaUrl } from './native';
 import { configureTerminals, applyToAll } from './terminalController';
 import { resolveTheme, terminalFontCss, terminalTheme, themeStyle, type ResolvedTheme } from './theme';
+import { animatedEffectsAllowed } from '../plans';
 import { Dialogs, Toasts, cx, handleBack } from './ui';
 import HomeScreen from './screens/HomeScreen';
 import TerminalScreen from './screens/TerminalScreen';
@@ -12,12 +14,12 @@ import FilesScreen from './screens/FilesScreen';
 import ChatScreen from './screens/ChatScreen';
 import SettingsScreen from './screens/SettingsScreen';
 
-const TABS: { id: Tab; label: string; icon: typeof Home }[] = [
+const tabsFor = (): { id: Tab; label: string; icon: typeof Home }[] => [
   { id: 'home', label: 'Home', icon: Home },
-  { id: 'terminal', label: 'Terminals', icon: SquareTerminal },
-  { id: 'files', label: 'Dateien', icon: FolderOpen },
+  { id: 'terminal', label: tr("Terminals"), icon: SquareTerminal },
+  { id: 'files', label: tr("Dateien"), icon: FolderOpen },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'settings', label: 'Einstellungen', icon: Settings },
+  { id: 'settings', label: tr("Einstellungen"), icon: Settings },
 ];
 
 export default function MobileApp() {
@@ -29,6 +31,8 @@ export default function MobileApp() {
 }
 
 function Shell() {
+  useLanguage();
+  const tabs = tabsFor();
   const store = useStore();
   const { tab, setTab, settings, customThemes, terminals } = store;
   const theme = useMemo(() => resolveTheme(settings.themeId, customThemes), [settings.themeId, customThemes]);
@@ -54,9 +58,9 @@ function Shell() {
         const watching = document.visibilityState === 'visible' && current.tab === 'terminal' && current.activeTerminalId === session.id;
         if (watching) return;
         if (current.settings.notifications && document.visibilityState !== 'visible') {
-          void Native.notify({ title: session.title, body: `"${word}" im Terminal gefunden.` });
+          void Native.notify({ title: session.title, body: tr('"{word}" im Terminal gefunden.', { word }) });
         } else {
-          current.toast(`${session.title}: "${word}" gefunden`, 'info');
+          current.toast(tr('{title}: "{word}" gefunden', { title: session.title, word }), 'info');
         }
       },
     });
@@ -107,7 +111,7 @@ function Shell() {
           {tab === 'settings' && <div className="absolute inset-0 flex flex-col"><SettingsScreen /></div>}
         </main>
         <nav className={cx('cf-glass relative z-20 flex shrink-0 border-x-0 border-b-0', tab === 'terminal' && 'cf-hide-with-keyboard')} style={{ paddingBottom: 'var(--cf-nav-pad, var(--sab))' }}>
-          {TABS.map((item) => {
+          {tabs.map((item) => {
             const Icon = item.icon;
             const active = tab === item.id;
             return (
@@ -154,7 +158,7 @@ function Backdrop({ theme }: { theme: ResolvedTheme }) {
 
   return (
     <div className="cf-backdrop" aria-hidden="true">
-      <div className={cx('cf-backdrop-gradient', theme.animated && 'animated')} style={{ backgroundImage: theme.gradient, backgroundSize: '220% 220%' }} />
+      <div className={cx('cf-backdrop-gradient', theme.animated && animatedEffectsAllowed() && 'animated')} style={{ backgroundImage: theme.gradient, backgroundSize: '220% 220%' }} />
       {url && video && (
         <video
           ref={videoRef}

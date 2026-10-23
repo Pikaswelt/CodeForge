@@ -1,4 +1,5 @@
-// FancyCode-Konto: Login (Gast mit Einladung, Discord, GitHub) beim gemeinsamen FancyGames-Server
+// FancyServers-Konto: ein Login und ein Abo für FancyCode, FancyGames Studio und FancyAgent (Gast mit Einladung, Discord, GitHub).
+// Limits und Resets der eingebauten KI zählt der Server pro App (Header x-fg-app).
 // und die eingebaute KI, die über diesen Server läuft. Der KI-Key liegt nur auf dem Server.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -6,6 +7,7 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const { app, safeStorage, shell } = require('electron');
 const pkg = require('../package.json');
+const { mt } = require('./i18n.cjs');
 
 const APP_ID = 'fancycode';
 
@@ -16,7 +18,7 @@ function apiBase() {
 
 function requireBase() {
   const base = apiBase();
-  if (!base) throw new Error('Der FancyCode-Server ist in dieser Version nicht eingerichtet.');
+  if (!base) throw new Error(mt('Der FancyCode-Server ist in dieser Version nicht eingerichtet.'));
   return base;
 }
 
@@ -89,7 +91,7 @@ function b64url(buf) {
 let pendingLogin = null;
 
 function login(provider, invite = '') {
-  if (!['discord', 'github'].includes(provider)) throw new Error('Unbekannter Anbieter');
+  if (!['discord', 'github'].includes(provider)) throw new Error(mt('Unbekannter Anbieter'));
   const base = requireBase();
   pendingLogin?.cancel();
   const verifier = b64url(crypto.randomBytes(48));
@@ -101,7 +103,7 @@ function login(provider, invite = '') {
       if (url.pathname !== '/callback') return res.writeHead(404).end();
       const code = url.searchParams.get('code') || '';
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end('<!doctype html><meta charset="utf-8"><body style="background:#09090b;color:#f4f4f5;font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><h2>Angemeldet ✓</h2><p>Du kannst dieses Fenster schließen und zu FancyCode zurückkehren.</p></div>');
+      res.end(mt('<!doctype html><meta charset="utf-8"><body style="background:#09090b;color:#f4f4f5;font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><h2>Angemeldet ✓</h2><p>Du kannst dieses Fenster schließen und zu FancyCode Desktop zurückkehren.</p></div>'));
       finish(async () => {
         const r = await post('/auth/exchange', { code, verifier });
         if (!r.ok) throw new Error(await readError(r));
@@ -111,7 +113,7 @@ function login(provider, invite = '') {
         return j.user;
       });
     });
-    const timer = setTimeout(() => finish(() => Promise.reject(new Error('Anmeldung abgelaufen. Bitte erneut versuchen.'))), 5 * 60_000);
+    const timer = setTimeout(() => finish(() => Promise.reject(new Error(mt('Anmeldung abgelaufen. Bitte erneut versuchen.')))), 5 * 60_000);
     function finish(fn) {
       if (done) return;
       done = true;
@@ -147,7 +149,7 @@ async function checkInvite(invite) {
 
 async function me() {
   if (!apiBase() || !getSession()) return null;
-  const r = await fetch(`${apiBase()}/v1/me`, { headers: { authorization: `Bearer ${getSession()}` }, signal: AbortSignal.timeout(15000) });
+  const r = await fetch(`${apiBase()}/v1/me`, { headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': APP_ID }, signal: AbortSignal.timeout(15000) });
   if (r.status === 401) {
     setSession('');
     setGranted(false);
@@ -155,6 +157,40 @@ async function me() {
   }
   if (!r.ok) throw new Error(await readError(r));
   setGranted(true);
+  return r.json();
+}
+
+// Verbrauch der eingebauten KI: 5-Stunden- und 7-Tage-Fenster kommen direkt vom Server.
+async function usage() {
+  if (!apiBase()) throw new Error(mt('Der FancyCode-Server ist in dieser Version nicht eingerichtet.'));
+  if (!getSession()) throw new Error(mt('Bitte melde dich an, um deine Nutzung zu sehen.'));
+  const r = await fetch(`${apiBase()}/v1/usage`, {
+    headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': APP_ID },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (r.status === 401) {
+    setSession('');
+    setGranted(false);
+    throw new Error(mt('Bitte melde dich erneut an.'));
+  }
+  if (!r.ok) throw new Error(await readError(r));
+  return r.json();
+}
+
+// Verbraucht ein Reset-Guthaben und setzt beide Nutzungsfenster zurück.
+async function resetUsage() {
+  if (!getSession()) throw new Error(mt('Bitte melde dich an, um dein Limit zurückzusetzen.'));
+  const r = await fetch(`${apiBase()}/v1/usage/reset`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': APP_ID },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (r.status === 401) {
+    setSession('');
+    setGranted(false);
+    throw new Error(mt('Bitte melde dich erneut an.'));
+  }
+  if (!r.ok) throw new Error(await readError(r));
   return r.json();
 }
 
@@ -168,7 +204,7 @@ async function logout() {
 // Eingebaute KI: Antwort-Stream vom Server vollständig einlesen.
 async function chat(system, messages) {
   const r = await post('/v1/chat', { messages, context: system ? String(system).slice(0, 12000) : undefined }, { auth: true, timeout: 180000 });
-  if (r.status === 401) throw new Error('Bitte melde dich an, um die eingebaute KI zu nutzen.');
+  if (r.status === 401) throw new Error(mt('Bitte melde dich an, um die eingebaute KI zu nutzen.'));
   if (!r.ok) throw new Error(await readError(r));
   const decoder = new TextDecoder();
   let buf = '';
@@ -189,4 +225,4 @@ async function chat(system, messages) {
   return { text, tokens: 0 };
 }
 
-module.exports = { apiBase, login, guest, checkInvite, me, logout, chat, wasGranted, cancelLogin: () => pendingLogin?.cancel() };
+module.exports = { apiBase, login, guest, checkInvite, me, usage, resetUsage, logout, chat, wasGranted, sessionToken: getSession, cancelLogin: () => pendingLogin?.cancel() };

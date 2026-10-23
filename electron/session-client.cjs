@@ -1,9 +1,10 @@
 'use strict';
-// Connects FancyCode to the session host (session-host.cjs) and starts it when needed.
+const { mt } = require('./i18n.cjs');
+// Connects FancyCode Desktop to the session host (session-host.cjs) and starts it when needed.
 // The host runs from a copy in the user data folder with the system Node.js when available,
-// so it is neither part of FancyCode's process tree nor locked to the install folder that an
-// update replaces. Without Node.js it falls back to FancyCode's own runtime (survives a
-// restart of FancyCode, not an update).
+// so it is neither part of FancyCode Desktop's process tree nor locked to the install folder that an
+// update replaces. Without Node.js it falls back to FancyCode Desktop's own runtime (survives a
+// restart of FancyCode Desktop, not an update).
 
 const fs = require('node:fs');
 const net = require('node:net');
@@ -147,7 +148,7 @@ function createSessionClient({ userDataDir, isPackaged, resourcesPath }) {
           socket = null;
           // The host is gone, and with it every session it held.
           for (const [id, listener] of [...exitListeners]) listener(-1, id);
-          for (const pending of pendingCreates.values()) pending.reject(new Error('Session-Host wurde beendet.'));
+          for (const pending of pendingCreates.values()) pending.reject(new Error(mt('Session-Host wurde beendet.')));
           pendingCreates.clear();
           for (const pending of pendingLists.values()) pending([]);
           pendingLists.clear();
@@ -180,7 +181,7 @@ function createSessionClient({ userDataDir, isPackaged, resourcesPath }) {
           const fresh = await tryConnect();
           if (fresh) return (socket = fresh);
         }
-        throw new Error('Session-Host konnte nicht gestartet werden.');
+        throw new Error(mt('Session-Host konnte nicht gestartet werden.'));
       } finally {
         connecting = null;
       }
@@ -229,7 +230,7 @@ function createSessionClient({ userDataDir, isPackaged, resourcesPath }) {
     return list();
   }
 
-  // Recent output and size of a running session, or null. Hosts started by an older FancyCode
+  // Recent output and size of a running session, or null. Hosts started by an older FancyCode Desktop
   // have no 'snapshot' op; for them a 'create' on the existing id returns the same output.
   async function snapshot(id) {
     const sessions = await listIfRunning();

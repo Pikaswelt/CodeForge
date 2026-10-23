@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { ExternalLink, GripHorizontal, Music2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
@@ -161,8 +162,8 @@ export default function SpotifyWidget() {
     saveWidgetState(next);
   };
 
-  const title = track?.title || (track?.available ? 'Spotify' : 'Kein Song');
-  const subtitle = [track?.artist, track?.album].filter(Boolean).join(' - ') || 'Spotify starten oder Musik abspielen';
+  const title = track?.title || (track?.available ? tr("Spotify") : tr("Kein Song"));
+  const subtitle = [track?.artist, track?.album].filter(Boolean).join(' - ') || tr("Spotify starten oder Musik abspielen");
 
   return (
     <motion.div
@@ -184,8 +185,8 @@ export default function SpotifyWidget() {
         }}
       >
         <GripHorizontal className="h-4 w-4" />
-        <span className="truncate text-[10px] uppercase tracking-wide">Spotify</span>
-        <button onClick={refresh} className="rounded-md p-1 hover:bg-white/10 hover:text-white transition-colors" title="Aktualisieren">
+        <span className="truncate text-[10px] uppercase tracking-wide">{tr("Spotify")}</span>
+        <button onClick={refresh} className="rounded-md p-1 hover:bg-white/10 hover:text-white transition-colors" title={tr("Aktualisieren")}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
@@ -207,12 +208,12 @@ export default function SpotifyWidget() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-white">{title}</div>
           <div className="mt-0.5 truncate text-xs text-zinc-400">{subtitle}</div>
-          <div className="mt-1 text-[10px] text-zinc-600">{track?.isPlaying ? 'Laeuft' : 'Pausiert'}</div>
+          <div className="mt-1 text-[10px] text-zinc-600">{track?.isPlaying ? tr("Laeuft") : tr("Pausiert")}</div>
         </div>
         <button
           onClick={() => window.agentWorkspace?.launchSpotify('spotify:')}
           className="shrink-0 rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white transition-colors"
-          title="Spotify oeffnen"
+          title={tr("Spotify oeffnen")}
         >
           <ExternalLink className="h-4 w-4" />
         </button>

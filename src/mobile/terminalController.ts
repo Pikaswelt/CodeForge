@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -177,7 +178,7 @@ export class TerminalController {
     window.clearTimeout(this.retryTimer);
     const server = deps.getServer(this.session.serverId);
     if (!server) {
-      this.setState('error', 'Der V-Server dieses Terminals wurde geloescht.');
+      this.setState('error', tr("Der V-Server dieses Terminals wurde geloescht."));
       return;
     }
     this.setState('connecting');
@@ -208,7 +209,7 @@ export class TerminalController {
         this.setState('lost', errorMessage(error));
         this.scheduleRetry();
       } else {
-        this.setState('error', errorCode(error) === 'CANCELED' ? 'Anmeldung abgebrochen.' : errorMessage(error));
+        this.setState('error', errorCode(error) === 'CANCELED' ? tr("Anmeldung abgebrochen.") : errorMessage(error));
       }
     }
   }
@@ -237,7 +238,7 @@ export class TerminalController {
       this.setState('lost', 'Verbindung getrennt.');
       this.scheduleRetry();
     } else {
-      this.setState('ended', code > 0 ? `Session beendet (Code ${code}).` : 'Session beendet.');
+      this.setState('ended', code > 0 ? `Session beendet (Code ${code}).` : tr("Session beendet."));
     }
   }
 

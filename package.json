@@ -2,7 +2,7 @@
   "name": "codeforge-desktop",
   "desktopName": "codeforge-desktop.desktop",
   "private": true,
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "Pikaswelt <125045294+Pikaswelt@users.noreply.github.com>",
   "type": "module",
@@ -75,8 +75,9 @@
       "node_modules/@xterm/headless/**"
     ],
     "appId": "app.codeforge.desktop",
-    "productName": "FancyCode",
-    "artifactName": "FancyCode-Setup-${version}.${ext}",
+    "productName": "FancyCode Desktop",
+    "executableName": "FancyCode",
+    "artifactName": "FancyCode-Desktop-Setup-${version}.${ext}",
     "files": [
       "dist/**/*",
       "assets/**/*",
@@ -98,7 +99,8 @@
       "icon": "assets/fancycode.png",
       "category": "Development",
       "syncDesktopName": true,
-      "artifactName": "FancyCode-${version}-${arch}.${ext}",
+      "executableName": "codeforge-desktop",
+      "artifactName": "FancyCode-Desktop-${version}-${arch}.${ext}",
       "synopsis": "Desktop workspace for AI coding agents",
       "maintainer": "Pikaswelt <125045294+Pikaswelt@users.noreply.github.com>"
     },
@@ -111,8 +113,9 @@
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
-      "shortcutName": "FancyCode",
-      "menuCategory": "FancyCode",
+      "shortcutName": "FancyCode Desktop",
+      "menuCategory": "FancyCode Desktop",
+      "uninstallDisplayName": "${productName} ${version}",
       "include": "electron/installer.nsh"
     },
     "publish": [
@@ -135,7 +138,17 @@
         "libuuid1",
         "libsecret-1-0"
       ]
-    }
+    },
+    "extraResources": [
+      {
+        "from": "resources/fancycode",
+        "to": "fancycode"
+      },
+      {
+        "from": "resources/skills",
+        "to": "skills"
+      }
+    ]
   },
   "homepage": "https://github.com/Pikaswelt/CodeForge",
   "codeforge": {
@@ -144,5 +157,5 @@
       "repo": "CodeForge"
     }
   },
-  "fancyApi": "https://fancygames-api.christina-nave1902.workers.dev"
+  "fancyApi": "https://account.crazymine.de"
 }

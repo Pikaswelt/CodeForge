@@ -1,121 +1,122 @@
+import { tr } from '../i18n';
 import { motion } from 'motion/react';
 import { BookOpen, Monitor, Server, Terminal, Wifi, X, CheckCircle2, Download, ArrowRight } from 'lucide-react';
 
-const LINUX_GUIDE = {
-  title: 'Linux PC / Debian VPS einrichten',
+const LINUX_GUIDE = () => ({
+  title: tr("Linux PC / Debian VPS einrichten"),
   icon: Server,
   steps: [
     {
-      title: 'Skript ausführen',
+      title: tr("Skript ausführen"),
       code: 'bash codeforge-connect.sh',
-      desc: 'Lade die FancyCode-Dateien herunter oder klone das Repository. Führe dann das Skript im Ordner aus.',
+      desc: tr("Lade die FancyCode Desktop-Dateien herunter oder klone das Repository. Führe dann das Skript im Ordner aus."),
     },
     {
-      title: 'Token kopieren',
-      desc: 'Das Skript zeigt eine Server-URL (z.B. http://192.168.1.100:8787) und einen Token an. Merke dir beides.',
+      title: tr("Token kopieren"),
+      desc: tr("Das Skript zeigt eine Server-URL (z.B. http://192.168.1.100:8787) und einen Token an. Merke dir beides."),
     },
     {
-      title: 'In der App verbinden',
-      desc: 'Öffne die FancyCode-App → Mobile Modus aktivieren → "Netzwerk durchsuchen" oder "Server-URL manuell eingeben".',
+      title: tr("In der App verbinden"),
+      desc: tr("Öffne die FancyCode Desktop-App → Mobile Modus aktivieren → \"Netzwerk durchsuchen\" oder \"Server-URL manuell eingeben\"."),
     },
     {
-      title: 'Fertig!',
-      desc: 'Sobald verbunden, leuchtet unten rechts ein grüner Punkt. Du kannst jetzt Terminals und KI-Chat nutzen.',
+      title: tr("Fertig!"),
+      desc: tr("Sobald verbunden, leuchtet unten rechts ein grüner Punkt. Du kannst jetzt Terminals und KI-Chat nutzen."),
     },
   ],
-};
+});
 
-const DEBIAN_GUIDE = {
-  title: 'Debian VPS (Server) einrichten',
+const DEBIAN_GUIDE = () => ({
+  title: tr("Debian VPS (Server) einrichten"),
   icon: Server,
   steps: [
     {
-      title: 'Skript als root ausführen',
+      title: tr("Skript als root ausführen"),
       code: 'sudo bash codeforge-connect-debian.sh',
-      desc: 'Installiert Node.js, agy/codex CLIs und richtet einen systemd-Dienst ein, der automatisch startet.',
+      desc: tr("Installiert Node.js, agy/codex CLIs und richtet einen systemd-Dienst ein, der automatisch startet."),
     },
     {
-      title: 'Server läuft dauerhaft',
-      desc: 'Der Dienst läuft auch nach Neustart. Überprüfen mit: systemctl status codeforge-remote',
+      title: tr("Server läuft dauerhaft"),
+      desc: tr("Der Dienst läuft auch nach Neustart. Überprüfen mit: systemctl status codeforge-remote"),
     },
     {
-      title: 'IP + Token notieren',
-      desc: 'Das Skript zeigt die öffentliche IP und den Token an. In der App unter "Server-URL manuell eingeben" eintragen.',
+      title: tr("IP + Token notieren"),
+      desc: tr("Das Skript zeigt die öffentliche IP und den Token an. In der App unter \"Server-URL manuell eingeben\" eintragen."),
     },
     {
-      title: 'Fertig!',
-      desc: 'Der VPS ist bereit. Die App verbindet sich remote – auch von unterwegs.',
+      title: tr("Fertig!"),
+      desc: tr("Der VPS ist bereit. Die App verbindet sich remote – auch von unterwegs."),
     },
   ],
-};
+});
 
-const WINDOWS_GUIDE = {
-  title: 'Windows PC einrichten',
+const WINDOWS_GUIDE = () => ({
+  title: tr("Windows PC einrichten"),
   icon: Monitor,
   steps: [
     {
-      title: 'PowerShell öffnen (als Administrator)',
+      title: tr("PowerShell öffnen (als Administrator)"),
       code: 'powershell -ExecutionPolicy Bypass -File codeforge-connect-windows.ps1',
-      desc: 'Rechtsklick auf Start → "Windows PowerShell (Administrator)" auswählen. Zum Skript-Ordner navigieren.',
+      desc: tr("Rechtsklick auf Start → \"Windows PowerShell (Administrator)\" auswählen. Zum Skript-Ordner navigieren."),
     },
     {
-      title: 'Node.js wird geprüft',
-      desc: 'Das Skript prüft, ob Node.js installiert ist. Falls nicht, öffnet es die Download-Seite. Installiere Node.js und führe das Skript erneut aus.',
+      title: tr("Node.js wird geprüft"),
+      desc: tr("Das Skript prüft, ob Node.js installiert ist. Falls nicht, öffnet es die Download-Seite. Installiere Node.js und führe das Skript erneut aus."),
     },
     {
-      title: 'Firewall-Freigabe',
-      desc: 'Das Skript öffnet Port 8787 in der Windows-Firewall. Bestätige die Sicherheitsabfrage.',
+      title: tr("Firewall-Freigabe"),
+      desc: tr("Das Skript öffnet Port 8787 in der Windows-Firewall. Bestätige die Sicherheitsabfrage."),
     },
     {
-      title: 'In der App verbinden',
-      desc: 'Die App zeigt IP und Token an. In der App → "Netzwerk durchsuchen" findet den PC automatisch im selben Netzwerk!',
+      title: tr("In der App verbinden"),
+      desc: tr("Die App zeigt IP und Token an. In der App → \"Netzwerk durchsuchen\" findet den PC automatisch im selben Netzwerk!"),
     },
     {
-      title: 'Fertig!',
-      desc: 'Grüner Punkt = verbunden. PC und Handy müssen im selben WLAN sein.',
+      title: tr("Fertig!"),
+      desc: tr("Grüner Punkt = verbunden. PC und Handy müssen im selben WLAN sein."),
     },
   ],
-};
+});
 
-const MOBILE_NOTE = {
-  title: 'Wichtig für Mobile-Nutzer',
+const MOBILE_NOTE = () => ({
+  title: tr("Wichtig für Mobile-Nutzer"),
   icon: Wifi,
   steps: [
     {
-      title: 'Kopplungsmodus (einfachste Methode!)',
-      desc: 'Starte auf dem PC/Server den Kopplungsmodus (POST /pair/start oder automatisch beim Serverstart). Du erhältst einen 4-stelligen Code. In der App: "Verbinden" → "Kopplungsmodus starten" → Code eingeben → Fertig!',
+      title: tr("Kopplungsmodus (einfachste Methode!)"),
+      desc: tr("Starte auf dem PC/Server den Kopplungsmodus (POST /pair/start oder automatisch beim Serverstart). Du erhältst einen 4-stelligen Code. In der App: \"Verbinden\" → \"Kopplungsmodus starten\" → Code eingeben → Fertig!"),
     },
     {
-      title: 'Kein CLI nötig!',
-      desc: 'Im Mobile-Modus verbindest du dich mit einem entfernten PC/Server. Du brauchst keine CLI (agy, codex etc.) auf deinem Handy zu installieren. Alles läuft auf dem verbundenen Rechner.',
+      title: tr("Kein CLI nötig!"),
+      desc: tr("Im Mobile-Modus verbindest du dich mit einem entfernten PC/Server. Du brauchst keine CLI (agy, codex etc.) auf deinem Handy zu installieren. Alles läuft auf dem verbundenen Rechner."),
     },
     {
-      title: 'VPS / Remote-Server',
-      desc: 'Für Server ausserhalb deines Netzwerks: Nutze "Server-URL manuell eingeben" mit der IP des Servers und dem Token. Der Server zeigt beim Start die Verbindungsdaten an.',
+      title: tr("VPS / Remote-Server"),
+      desc: tr("Für Server ausserhalb deines Netzwerks: Nutze \"Server-URL manuell eingeben\" mit der IP des Servers und dem Token. Der Server zeigt beim Start die Verbindungsdaten an."),
     },
     {
-      title: 'Themen: Bilder & Videos hochladen',
-      desc: 'In den Einstellungen → Aussehen → "Eigenes Theme erstellen" kannst du mit "Hintergrundbild/-video wählen" Dateien von deinem Gerät auswählen. Bilder werden dauerhaft gespeichert, Videos temporär für die Sitzung.',
+      title: tr("Themen: Bilder & Videos hochladen"),
+      desc: tr("In den Einstellungen → Aussehen → \"Eigenes Theme erstellen\" kannst du mit \"Hintergrundbild/-video wählen\" Dateien von deinem Gerät auswählen. Bilder werden dauerhaft gespeichert, Videos temporär für die Sitzung."),
     },
     {
-      title: 'Verbindungsstatus',
-      desc: 'Ein grüner "Live"-Punkt unten rechts zeigt an: Du bist verbunden. Kein Punkt = nicht verbunden. Tippe auf "Verbinden" um die Einrichtung zu starten.',
+      title: tr("Verbindungsstatus"),
+      desc: tr("Ein grüner \"Live\"-Punkt unten rechts zeigt an: Du bist verbunden. Kein Punkt = nicht verbunden. Tippe auf \"Verbinden\" um die Einrichtung zu starten."),
     },
   ],
-};
+});
 
-const TROUBLESHOOTING = [
+const TROUBLESHOOTING = () => [
   {
-    title: 'LAN-Suche findet keinen Server',
-    desc: 'Stelle sicher, dass PC und Handy im selben Netzwerk (WLAN) sind. Prüfe die Firewall: Port 8787 muss offen sein.',
+    title: tr("LAN-Suche findet keinen Server"),
+    desc: tr("Stelle sicher, dass PC und Handy im selben Netzwerk (WLAN) sind. Prüfe die Firewall: Port 8787 muss offen sein."),
   },
   {
-    title: 'Verbindung bricht ab',
-    desc: 'Das Skript auf dem PC läuft nur, solange das Terminal offen ist (Strg+C beendet es). Für Dauerbetrieb: Debain VPS Skript verwenden.',
+    title: tr("Verbindung bricht ab"),
+    desc: tr("Das Skript auf dem PC läuft nur, solange das Terminal offen ist (Strg+C beendet es). Für Dauerbetrieb: Debain VPS Skript verwenden."),
   },
   {
-    title: 'Hintergrund (Video/Foto) laden nicht',
-    desc: 'Auf dem Handy: Wähle eine Datei aus der Galerie aus. Kleine Bilder (<5MB) werden als data: URL gespeichert, Videos als temporäre Blob-URL.',
+    title: tr("Hintergrund (Video/Foto) laden nicht"),
+    desc: tr("Auf dem Handy: Wähle eine Datei aus der Galerie aus. Kleine Bilder (<5MB) werden als data: URL gespeichert, Videos als temporäre Blob-URL."),
   },
 ];
 
@@ -141,8 +142,8 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
               <BookOpen className="w-5 h-5 text-amber-300" />
             </div>
             <div>
-              <h2 className="text-lg text-white font-semibold">Einrichtung</h2>
-              <p className="text-xs text-zinc-600 mt-0.5">Schritt-für-Schritt Anleitung</p>
+              <h2 className="text-lg text-white font-semibold">{tr("Einrichtung")}</h2>
+              <p className="text-xs text-zinc-600 mt-0.5">{tr("Schritt-für-Schritt Anleitung")}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white transition-colors">
@@ -158,18 +159,18 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
                 <Wifi className="w-4 h-4 text-violet-300" />
               </div>
               <div>
-                <h3 className="text-sm text-white font-medium">{MOBILE_NOTE.title}</h3>
-                <p className="text-[10px] text-zinc-600">Das musst du wissen</p>
+                <h3 className="text-sm text-white font-medium">{MOBILE_NOTE().title}</h3>
+                <p className="text-[10px] text-zinc-600">{tr("Das musst du wissen")}</p>
               </div>
             </div>
             <div className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-4 space-y-3">
-              {MOBILE_NOTE.steps.map((step, i) => (
+              {MOBILE_NOTE().steps.map((step, i) => (
                 <div key={i} className="flex gap-3">
                   <div className="flex flex-col items-center">
                     <div className="w-6 h-6 rounded-full bg-violet-400/15 border border-violet-400/25 flex items-center justify-center shrink-0">
                       <span className="text-[10px] text-violet-300 font-bold">{i + 1}</span>
                     </div>
-                    {i < MOBILE_NOTE.steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
+                    {i < MOBILE_NOTE().steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
                   </div>
                   <div className="pb-3 min-w-0 flex-1">
                     <div className="text-xs text-zinc-200 font-medium">{step.title}</div>
@@ -187,18 +188,18 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
                 <Terminal className="w-4 h-4 text-emerald-300" />
               </div>
               <div>
-                <h3 className="text-sm text-white font-medium">Linux PC</h3>
-                <p className="text-[10px] text-zinc-600">Schnellste Methode für lokale PCs</p>
+                <h3 className="text-sm text-white font-medium">{tr("Linux PC")}</h3>
+                <p className="text-[10px] text-zinc-600">{tr("Schnellste Methode für lokale PCs")}</p>
               </div>
             </div>
             <div className="space-y-3">
-              {LINUX_GUIDE.steps.map((step, i) => (
+              {LINUX_GUIDE().steps.map((step, i) => (
                 <div key={i} className="flex gap-3">
                   <div className="flex flex-col items-center">
                     <div className="w-6 h-6 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center shrink-0">
                       <span className="text-[10px] text-amber-300 font-bold">{i + 1}</span>
                     </div>
-                    {i < LINUX_GUIDE.steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
+                    {i < LINUX_GUIDE().steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
                   </div>
                   <div className="pb-3 min-w-0 flex-1">
                     <div className="text-xs text-zinc-200 font-medium">{step.title}</div>
@@ -222,18 +223,18 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
                   <Download className="w-4 h-4 text-sky-300" />
                 </div>
                 <div>
-                  <h3 className="text-sm text-white font-medium">Debian VPS (Server)</h3>
-                  <p className="text-[10px] text-zinc-600">Für dauerhaften Betrieb – auch von unterwegs</p>
+                  <h3 className="text-sm text-white font-medium">{tr("Debian VPS (Server)")}</h3>
+                  <p className="text-[10px] text-zinc-600">{tr("Für dauerhaften Betrieb – auch von unterwegs")}</p>
                 </div>
               </div>
               <div className="space-y-3">
-                {DEBIAN_GUIDE.steps.map((step, i) => (
+                {DEBIAN_GUIDE().steps.map((step, i) => (
                   <div key={i} className="flex gap-3">
                     <div className="flex flex-col items-center">
                       <div className="w-6 h-6 rounded-full bg-sky-400/10 border border-sky-400/20 flex items-center justify-center shrink-0">
                         <span className="text-[10px] text-sky-300 font-bold">{i + 1}</span>
                       </div>
-                      {i < DEBIAN_GUIDE.steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
+                      {i < DEBIAN_GUIDE().steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
                     </div>
                     <div className="pb-3 min-w-0 flex-1">
                       <div className="text-xs text-zinc-200 font-medium">{step.title}</div>
@@ -258,18 +259,18 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
                   <Monitor className="w-4 h-4 text-blue-300" />
                 </div>
                 <div>
-                  <h3 className="text-sm text-white font-medium">Windows PC</h3>
-                  <p className="text-[10px] text-zinc-600">PowerShell-Skript – Firewall wird automatisch konfiguriert</p>
+                  <h3 className="text-sm text-white font-medium">{tr("Windows PC")}</h3>
+                  <p className="text-[10px] text-zinc-600">{tr("PowerShell-Skript – Firewall wird automatisch konfiguriert")}</p>
                 </div>
               </div>
               <div className="space-y-3">
-                {WINDOWS_GUIDE.steps.map((step, i) => (
+                {WINDOWS_GUIDE().steps.map((step, i) => (
                   <div key={i} className="flex gap-3">
                     <div className="flex flex-col items-center">
                       <div className="w-6 h-6 rounded-full bg-blue-400/10 border border-blue-400/20 flex items-center justify-center shrink-0">
                         <span className="text-[10px] text-blue-300 font-bold">{i + 1}</span>
                       </div>
-                      {i < WINDOWS_GUIDE.steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
+                      {i < WINDOWS_GUIDE().steps.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
                     </div>
                     <div className="pb-3 min-w-0 flex-1">
                       <div className="text-xs text-zinc-200 font-medium">{step.title}</div>
@@ -294,12 +295,12 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
                   <CheckCircle2 className="w-4 h-4 text-red-300" />
                 </div>
                 <div>
-                  <h3 className="text-sm text-white font-medium">Hilfe / Probleme</h3>
-                  <p className="text-[10px] text-zinc-600">Häufige Fragen und Lösungen</p>
+                  <h3 className="text-sm text-white font-medium">{tr("Hilfe / Probleme")}</h3>
+                  <p className="text-[10px] text-zinc-600">{tr("Häufige Fragen und Lösungen")}</p>
                 </div>
               </div>
               <div className="space-y-3">
-                {TROUBLESHOOTING.map((item, i) => (
+                {TROUBLESHOOTING().map((item, i) => (
                   <div key={i} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
                     <div className="text-xs text-zinc-200 font-medium">{item.title}</div>
                     <div className="text-[11px] text-zinc-500 mt-1 leading-5">{item.desc}</div>
@@ -312,21 +313,21 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
           {/* All scripts reference */}
           <div className="border-t border-white/5 pt-6">
             <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4">
-              <div className="text-xs text-amber-200 font-medium mb-2">Alle Setup-Skripte</div>
+              <div className="text-xs text-amber-200 font-medium mb-2">{tr("Alle Setup-Skripte")}</div>
               <div className="space-y-2 text-[11px] font-mono text-zinc-400">
                 <div className="flex items-center gap-2">
                   <Terminal className="w-3 h-3 text-emerald-400" />
-                  <span>Linux PC:</span>
+                  <span>{tr("Linux PC:")}</span>
                   <span className="text-zinc-300">bash codeforge-connect.sh</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Download className="w-3 h-3 text-sky-400" />
-                  <span>Debian VPS:</span>
+                  <span>{tr("Debian VPS:")}</span>
                   <span className="text-zinc-300">sudo bash codeforge-connect-debian.sh</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Monitor className="w-3 h-3 text-blue-400" />
-                  <span>Windows:</span>
+                  <span>{tr("Windows:")}</span>
                   <span className="text-zinc-300">powershell -File codeforge-connect-windows.ps1</span>
                 </div>
               </div>

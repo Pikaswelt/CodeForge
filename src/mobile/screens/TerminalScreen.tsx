@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ArrowDown,
@@ -81,9 +82,9 @@ export default function TerminalScreen({ visible }: { visible: boolean }) {
         <div className="flex flex-1 items-center justify-center">
           <EmptyState
             icon={<SquareTerminal className="h-8 w-8" />}
-            title="Kein Terminal offen"
-            text={servers.length ? 'Starte Claude Code, Codex, Antigravity oder eine Shell auf deinem V-Server.' : 'Füge zuerst auf dem Home-Tab deinen V-Server hinzu.'}
-            action={servers.length ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>Neues Terminal</Button> : undefined}
+            title={tr("Kein Terminal offen")}
+            text={servers.length ? tr("Starte Claude Code, Codex, Antigravity oder eine Shell auf deinem V-Server.") : tr("Füge zuerst auf dem Home-Tab deinen V-Server hinzu.")}
+            action={servers.length ? <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>{tr("Neues Terminal")}</Button> : undefined}
           />
         </div>
         {creating && <NewTerminalSheet onClose={() => setCreating(false)} />}
@@ -99,10 +100,10 @@ export default function TerminalScreen({ visible }: { visible: boolean }) {
             <TabChip key={session.id} session={session} active={session.id === active?.id} onSelect={() => setActiveTerminalId(session.id)} onClose={() => setClosing(session)} />
           ))}
         </div>
-        <IconButton label="Neues Terminal" onClick={() => setCreating(true)}>
+        <IconButton label={tr("Neues Terminal")} onClick={() => setCreating(true)}>
           <Plus className="h-5 w-5" />
         </IconButton>
-        <IconButton label="Menü" onClick={() => setMenu(true)}>
+        <IconButton label={tr("Menü")} onClick={() => setMenu(true)}>
           <MoreVertical className="h-5 w-5" />
         </IconButton>
       </div>
@@ -120,39 +121,39 @@ export default function TerminalScreen({ visible }: { visible: boolean }) {
       {menu && active && controller && (
         <Sheet title={active.title} onClose={() => setMenu(false)}>
           <div className="cf-glass cf-card mb-3 overflow-hidden">
-            <Row icon={<Copy className="h-4 w-4" />} title="Text kopieren" subtitle="Ausgabe markieren und kopieren" onClick={() => { setMenu(false); setCopying(controller.bufferText()); }} />
-            <Row icon={<ClipboardPaste className="h-4 w-4" />} title="Einfügen" subtitle="Zwischenablage ins Terminal" onClick={async () => { setMenu(false); const { text } = await Native.readClipboard(); if (text) controller.paste(text); }} />
-            <Row icon={<Pencil className="h-4 w-4" />} title="Umbenennen" onClick={() => { setMenu(false); void renameTab(active); }} />
-            <Row icon={<RefreshCw className="h-4 w-4" />} title="Neu verbinden" subtitle="Hängt sich wieder an die tmux-Session an" onClick={() => { setMenu(false); void controller.start(true); }} />
+            <Row icon={<Copy className="h-4 w-4" />} title={tr("Text kopieren")} subtitle={tr("Ausgabe markieren und kopieren")} onClick={() => { setMenu(false); setCopying(controller.bufferText()); }} />
+            <Row icon={<ClipboardPaste className="h-4 w-4" />} title={tr("Einfügen")} subtitle={tr("Zwischenablage ins Terminal")} onClick={async () => { setMenu(false); const { text } = await Native.readClipboard(); if (text) controller.paste(text); }} />
+            <Row icon={<Pencil className="h-4 w-4" />} title={tr("Umbenennen")} onClick={() => { setMenu(false); void renameTab(active); }} />
+            <Row icon={<RefreshCw className="h-4 w-4" />} title={tr("Neu verbinden")} subtitle={tr("Hängt sich wieder an die tmux-Session an")} onClick={() => { setMenu(false); void controller.start(true); }} />
           </div>
           <div className="cf-glass cf-card mb-3 flex items-center gap-2 px-4 py-3">
-            <span className="flex-1 text-[0.95rem] font-medium">Schriftgröße</span>
-            <IconButton label="Kleiner" className="bg-cf-hover" onClick={() => setFont(settings.terminalFontSize - 1)}><ZoomOut className="h-4 w-4" /></IconButton>
+            <span className="flex-1 text-[0.95rem] font-medium">{tr("Schriftgröße")}</span>
+            <IconButton label={tr("Kleiner")} className="bg-cf-hover" onClick={() => setFont(settings.terminalFontSize - 1)}><ZoomOut className="h-4 w-4" /></IconButton>
             <span className="w-8 text-center tabular-nums">{settings.terminalFontSize}</span>
-            <IconButton label="Größer" className="bg-cf-hover" onClick={() => setFont(settings.terminalFontSize + 1)}><ZoomIn className="h-4 w-4" /></IconButton>
+            <IconButton label={tr("Größer")} className="bg-cf-hover" onClick={() => setFont(settings.terminalFontSize + 1)}><ZoomIn className="h-4 w-4" /></IconButton>
           </div>
           <div className="cf-glass cf-card overflow-hidden">
-            <Row icon={<X className="h-4 w-4" />} title="Terminal schließen …" danger onClick={() => { setMenu(false); setClosing(active); }} />
+            <Row icon={<X className="h-4 w-4" />} title={tr("Terminal schließen …")} danger onClick={() => { setMenu(false); setClosing(active); }} />
           </div>
         </Sheet>
       )}
       {closing && <CloseSheet session={closing} onClose={() => setClosing(null)} />}
       {copying !== null && (
         <Sheet
-          title="Text kopieren"
+          title={tr("Text kopieren")}
           full
           onClose={() => setCopying(null)}
-          footer={<Button variant="primary" className="flex-1" icon={<Copy className="h-4 w-4" />} onClick={async () => { await Native.copyText({ text: copying }); setCopying(null); }}>Alles kopieren</Button>}
+          footer={<Button variant="primary" className="flex-1" icon={<Copy className="h-4 w-4" />} onClick={async () => { await Native.copyText({ text: copying }); setCopying(null); }}>{tr("Alles kopieren")}</Button>}
         >
-          <p className="cf-muted mb-2 text-[0.78rem]">Lange drücken, um einen Teil zu markieren.</p>
-          <pre className="cf-selectable whitespace-pre-wrap break-words rounded-xl bg-black/40 p-3 font-mono text-[0.72rem] leading-relaxed text-zinc-200">{copying || '(leer)'}</pre>
+          <p className="cf-muted mb-2 text-[0.78rem]">{tr("Lange drücken, um einen Teil zu markieren.")}</p>
+          <pre className="cf-selectable whitespace-pre-wrap break-words rounded-xl bg-black/40 p-3 font-mono text-[0.72rem] leading-relaxed text-zinc-200">{copying || tr("(leer)")}</pre>
         </Sheet>
       )}
     </div>
   );
 
   async function renameTab(session: TerminalSession) {
-    const value = await prompt({ title: 'Terminal umbenennen', label: 'Name', value: session.title });
+    const value = await prompt({ title: tr("Terminal umbenennen"), label: 'Name', value: session.title });
     if (value?.trim()) renameTerminal(session.id, value.trim());
   }
 }
@@ -170,7 +171,7 @@ function TabChip({ session, active, onSelect, onClose }: { session: TerminalSess
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{session.title}</span>
       </button>
-      <button onClick={onClose} className="ml-0.5 flex h-7 w-7 items-center justify-center rounded-full opacity-70" aria-label="Schliessen">
+      <button onClick={onClose} className="ml-0.5 flex h-7 w-7 items-center justify-center rounded-full opacity-70" aria-label={tr("Schliessen")}>
         <X className="h-3.5 w-3.5" />
       </button>
     </div>
@@ -206,7 +207,7 @@ function StateOverlay({ controller, onClose }: { controller: TerminalController;
   if (controller.state === 'connecting') {
     return (
       <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-        <span className="cf-glass rounded-full px-3.5 py-1.5 text-[0.78rem] font-medium">Verbinde mit dem V-Server …</span>
+        <span className="cf-glass rounded-full px-3.5 py-1.5 text-[0.78rem] font-medium">{tr("Verbinde mit dem V-Server …")}</span>
       </div>
     );
   }
@@ -216,15 +217,15 @@ function StateOverlay({ controller, onClose }: { controller: TerminalController;
       <div className="cf-glass cf-card w-full max-w-sm px-4 py-3.5 shadow-2xl">
         <div className="mb-1 flex items-center gap-2 text-[0.95rem] font-semibold">
           <StatusDot state={controller.state} />
-          {lost ? 'Verbindung unterbrochen' : controller.state === 'ended' ? 'Session beendet' : 'Verbindung fehlgeschlagen'}
+          {lost ? tr("Verbindung unterbrochen") : controller.state === 'ended' ? tr("Session beendet") : tr("Verbindung fehlgeschlagen")}
         </div>
         <p className="cf-muted mb-3 text-[0.82rem] leading-snug">
-          {lost ? 'Die Session läuft auf dem Server in tmux weiter. Neu verbinden hängt sich wieder an.' : controller.message}
+          {lost ? tr("Die Session läuft auf dem Server in tmux weiter. Neu verbinden hängt sich wieder an.") : controller.message}
         </p>
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={onClose}>Schließen</Button>
+          <Button className="flex-1" onClick={onClose}>{tr("Schließen")}</Button>
           <Button className="flex-1" variant="primary" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void controller.start(true)}>
-            {controller.state === 'ended' ? 'Neu starten' : 'Neu verbinden'}
+            {controller.state === 'ended' ? tr("Neu starten") : tr("Neu verbinden")}
           </Button>
         </div>
       </div>
@@ -247,10 +248,10 @@ const KEYS: { label: string; seq?: string; icon?: typeof ArrowUp; modifier?: 'ct
   { label: '|', seq: '|' },
   { label: '-', seq: '-' },
   { label: '~', seq: '~' },
-  { label: 'Pos1', seq: '\x1b[H' },
-  { label: 'Ende', seq: '\x1b[F' },
-  { label: 'Bild↑', seq: '\x1b[5~' },
-  { label: 'Bild↓', seq: '\x1b[6~' },
+  { label: tr("Pos1"), seq: '\x1b[H' },
+  { label: tr("Ende"), seq: '\x1b[F' },
+  { label: tr("Bild↑"), seq: '\x1b[5~' },
+  { label: tr("Bild↓"), seq: '\x1b[6~' },
   { label: 'Enter', seq: '\r' },
 ];
 
@@ -294,7 +295,7 @@ function InputBar({ controller }: { controller: TerminalController }) {
             value={text}
             onChange={(event) => setText(event.target.value)}
             rows={Math.min(5, Math.max(1, text.split('\n').length))}
-            placeholder="Prompt eingeben oder diktieren …"
+            placeholder={tr("Prompt eingeben oder diktieren …")}
             className="cf-input min-h-[2.75rem] flex-1 resize-none py-2.5 text-[16px] leading-snug"
             enterKeyHint="enter"
           />
@@ -302,7 +303,7 @@ function InputBar({ controller }: { controller: TerminalController }) {
             onClick={send}
             onMouseDown={(event) => event.preventDefault()}
             className="cf-press cf-accent-bg flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-lg"
-            aria-label="Senden"
+            aria-label={tr("Senden")}
           >
             <SendHorizontal className="h-5 w-5" />
           </button>
@@ -313,7 +314,7 @@ function InputBar({ controller }: { controller: TerminalController }) {
           <button
             className={cx('cf-key cf-press flex items-center justify-center', keyboardOpen && 'active')}
             onClick={() => (keyboardOpen ? controller.blur() : controller.focus())}
-            aria-label="Tastatur"
+            aria-label={tr("Tastatur")}
           >
             <Keyboard className="h-4 w-4" />
           </button>
@@ -323,7 +324,7 @@ function InputBar({ controller }: { controller: TerminalController }) {
               updateSettings({ composerOpen: !settings.composerOpen });
               if (!settings.composerOpen) setTimeout(() => area.current?.focus(), 50);
             }}
-            aria-label="Prompt-Eingabe"
+            aria-label={tr("Prompt-Eingabe")}
           >
             <MessageSquareText className="h-4 w-4" />
           </button>
@@ -342,7 +343,7 @@ function InputBar({ controller }: { controller: TerminalController }) {
               const { text: clip } = await Native.readClipboard();
               if (clip) controller.paste(clip);
             }}
-            aria-label="Einfügen"
+            aria-label={tr("Einfügen")}
           >
             <ClipboardPaste className="h-4 w-4" />
           </button>
@@ -363,22 +364,22 @@ function CloseSheet({ session, onClose }: { session: TerminalSession; onClose: (
   };
   if (controller?.state === 'ended') {
     return (
-      <Sheet title="Terminal schließen" onClose={onClose}>
-        <Button variant="primary" className="w-full" onClick={() => void finish(false)}>Schließen</Button>
+      <Sheet title={tr("Terminal schließen")} onClose={onClose}>
+        <Button variant="primary" className="w-full" onClick={() => void finish(false)}>{tr("Schließen")}</Button>
       </Sheet>
     );
   }
   return (
-    <Sheet title={`${session.title} schließen`} onClose={onClose}>
+    <Sheet title={tr("{title} schließen", { title: session.title })} onClose={onClose}>
       <div className="cf-glass cf-card overflow-hidden">
         <Row
           icon={<SquareTerminal className="h-4 w-4" />}
-          title="Nur Tab schließen"
-          subtitle="Läuft auf dem Server weiter, später unter „Laufende Sessions“ öffnen"
+          title={tr("Nur Tab schließen")}
+          subtitle={tr("Läuft auf dem Server weiter, später unter „Laufende Sessions“ öffnen")}
           onClick={() => void finish(false)}
         />
         <div className="h-px bg-cf-line" />
-        <Row icon={<X className="h-4 w-4" />} title="Session beenden" subtitle="Stoppt die tmux-Session und alles, was darin läuft" danger onClick={() => void finish(true)} />
+        <Row icon={<X className="h-4 w-4" />} title={tr("Session beenden")} subtitle={tr("Stoppt die tmux-Session und alles, was darin läuft")} danger onClick={() => void finish(true)} />
       </div>
     </Sheet>
   );

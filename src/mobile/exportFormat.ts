@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 // File the desktop app writes with "Für Android exportieren" and the phone imports.
 // Contains private keys when the user chose to include them, so it is meant to be moved to the
 // phone and deleted afterwards.
@@ -32,9 +33,9 @@ export function parseExport(text: string): MobileExport {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error('Die Datei ist keine FancyCode-Exportdatei.');
+    throw new Error(tr('Die Datei ist keine FancyCode Desktop-Exportdatei.'));
   }
-  if (!data || data.type !== EXPORT_TYPE || !Array.isArray(data.servers)) throw new Error('Die Datei ist keine FancyCode-Exportdatei.');
-  if (data.version > EXPORT_VERSION) throw new Error('Die Exportdatei ist neuer als diese App. Bitte die App aktualisieren.');
+  if (!data || data.type !== EXPORT_TYPE || !Array.isArray(data.servers)) throw new Error(tr('Die Datei ist keine FancyCode Desktop-Exportdatei.'));
+  if (data.version > EXPORT_VERSION) throw new Error(tr('Die Exportdatei ist neuer als diese App. Bitte die App aktualisieren.'));
   return data;
 }

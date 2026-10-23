@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { Native, type NativeServer } from './native';
 import type { MobileServer } from './types';
 
@@ -144,7 +145,7 @@ export async function installPublicKey(server: MobileServer, publicKey: string) 
   if (!/^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+) [A-Za-z0-9+/=]+( .*)?$/.test(line)) throw new Error('Ungueltiger Public Key.');
   const command = `umask 077; mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && (grep -qxF ${shellQuote(line)} ~/.ssh/authorized_keys || printf '%s\\n' ${shellQuote(line)} >> ~/.ssh/authorized_keys) && echo OK`;
   const result = await run(server, command, { timeoutMs: 20000 });
-  if (!result.stdout.includes('OK')) throw new Error(result.stderr.trim() || 'Key konnte nicht eingetragen werden.');
+  if (!result.stdout.includes('OK')) throw new Error(result.stderr.trim() || tr("Key konnte nicht eingetragen werden."));
 }
 
 // File list of a project folder on the server, used as context for API chats.

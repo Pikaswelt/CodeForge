@@ -1,5 +1,7 @@
+import { tr } from './i18n';
 import { useSyncExternalStore } from 'react';
 import type { WhisperStatus } from './electron.d';
+import { language } from './i18n';
 
 // Voice input: microphone capture with a simple energy-based voice activity
 // detector, transcription through the local Whisper server (main process) and
@@ -38,7 +40,8 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   showGridButton: true,
   showFullscreenButton: true,
   showRestartButton: true,
-  language: 'de',
+  // Dictation starts in the app language; the voice tab can change it separately.
+  language: language(),
   model: 'base',
   prefix: '',
   suffix: '',
@@ -236,7 +239,7 @@ export async function refreshWhisperStatus() {
 
 async function ensureInstalled() {
   if (!window.agentWorkspace?.whisperStatus) {
-    stateStore.set({ error: 'Spracheingabe ist nur in der Desktop-App verfuegbar.' });
+    stateStore.set({ error: tr("Spracheingabe ist nur in der Desktop-App verfuegbar.") });
     return false;
   }
   const status = whisperStatus?.installed ? whisperStatus : await refreshWhisperStatus();
@@ -411,7 +414,7 @@ function enqueue(frames: Float32Array[]) {
         prompt: mode === 'wake' ? settings.wakeWord : undefined,
       });
       if (!result.ok) {
-        stateStore.set({ error: result.error || 'Transkription fehlgeschlagen.' });
+        stateStore.set({ error: result.error || tr("Transkription fehlgeschlagen.") });
         return;
       }
       handleText(result.text || '');
@@ -456,7 +459,7 @@ function handleText(text: string) {
 function insertText(text: string) {
   const target = currentTarget();
   if (!target) {
-    stateStore.set({ error: 'Kein Eingabefeld offen. Oeffne einen Chat oder ein Terminal.' });
+    stateStore.set({ error: tr("Kein Eingabefeld offen. Oeffne einen Chat oder ein Terminal.") });
     return;
   }
   const settings = settingsStore.get();
@@ -550,9 +553,9 @@ export async function syncWakeMode() {
 
 function micError(error: unknown) {
   const name = error instanceof DOMException ? error.name : '';
-  if (name === 'NotAllowedError') return 'Mikrofonzugriff verweigert (Windows: Einstellungen > Datenschutz > Mikrofon).';
-  if (name === 'NotFoundError') return 'Kein Mikrofon gefunden.';
-  return error instanceof Error ? error.message : 'Mikrofon konnte nicht gestartet werden.';
+  if (name === 'NotAllowedError') return tr('Mikrofonzugriff verweigert (Windows: Einstellungen > Datenschutz > Mikrofon).');
+  if (name === 'NotFoundError') return tr('Kein Mikrofon gefunden.');
+  return error instanceof Error ? error.message : tr("Mikrofon konnte nicht gestartet werden.");
 }
 
 function encodeWav(frames: Float32Array[]) {

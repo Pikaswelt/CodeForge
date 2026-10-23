@@ -1,3 +1,4 @@
+import { LANGUAGES, setLanguage, tr, useLanguage } from '../../i18n';
 import { useState, type ReactNode } from 'react';
 import {
   Bot,
@@ -34,22 +35,23 @@ export default function SettingsScreen() {
   const [page, setPage] = useState<Page>('main');
   const [importing, setImporting] = useState(false);
   const { settings, customThemes, harnesses, agyAccounts, apiProviders, servers, setTab } = useStore();
+  const lang = useLanguage();
   const theme = resolveTheme(settings.themeId, customThemes);
 
   if (page !== 'main') {
     const titles: Record<Exclude<Page, 'main'>, string> = {
-      appearance: 'Aussehen',
-      terminal: 'Terminal',
-      harnesses: 'CLI-Harnesses',
-      agy: 'Antigravity-Accounts',
-      providers: 'KI-Provider',
-      about: 'Über FancyCode',
+      appearance: tr("Aussehen"),
+      terminal: tr("Terminal"),
+      harnesses: tr("CLI-Harnesses"),
+      agy: tr("Antigravity-Accounts"),
+      providers: tr("KI-Provider"),
+      about: tr("Über FancyCode"),
     };
     return (
       <div className="flex h-full flex-col">
         <ScreenHeader
           title={titles[page]}
-          leading={<IconButton label="Zurück" onClick={() => setPage('main')}><ChevronLeft className="h-5 w-5" /></IconButton>}
+          leading={<IconButton label={tr("Zurück")} onClick={() => setPage('main')}><ChevronLeft className="h-5 w-5" /></IconButton>}
         />
         <div className="cf-scroll min-h-0 flex-1 px-4 pb-8">
           {page === 'appearance' && <AppearancePage />}
@@ -65,34 +67,44 @@ export default function SettingsScreen() {
 
   return (
     <div className="flex h-full flex-col">
-      <ScreenHeader title="Einstellungen" />
+      <ScreenHeader title={tr("Einstellungen")} />
       <div className="cf-scroll min-h-0 flex-1 px-4 pb-8">
+        <Section title={tr("Sprache")}>
+          <p className="cf-muted mb-2 px-1 text-[0.78rem] leading-relaxed">
+            {tr("Gilt für die gesamte App – Oberfläche und Spracheingabe.")}
+          </p>
+          <Segmented
+            value={lang}
+            options={LANGUAGES.map((item) => ({ value: item.id, label: item.id === 'de' ? 'Deutsch' : 'English' }))}
+            onChange={(next) => setLanguage(next)}
+          />
+        </Section>
         <Section>
           <div className="cf-glass cf-card overflow-hidden">
-            <NavRow icon={<Palette className="h-4 w-4" />} title="Aussehen" subtitle={`${theme.name} · Hintergründe, Transparenz`} onClick={() => setPage('appearance')} />
+            <NavRow icon={<Palette className="h-4 w-4" />} title={tr("Aussehen")} subtitle={tr("{name} · Hintergründe, Transparenz", { name: theme.name })} onClick={() => setPage('appearance')} />
             <Divider />
-            <NavRow icon={<Keyboard className="h-4 w-4" />} title="Terminal" subtitle={`Schrift ${settings.terminalFontSize}px · Sondertasten · Trigger-Wörter`} onClick={() => setPage('terminal')} />
+            <NavRow icon={<Keyboard className="h-4 w-4" />} title={tr("Terminal")} subtitle={tr("Schrift {size}px · Sondertasten · Trigger-Wörter", { size: settings.terminalFontSize })} onClick={() => setPage('terminal')} />
           </div>
         </Section>
         <Section title="Agents">
           <div className="cf-glass cf-card overflow-hidden">
-            <NavRow icon={<Wrench className="h-4 w-4" />} title="CLI-Harnesses" subtitle={harnesses.map((item) => item.name).join(', ')} onClick={() => setPage('harnesses')} />
+            <NavRow icon={<Wrench className="h-4 w-4" />} title={tr("CLI-Harnesses")} subtitle={harnesses.map((item) => item.name).join(', ')} onClick={() => setPage('harnesses')} />
             <Divider />
-            <NavRow icon={<Rocket className="h-4 w-4" />} title="Antigravity-Accounts" subtitle={agyAccounts.length ? `${agyAccounts.length} von ${MAX_AGY_ACCOUNTS}` : 'Mehrere agy-Logins auf dem Server'} onClick={() => setPage('agy')} />
+            <NavRow icon={<Rocket className="h-4 w-4" />} title={tr("Antigravity-Accounts")} subtitle={agyAccounts.length ? tr("{a} von {b}", { a: agyAccounts.length, b: MAX_AGY_ACCOUNTS }) : tr("Mehrere agy-Logins auf dem Server")} onClick={() => setPage('agy')} />
             <Divider />
-            <NavRow icon={<Bot className="h-4 w-4" />} title="KI-Provider" subtitle={apiProviders.length ? apiProviders.map((item) => item.name).join(', ') : 'Für den API-Chat'} onClick={() => setPage('providers')} />
+            <NavRow icon={<Bot className="h-4 w-4" />} title={tr("KI-Provider")} subtitle={apiProviders.length ? apiProviders.map((item) => item.name).join(', ') : tr("Für den API-Chat")} onClick={() => setPage('providers')} />
           </div>
         </Section>
-        <Section title="V-Server">
+        <Section title={tr("V-Server")}>
           <div className="cf-glass cf-card overflow-hidden">
-            <NavRow icon={<Server className="h-4 w-4" />} title="V-Server verwalten" subtitle={servers.length ? servers.map((item) => item.name).join(', ') : 'Noch keiner'} onClick={() => setTab('home')} />
+            <NavRow icon={<Server className="h-4 w-4" />} title={tr("V-Server verwalten")} subtitle={servers.length ? servers.map((item) => item.name).join(', ') : tr("Noch keiner")} onClick={() => setTab('home')} />
             <Divider />
-            <NavRow icon={<Upload className="h-4 w-4" />} title="Vom PC übernehmen" subtitle="Server, Keys und Einstellungen aus FancyCode am PC" onClick={() => setImporting(true)} />
+            <NavRow icon={<Upload className="h-4 w-4" />} title={tr("Vom PC übernehmen")} subtitle={tr("Server, Keys und Einstellungen aus FancyCode Desktop am PC")} onClick={() => setImporting(true)} />
           </div>
         </Section>
         <Section>
           <div className="cf-glass cf-card overflow-hidden">
-            <NavRow icon={<Info className="h-4 w-4" />} title="Über FancyCode" subtitle={`Version ${__APP_VERSION__}`} onClick={() => setPage('about')} />
+            <NavRow icon={<Info className="h-4 w-4" />} title={tr("Über FancyCode")} subtitle={`Version ${__APP_VERSION__}`} onClick={() => setPage('about')} />
           </div>
         </Section>
       </div>
@@ -110,7 +122,7 @@ function AppearancePage() {
   const [editing, setEditing] = useState<MobileTheme | 'new' | null>(null);
   return (
     <>
-      <Section title="Themes">
+      <Section title={tr("Themes")}>
         <div className="grid grid-cols-2 gap-2.5">
           {BUILT_IN_THEMES.map((item) => (
             <ThemeTile key={item.id} name={item.name} gradient={item.gradient} accent={item.accent} text={item.text} active={settings.themeId === item.id} onClick={() => updateSettings({ themeId: item.id })} />
@@ -118,14 +130,14 @@ function AppearancePage() {
         </div>
       </Section>
       <Section
-        title="Eigene Themes"
-        action={<button className="cf-accent-text flex items-center gap-1 text-[0.8rem] font-semibold" onClick={() => setEditing('new')}><Plus className="h-4 w-4" />Neu</button>}
+        title={tr("Eigene Themes")}
+        action={<button className="cf-accent-text flex items-center gap-1 text-[0.8rem] font-semibold" onClick={() => setEditing('new')}><Plus className="h-4 w-4" />{tr("Neu")}</button>}
       >
         {customThemes.length === 0 ? (
           <button onClick={() => setEditing('new')} className="cf-press w-full rounded-2xl border border-dashed border-cf-line px-4 py-6 text-center">
             <Palette className="cf-accent-text mx-auto mb-2 h-6 w-6" />
-            <div className="text-[0.92rem] font-semibold">Eigenes Theme erstellen</div>
-            <div className="cf-muted text-[0.78rem]">Eigene Farben, animierter Verlauf, Bild oder Video vom Handy als Hintergrund</div>
+            <div className="text-[0.92rem] font-semibold">{tr("Eigenes Theme erstellen")}</div>
+            <div className="cf-muted text-[0.78rem]">{tr("Eigene Farben, animierter Verlauf, Bild oder Video vom Handy als Hintergrund")}</div>
           </button>
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
@@ -149,15 +161,15 @@ function AppearancePage() {
           </div>
         )}
       </Section>
-      <Section title="Oberfläche">
+      <Section title={tr("Oberfläche")}>
         <div className="cf-glass cf-card overflow-hidden">
-          <Slider label="Deckkraft der Flächen" value={settings.surfaceOpacity} min={20} max={100} unit="%" onChange={(value) => updateSettings({ surfaceOpacity: value })} />
+          <Slider label={tr("Deckkraft der Flächen")} value={settings.surfaceOpacity} min={20} max={100} unit="%" onChange={(value) => updateSettings({ surfaceOpacity: value })} />
           <Divider />
-          <Slider label="Glas-Unschärfe" value={settings.blur} min={0} max={40} unit="px" onChange={(value) => updateSettings({ blur: value })} />
+          <Slider label={tr("Glas-Unschärfe")} value={settings.blur} min={0} max={40} unit="px" onChange={(value) => updateSettings({ blur: value })} />
           <Divider />
-          <Slider label="Ecken-Radius" value={settings.radius} min={4} max={28} unit="px" onChange={(value) => updateSettings({ radius: value })} />
+          <Slider label={tr("Ecken-Radius")} value={settings.radius} min={4} max={28} unit="px" onChange={(value) => updateSettings({ radius: value })} />
           <Divider />
-          <Slider label="Terminal-Hintergrund" value={settings.terminalOpacity} min={0} max={100} unit="%" onChange={(value) => updateSettings({ terminalOpacity: value })} />
+          <Slider label={tr("Terminal-Hintergrund")} value={settings.terminalOpacity} min={0} max={100} unit="%" onChange={(value) => updateSettings({ terminalOpacity: value })} />
         </div>
       </Section>
       {editing && <ThemeEditor theme={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
@@ -179,7 +191,7 @@ function ThemeTile({ name, gradient, accent, text, media, video, active, onClick
         {active && <span className="cf-accent-bg absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full"><Check className="h-3.5 w-3.5" /></span>}
       </button>
       {onEdit && (
-        <button onClick={onEdit} className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white" aria-label="Bearbeiten">
+        <button onClick={onEdit} className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white" aria-label={tr("Bearbeiten")}>
           <Pencil className="h-3.5 w-3.5" />
         </button>
       )}
@@ -191,12 +203,12 @@ function TerminalPage() {
   const { settings, updateSettings } = useStore();
   return (
     <>
-      <Section title="Darstellung">
+      <Section title={tr("Darstellung")}>
         <div className="cf-glass cf-card overflow-hidden">
-          <Slider label="Schriftgröße" value={settings.terminalFontSize} min={8} max={26} unit="px" onChange={(value) => updateSettings({ terminalFontSize: value })} />
+          <Slider label={tr("Schriftgröße")} value={settings.terminalFontSize} min={8} max={26} unit="px" onChange={(value) => updateSettings({ terminalFontSize: value })} />
           <Divider />
           <div className="px-4 py-3">
-            <div className="mb-2 text-[0.95rem] font-medium">Schriftart</div>
+            <div className="mb-2 text-[0.95rem] font-medium">{tr("Schriftart")}</div>
             <div className="grid grid-cols-2 gap-2">
               {TERMINAL_FONTS.map((font) => (
                 <button
@@ -211,35 +223,35 @@ function TerminalPage() {
             </div>
           </div>
         </div>
-        <p className="cf-muted mt-2 px-1 text-[0.75rem]">Tipp: Im Terminal mit zwei Fingern zoomen ändert die Schriftgröße direkt.</p>
+        <p className="cf-muted mt-2 px-1 text-[0.75rem]">{tr("Tipp: Im Terminal mit zwei Fingern zoomen ändert die Schriftgröße direkt.")}</p>
       </Section>
-      <Section title="Bedienung">
+      <Section title={tr("Bedienung")}>
         <div className="cf-glass cf-card overflow-hidden">
-          <Toggle checked={settings.extraKeys} onChange={(value) => updateSettings({ extraKeys: value })} label="Sondertasten-Leiste" description="Esc, Tab, Ctrl, Alt, Pfeile, ^C und mehr über der Tastatur" />
+          <Toggle checked={settings.extraKeys} onChange={(value) => updateSettings({ extraKeys: value })} label={tr("Sondertasten-Leiste")} description={tr("Esc, Tab, Ctrl, Alt, Pfeile, ^C und mehr über der Tastatur")} />
           <Divider />
-          <Toggle checked={settings.haptics} onChange={(value) => updateSettings({ haptics: value })} label="Vibration" description="Kurzes Feedback bei Sondertasten und Senden" />
+          <Toggle checked={settings.haptics} onChange={(value) => updateSettings({ haptics: value })} label={tr("Vibration")} description={tr("Kurzes Feedback bei Sondertasten und Senden")} />
         </div>
       </Section>
-      <Section title="Prompts">
+      <Section title={tr("Prompts")}>
         <div className="cf-glass cf-card overflow-hidden">
-          <Toggle checked={settings.prefixSuffixEnabled} onChange={(value) => updateSettings({ prefixSuffixEnabled: value })} label="Präfix & Suffix" description="Wird um jeden Prompt aus dem Eingabefeld gesetzt" />
+          <Toggle checked={settings.prefixSuffixEnabled} onChange={(value) => updateSettings({ prefixSuffixEnabled: value })} label={tr("Präfix & Suffix")} description={tr("Wird um jeden Prompt aus dem Eingabefeld gesetzt")} />
           {settings.prefixSuffixEnabled && (
             <div className="px-4 pb-3">
-              <Field label="Präfix"><input className="cf-input" value={settings.prefix} onChange={(event) => updateSettings({ prefix: event.target.value })} /></Field>
-              <Field label="Suffix"><input className="cf-input" value={settings.suffix} onChange={(event) => updateSettings({ suffix: event.target.value })} /></Field>
+              <Field label={tr("Präfix")}><input className="cf-input" value={settings.prefix} onChange={(event) => updateSettings({ prefix: event.target.value })} /></Field>
+              <Field label={tr("Suffix")}><input className="cf-input" value={settings.suffix} onChange={(event) => updateSettings({ suffix: event.target.value })} /></Field>
             </div>
           )}
         </div>
       </Section>
-      <Section title="Benachrichtigungen">
+      <Section title={tr("Benachrichtigungen")}>
         <div className="cf-glass cf-card overflow-hidden">
           <div className="px-4 py-3">
-            <Field label="Trigger-Wörter (mit Komma getrennt)" hint="Erscheint eines davon in einem Terminal, meldet sich die App. Zum Beispiel wenn ein Agent auf dich wartet.">
+            <Field label={tr("Trigger-Wörter (mit Komma getrennt)")} hint={tr("Erscheint eines davon in einem Terminal, meldet sich die App. Zum Beispiel wenn ein Agent auf dich wartet.")}>
               <input className="cf-input" value={settings.triggerWords} onChange={(event) => updateSettings({ triggerWords: event.target.value })} placeholder="fertig, Do you want, ? for shortcuts" />
             </Field>
           </div>
           <Divider />
-          <Toggle checked={settings.notifications} onChange={(value) => updateSettings({ notifications: value })} label="Android-Benachrichtigung" description="Auch wenn die App im Hintergrund ist, solange die Verbindung besteht" />
+          <Toggle checked={settings.notifications} onChange={(value) => updateSettings({ notifications: value })} label={tr("Android-Benachrichtigung")} description={tr("Auch wenn die App im Hintergrund ist, solange die Verbindung besteht")} />
         </div>
       </Section>
     </>
@@ -251,19 +263,19 @@ function HarnessPage() {
   const [editing, setEditing] = useState<CliHarness | 'new' | null>(null);
   return (
     <>
-      <p className="cf-muted mb-3 px-1 text-[0.82rem] leading-relaxed">Programme, die ein neues Terminal auf dem V-Server startet. Sie müssen dort installiert sein.</p>
+      <p className="cf-muted mb-3 px-1 text-[0.82rem] leading-relaxed">{tr("Programme, die ein neues Terminal auf dem V-Server startet. Sie müssen dort installiert sein.")}</p>
       <div className="cf-glass cf-card mb-3 overflow-hidden">
         {harnesses.map((item, index) => {
           const Icon = harnessIcon(item.icon);
           return (
             <div key={item.id}>
               {index > 0 && <Divider />}
-              <Row icon={<Icon className="cf-accent-text h-4 w-4" />} title={item.name} subtitle={item.command || 'Leere Shell'} onClick={() => setEditing(item)} trailing={<Pencil className="cf-muted h-4 w-4" />} />
+              <Row icon={<Icon className="cf-accent-text h-4 w-4" />} title={item.name} subtitle={item.command || tr("Leere Shell")} onClick={() => setEditing(item)} trailing={<Pencil className="cf-muted h-4 w-4" />} />
             </div>
           );
         })}
       </div>
-      <Button className="w-full" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>Harness hinzufügen</Button>
+      <Button className="w-full" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>{tr("Harness hinzufügen")}</Button>
       {editing && (
         <HarnessEditor
           harness={editing === 'new' ? undefined : editing}
@@ -285,18 +297,18 @@ function HarnessPage() {
 function HarnessEditor({ harness, onClose, onSave, onDelete }: { harness?: CliHarness; onClose: () => void; onSave: (harness: CliHarness) => void; onDelete: (id: string) => void }) {
   const [name, setName] = useState(harness?.name || '');
   const [command, setCommand] = useState(harness?.command || '');
-  const [icon, setIcon] = useState(harness?.icon || 'Terminal');
+  const [icon, setIcon] = useState(harness?.icon || tr("Terminal"));
   return (
     <Sheet
-      title={harness ? 'Harness bearbeiten' : 'Neuer Harness'}
+      title={harness ? tr("Harness bearbeiten") : tr("Neuer Harness")}
       onClose={onClose}
-      footer={<Button variant="primary" className="flex-1" disabled={!name.trim()} onClick={() => onSave({ id: harness?.id || newId(), name: name.trim(), command: command.trim(), icon })}>Speichern</Button>}
+      footer={<Button variant="primary" className="flex-1" disabled={!name.trim()} onClick={() => onSave({ id: harness?.id || newId(), name: name.trim(), command: command.trim(), icon })}>{tr("Speichern")}</Button>}
     >
-      <Field label="Name"><input className="cf-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="z.B. OpenCode" /></Field>
-      <Field label="Startbefehl" hint="Leer lassen für eine normale Shell. Beispiele: claude --dangerously-skip-permissions, codex, agy">
+      <Field label="Name"><input className="cf-input" value={name} onChange={(event) => setName(event.target.value)} placeholder={tr("z.B. OpenCode")} /></Field>
+      <Field label={tr("Startbefehl")} hint={tr("Leer lassen für eine normale Shell. Beispiele: claude --dangerously-skip-permissions, codex, agy")}>
         <input className="cf-input font-mono" value={command} onChange={(event) => setCommand(event.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
       </Field>
-      <div className="mb-2 px-0.5 text-[0.8rem] font-medium cf-muted">Symbol</div>
+      <div className="mb-2 px-0.5 text-[0.8rem] font-medium cf-muted">{tr("Symbol")}</div>
       <div className="mb-4 grid grid-cols-5 gap-2">
         {Object.entries(HARNESS_ICONS).map(([key, Icon]) => (
           <button key={key} onClick={() => setIcon(key)} className={cx('cf-press flex h-12 items-center justify-center rounded-xl border', icon === key ? 'border-transparent cf-accent-bg' : 'border-cf-line bg-cf-hover')} aria-label={key}>
@@ -304,7 +316,7 @@ function HarnessEditor({ harness, onClose, onSave, onDelete }: { harness?: CliHa
           </button>
         ))}
       </div>
-      {harness && <Button variant="danger" className="w-full" icon={<Trash2 className="h-4 w-4" />} onClick={() => onDelete(harness.id)}>Löschen</Button>}
+      {harness && <Button variant="danger" className="w-full" icon={<Trash2 className="h-4 w-4" />} onClick={() => onDelete(harness.id)}>{tr("Löschen")}</Button>}
     </Sheet>
   );
 }
@@ -313,7 +325,7 @@ function AgyPage() {
   const { agyAccounts, setAgyAccounts, servers, withServer, toast, confirm, prompt } = useStore();
 
   const add = async () => {
-    const name = await prompt({ title: 'Antigravity-Account', label: 'Name (z.B. Arbeit, Privat)', value: '', confirmLabel: 'Hinzufügen' });
+    const name = await prompt({ title: tr("Antigravity-Account"), label: tr("Name (z.B. Arbeit, Privat)"), value: '', confirmLabel: tr("Hinzufügen") });
     if (!name?.trim()) return;
     const slug = name.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'account';
     let id = slug;
@@ -325,8 +337,8 @@ function AgyPage() {
   const remove = async (id: string, name: string) => {
     const wipe = servers.length > 0 && (await confirm({
       title: `${name} entfernen?`,
-      message: 'Soll auch das Login-Profil auf deinen V-Servern gelöscht werden (~/.codeforge-agy/…)? Sonst bleibt der Login dort erhalten.',
-      confirmLabel: 'Profil löschen',
+      message: tr("Soll auch das Login-Profil auf deinen V-Servern gelöscht werden (~/.codeforge-agy/…)? Sonst bleibt der Login dort erhalten."),
+      confirmLabel: tr("Profil löschen"),
       danger: true,
     }));
     setAgyAccounts(agyAccounts.filter((item) => item.id !== id));
@@ -343,7 +355,7 @@ function AgyPage() {
   return (
     <>
       <p className="cf-muted mb-3 px-1 text-[0.82rem] leading-relaxed">
-        Jeder Account bekommt auf dem V-Server ein eigenes Profil (<code>~/.codeforge-agy/&lt;id&gt;</code>) und eine eigene tmux-Session. Gleiche IDs wie am PC teilen sich Login und Session. Beim ersten Start meldest du dich im Terminal an, der Google-Link öffnet sich im Browser.
+        {tr("Jeder Account bekommt auf dem V-Server ein eigenes Profil (")}<code>~/.codeforge-agy/&lt;id&gt;</code>{tr(") und eine eigene tmux-Session. Gleiche IDs wie am PC teilen sich Login und Session. Beim ersten Start meldest du dich im Terminal an, der Google-Link öffnet sich im Browser.")}
       </p>
       {agyAccounts.length > 0 && (
         <div className="cf-glass cf-card mb-3 overflow-hidden">
@@ -354,14 +366,14 @@ function AgyPage() {
                 icon={<Rocket className="cf-accent-text h-4 w-4" />}
                 title={item.name}
                 subtitle={`ID ${item.id}`}
-                trailing={<IconButton label="Entfernen" onClick={() => void remove(item.id, item.name)}><Trash2 className="h-4 w-4 text-red-400" /></IconButton>}
+                trailing={<IconButton label={tr("Entfernen")} onClick={() => void remove(item.id, item.name)}><Trash2 className="h-4 w-4 text-red-400" /></IconButton>}
               />
             </div>
           ))}
         </div>
       )}
       <Button className="w-full" icon={<Plus className="h-4 w-4" />} disabled={agyAccounts.length >= MAX_AGY_ACCOUNTS} onClick={() => void add()}>
-        Account hinzufügen {agyAccounts.length >= MAX_AGY_ACCOUNTS ? `(max. ${MAX_AGY_ACCOUNTS})` : ''}
+        {tr("Account hinzufügen")} {agyAccounts.length >= MAX_AGY_ACCOUNTS ? `(max. ${MAX_AGY_ACCOUNTS})` : ''}
       </Button>
     </>
   );
@@ -372,18 +384,18 @@ function ProviderPage() {
   const [editing, setEditing] = useState<ApiProviderConfig | 'new' | null>(null);
   return (
     <>
-      <p className="cf-muted mb-3 px-1 text-[0.82rem] leading-relaxed">API-Keys werden nur in der App auf diesem Handy gespeichert und direkt an den jeweiligen Anbieter geschickt.</p>
+      <p className="cf-muted mb-3 px-1 text-[0.82rem] leading-relaxed">{tr("API-Keys werden nur in der App auf diesem Handy gespeichert und direkt an den jeweiligen Anbieter geschickt.")}</p>
       {apiProviders.length > 0 && (
         <div className="cf-glass cf-card mb-3 overflow-hidden">
           {apiProviders.map((item, index) => (
             <div key={item.id}>
               {index > 0 && <Divider />}
-              <Row icon={<Bot className="cf-accent-text h-4 w-4" />} title={item.name} subtitle={`${item.provider} · ${item.model || 'kein Standardmodell'}`} onClick={() => setEditing(item)} trailing={<Pencil className="cf-muted h-4 w-4" />} />
+              <Row icon={<Bot className="cf-accent-text h-4 w-4" />} title={item.name} subtitle={`${item.provider} · ${item.model || tr("kein Standardmodell")}`} onClick={() => setEditing(item)} trailing={<Pencil className="cf-muted h-4 w-4" />} />
             </div>
           ))}
         </div>
       )}
-      <Button className="w-full" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>Provider hinzufügen</Button>
+      <Button className="w-full" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>{tr("Provider hinzufügen")}</Button>
       {editing && (
         <ProviderEditor
           provider={editing === 'new' ? undefined : editing}
@@ -403,7 +415,7 @@ function ProviderPage() {
 }
 
 const PROVIDER_PRESETS: Record<ApiProviderConfig['provider'], { name: string; baseUrl: string; model: string }> = {
-  fancycode: { name: 'FancyCode AI', baseUrl: '', model: 'gpt-oss-120b' },
+  fancycode: { name: tr("FancyCode AI"), baseUrl: '', model: 'gpt-oss-120b' },
   anthropic: { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-5' },
   openai: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
   'openai-compatible': { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: '' },
@@ -421,7 +433,7 @@ function ProviderEditor({ provider, onClose, onSave, onDelete }: { provider?: Ap
     try {
       const list = await listModels(draft);
       setModels(list);
-      toast(`Verbunden: ${list.length} Modelle gefunden.`, 'success');
+      toast(tr("Verbunden: {count} Modelle gefunden.", { count: list.length }), 'success');
     } catch (error) {
       toast(errorMessage(error), 'error');
     } finally {
@@ -431,26 +443,26 @@ function ProviderEditor({ provider, onClose, onSave, onDelete }: { provider?: Ap
 
   return (
     <Sheet
-      title={provider ? 'Provider bearbeiten' : 'Neuer Provider'}
+      title={provider ? tr("Provider bearbeiten") : tr("Neuer Provider")}
       full
       onClose={onClose}
-      footer={<Button variant="primary" className="flex-1" disabled={!draft.name.trim()} onClick={() => onSave(draft)}>Speichern</Button>}
+      footer={<Button variant="primary" className="flex-1" disabled={!draft.name.trim()} onClick={() => onSave(draft)}>{tr("Speichern")}</Button>}
     >
       <div className="mb-3">
         <Segmented
           value={draft.provider}
           onChange={(value) => set({ provider: value, ...(provider ? {} : PROVIDER_PRESETS[value]) })}
-          options={[{ value: 'anthropic', label: 'Anthropic' }, { value: 'openai', label: 'OpenAI' }, { value: 'openai-compatible', label: 'Kompatibel' }]}
+          options={[{ value: 'anthropic', label: 'Anthropic' }, { value: 'openai', label: 'OpenAI' }, { value: 'openai-compatible', label: tr("Kompatibel") }]}
         />
       </div>
       <Field label="Name"><input className="cf-input" value={draft.name} onChange={(event) => set({ name: event.target.value })} /></Field>
-      <Field label="API-URL" hint={draft.provider === 'openai-compatible' ? 'z.B. https://openrouter.ai/api/v1 oder http://<server>:11434/v1 für Ollama' : undefined}>
+      <Field label={tr("API-URL")} hint={draft.provider === 'openai-compatible' ? tr("z.B. https://openrouter.ai/api/v1 oder http://<server>:11434/v1 für Ollama") : undefined}>
         <input className="cf-input font-mono text-[14px]" value={draft.baseUrl} onChange={(event) => set({ baseUrl: event.target.value })} autoCapitalize="off" autoCorrect="off" spellCheck={false} inputMode="url" />
       </Field>
-      <Field label="API-Key">
+      <Field label={tr("API-Key")}>
         <input className="cf-input font-mono text-[14px]" type="password" value={draft.apiKey} onChange={(event) => set({ apiKey: event.target.value })} autoComplete="off" placeholder="sk-…" />
       </Field>
-      <Field label="Standardmodell">
+      <Field label={tr("Standardmodell")}>
         {models.length ? (
           <select className="cf-input" value={draft.model} onChange={(event) => set({ model: event.target.value })}>
             {!models.includes(draft.model) && draft.model && <option value={draft.model}>{draft.model}</option>}
@@ -460,8 +472,8 @@ function ProviderEditor({ provider, onClose, onSave, onDelete }: { provider?: Ap
           <input className="cf-input" value={draft.model} onChange={(event) => set({ model: event.target.value })} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
         )}
       </Field>
-      <Button className="mb-4 w-full" busy={loading} onClick={() => void test()}>Verbindung testen & Modelle laden</Button>
-      {provider && <Button variant="danger" className="w-full" icon={<Trash2 className="h-4 w-4" />} onClick={() => onDelete(provider.id)}>Löschen</Button>}
+      <Button className="mb-4 w-full" busy={loading} onClick={() => void test()}>{tr("Verbindung testen & Modelle laden")}</Button>
+      {provider && <Button variant="danger" className="w-full" icon={<Trash2 className="h-4 w-4" />} onClick={() => onDelete(provider.id)}>{tr("Löschen")}</Button>}
     </Sheet>
   );
 }
@@ -472,15 +484,15 @@ function AboutPage() {
       <div className="mb-3 flex items-center gap-3">
         <SquareTerminal className="cf-accent-text h-8 w-8" />
         <div>
-          <div className="text-lg font-bold">FancyCode Mobile</div>
-          <div className="cf-muted text-[0.82rem]">Version {__APP_VERSION__}</div>
+          <div className="text-lg font-bold">{tr("FancyCode Mobile")}</div>
+          <div className="cf-muted text-[0.82rem]">{tr("Version")} {__APP_VERSION__}</div>
         </div>
       </div>
       <p className="cf-muted mb-4 text-[0.86rem] leading-relaxed">
-        Die Android-App von FancyCode. Sie verbindet sich per SSH direkt mit deinem V-Server: Terminals laufen dort in tmux weiter, auch wenn das Handy die Verbindung verliert. Auf dem Handy wird nichts lokal ausgeführt.
+        {tr("Die Android-App von FancyCode. Sie verbindet sich per SSH direkt mit deinem V-Server: Terminals laufen dort in tmux weiter, auch wenn das Handy die Verbindung verliert. Auf dem Handy wird nichts lokal ausgeführt.")}
       </p>
       <Button className="w-full" icon={<Github className="h-4 w-4" />} onClick={() => void Native.openUrl({ url: `https://github.com/${__UPDATE_REPO__}/releases/latest` })}>
-        Neueste Version auf GitHub
+        {tr("Neueste Version auf GitHub")}
       </Button>
     </div>
   );

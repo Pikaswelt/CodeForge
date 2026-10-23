@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { existsSync, statSync, createReadStream, mkdirSync } from 'node:fs';
-import { randomUUID, randomInt } from 'node:crypto';
+import { randomUUID, randomInt, timingSafeEqual } from 'node:crypto';
 import { networkInterfaces, hostname } from 'node:os';
 import path, { extname, join } from 'node:path';
 import dgram from 'node:dgram';
@@ -35,8 +35,9 @@ let pairingCode = '';
 let pairingBroadcastInterval = null;
 let udpSocket = null;
 let udpEaccesLogged = false;
-let pairingBlockedUntil = 0;
-let pairingFailCount = 0;
+const PAIRING_FAIL_LIMIT = 5;
+const PAIRING_BLOCK_MS = 30_000;
+const pairingFailures = new Map();
 
 function getHostname() { return hostname(); }
 
@@ -137,10 +138,77 @@ function json(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function bearerToken(req) {
+  const match = /^Bearer (.+)$/i.exec(req.headers.authorization || '');
+  return match ? match[1].trim() : '';
+}
+
+function equalsSecret(value, expected) {
+  if (typeof value !== 'string' || !expected || value.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(value), Buffer.from(expected));
+}
+
+function tokenMatches(value) {
+  return equalsSecret(value, TOKEN);
+}
+
 function isAuthorized(req) {
-  if (!TOKEN) return false;
-  const header = req.headers.authorization || '';
-  return header === `Bearer ${TOKEN}`;
+  return tokenMatches(bearerToken(req));
+}
+
+// Starting and stopping pairing changes who may connect, so only the owner (who has the API
+// token) may do it. The setup scripts send the token; no loopback exception, so a local user
+// without the token cannot mint themselves a session either.
+function isTrustedRequest(req) {
+  return isAuthorized(req);
+}
+
+function requestIp(req) {
+  return req.socket.remoteAddress || 'unknown';
+}
+
+// The pairing code is shown to the local network only. On a server with a public address an
+// anonymous visitor must not be able to read it out of /discover and take the session over.
+function isPrivateAddress(address) {
+  const value = String(address || '').replace(/^::ffff:/, '');
+  if (!value) return false;
+  if (value === '::1' || /^(fe80|fc|fd)/i.test(value)) return true;
+  const parts = value.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false;
+  return (
+    parts[0] === 10 ||
+    parts[0] === 127 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168) ||
+    (parts[0] === 169 && parts[1] === 254)
+  );
+}
+
+function pairingBlockSeconds(req) {
+  const entry = pairingFailures.get(requestIp(req));
+  if (!entry || entry.blockedUntil <= Date.now()) return 0;
+  return Math.ceil((entry.blockedUntil - Date.now()) / 1000);
+}
+
+function registerPairingFailure(req) {
+  const ip = requestIp(req);
+  const entry = pairingFailures.get(ip) || { count: 0, blockedUntil: 0 };
+  entry.count += 1;
+  if (entry.count >= PAIRING_FAIL_LIMIT) {
+    entry.count = 0;
+    entry.blockedUntil = Date.now() + PAIRING_BLOCK_MS;
+  }
+  pairingFailures.set(ip, entry);
+  // Keep the map bounded, e.g. when many clients try a wrong code.
+  if (pairingFailures.size > 500) {
+    for (const [key, value] of pairingFailures) {
+      if (value.blockedUntil <= Date.now() && value.count === 0) pairingFailures.delete(key);
+    }
+  }
+}
+
+function clearPairingFailures(req) {
+  pairingFailures.delete(requestIp(req));
 }
 
 function unauthorized(res) {
@@ -244,18 +312,19 @@ function stopPairingBroadcast() {
   console.log('🔗 Kopplungsmodus beendet.');
 }
 
-function getPairingQRData() {
+// The code is only included while pairing is active; it is also broadcast over UDP on the LAN,
+// which is how the app's "same Wi-Fi" wizard finds the server without an existing token.
+function getPairingQRData(includeCode = true) {
   const publicIp = getEffectivePublicIp();
-  const url = `http://${publicIp}:${PORT}/pair?code=${pairingCode}`;
-  return {
-    url,
-    qrContent: url,
-    pairingCode,
+  const data = {
     serverName: getHostname(),
     serverIp: publicIp,
     serverPort: PORT,
     tokenRequired: Boolean(TOKEN),
   };
+  if (!includeCode) return data;
+  const url = `http://${publicIp}:${PORT}/pair?code=${pairingCode}`;
+  return { ...data, url, qrContent: url, pairingCode };
 }
 
 // ── Pairing HTTP endpoint ─────────────────────────────────────
@@ -263,42 +332,41 @@ function getPairingQRData() {
 async function handlePairing(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
-  // GET /pair?code=XXXX – return QR data or verify code (rate-limited)
+  // GET /pair?code=XXXX – discovery for the app; verifies a code when one is passed. The token is
+  // only handed out by POST /pair/verify, so a code cannot be turned into a session via a URL.
   if (req.method === 'GET') {
     const code = url.searchParams.get('code');
     if (!pairingMode) {
-      return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv. Starte ihn mit POST /pair/start' });
+      return json(res, 200, { ...getPairingQRData(false), pairingActive: false });
     }
     if (code) {
-      // Same rate limiting as POST /pair/verify
-      if (Date.now() < pairingBlockedUntil) {
-        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. Bitte warte 30 Sekunden.' });
+      const wait = pairingBlockSeconds(req);
+      if (wait) {
+        return json(res, 429, { ok: false, error: `Zu viele Fehlversuche. Bitte warte ${wait} Sekunden.` });
       }
-      if (code === pairingCode) {
-        pairingFailCount = 0;
-        pairingBlockedUntil = 0;
+      if (equalsSecret(code, pairingCode)) {
+        clearPairingFailures(req);
         return json(res, 200, {
           ok: true,
           paired: true,
           serverUrl: `http://${getEffectivePublicIp()}:${PORT}`,
-          token: TOKEN || null,
           providers: Object.keys(providers),
-          message: 'Code korrekt! Verwende diese Daten für die Verbindung.',
+          message: 'Code korrekt! Die App verbindet sich jetzt.',
         });
       }
-      pairingFailCount++;
-      if (pairingFailCount >= 5) {
-        pairingBlockedUntil = Date.now() + 30_000;
-        pairingFailCount = 0;
-        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. 30 Sekunden Sperre.' });
+      registerPairingFailure(req);
+      const nowWait = pairingBlockSeconds(req);
+      if (nowWait) {
+        return json(res, 429, { ok: false, error: `Zu viele Fehlversuche. ${nowWait} Sekunden Sperre.` });
       }
       return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
     }
-    return json(res, 200, getPairingQRData());
+    return json(res, 200, { ...getPairingQRData(isPrivateAddress(req.socket.remoteAddress)), pairingActive: true });
   }
 
-  // POST /pair/start – start pairing mode
+  // POST /pair/start – start pairing mode (owner or local setup script only)
   if (req.method === 'POST' && url.pathname === '/pair/start') {
+    if (!isTrustedRequest(req)) return unauthorized(res);
     if (pairingMode) stopPairingBroadcast();
     startPairingBroadcast();
     return json(res, 200, {
@@ -309,16 +377,18 @@ async function handlePairing(req, res) {
     });
   }
 
-  // POST /pair/stop – stop pairing mode
+  // POST /pair/stop – stop pairing mode (owner or local setup script only)
   if (req.method === 'POST' && url.pathname === '/pair/stop') {
+    if (!isTrustedRequest(req)) return unauthorized(res);
     stopPairingBroadcast();
     return json(res, 200, { ok: true, message: 'Kopplungsmodus beendet.' });
   }
 
   // POST /pair/verify – verify code and return connection config (rate-limited)
   if (req.method === 'POST' && url.pathname === '/pair/verify') {
-    if (Date.now() < pairingBlockedUntil) {
-      return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. Bitte warte 30 Sekunden.' });
+    const wait = pairingBlockSeconds(req);
+    if (wait) {
+      return json(res, 429, { ok: false, error: `Zu viele Fehlversuche. Bitte warte ${wait} Sekunden.` });
     }
     let body;
     try { body = JSON.parse(await readBody(req)); } catch {
@@ -327,21 +397,19 @@ async function handlePairing(req, res) {
     if (!pairingMode) {
       return json(res, 400, { ok: false, error: 'Kopplungsmodus ist nicht aktiv.' });
     }
-    if (body.code !== pairingCode) {
-      pairingFailCount++;
-      if (pairingFailCount >= 5) {
-        pairingBlockedUntil = Date.now() + 30_000;
-        pairingFailCount = 0;
-        return json(res, 429, { ok: false, error: 'Zu viele Fehlversuche. 30 Sekunden Sperre.' });
+    if (!equalsSecret(String(body.code || ''), pairingCode)) {
+      registerPairingFailure(req);
+      const nowWait = pairingBlockSeconds(req);
+      if (nowWait) {
+        return json(res, 429, { ok: false, error: `Zu viele Fehlversuche. ${nowWait} Sekunden Sperre.` });
       }
       return json(res, 403, { ok: false, error: 'Falscher Kopplungscode.' });
     }
-    pairingFailCount = 0;
-    pairingBlockedUntil = 0;
+    clearPairingFailures(req);
     return json(res, 200, {
       ok: true,
       serverUrl: `http://${getEffectivePublicIp()}:${PORT}`,
-      token: TOKEN || body.token || '',
+      token: TOKEN,
       pairingCode,
       serverName: getHostname(),
       providers: Object.keys(providers),
@@ -631,26 +699,33 @@ const MEDIA_TYPES = {
 
 async function handleMedia(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  // <img>/<video> cannot send an Authorization header, so the token may also come as a query
+  // parameter. Without it this route would expose every readable file on the machine.
+  const token = bearerToken(req) || url.searchParams.get('token') || '';
+  if (!tokenMatches(token)) return unauthorized(res);
+
   const filePath = url.searchParams.get('path');
   if (!filePath) return json(res, 400, { ok: false, error: 'Missing path parameter.' });
-  
+
   const normalized = join('/', filePath.replace(/\\/g, '/').replace(/^~/, 'root'));
   const resolved = join('/', normalized);
-  
+
   if (!existsSync(resolved) || !statSync(resolved).isFile()) {
     return json(res, 404, { ok: false, error: 'File not found or not a file.' });
   }
-  
+
   const ext = extname(resolved).toLowerCase();
-  const contentType = MEDIA_TYPES[ext] || 'application/octet-stream';
-  
+  const contentType = MEDIA_TYPES[ext];
+  if (!contentType) return json(res, 415, { ok: false, error: 'Unsupported media type.' });
+
   res.writeHead(200, {
     'content-type': contentType,
-    'access-control-allow-origin': '*',
-    'cache-control': 'public, max-age=3600',
+    'cache-control': 'private, max-age=3600',
     'content-length': statSync(resolved).size,
+    'x-content-type-options': 'nosniff',
+    'content-security-policy': "default-src 'none'; sandbox",
   });
-  
+
   const stream = createReadStream(resolved);
   stream.on('error', () => { if (!res.headersSent) { json(res, 500, { ok: false, error: 'Error reading file.' }); } else { res.destroy(); } });
   stream.pipe(res);
@@ -676,6 +751,8 @@ const server = createServer((req, res) => {
       tokenRequired: Boolean(TOKEN),
       providers: Object.keys(providers),
       hostname: hostname(),
+      pairingActive: pairingMode,
+      ...(pairingMode && isPrivateAddress(req.socket.remoteAddress) ? { pairingCode } : {}),
     });
   }
 
@@ -717,7 +794,7 @@ function broadcast(msg, excludeWs = null, targetWs = null) {
 wss?.on('connection', (ws, req) => {
   const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const wsToken = urlObj.searchParams.get('token') || req.headers['authorization']?.replace(/^Bearer /i, '').trim() || '';
-  const isWsAuthorized = TOKEN && wsToken === TOKEN;
+  const isWsAuthorized = tokenMatches(wsToken);
 
   if (!isWsAuthorized) {
     console.log('WebSocket connection rejected (invalid token)');
@@ -962,7 +1039,10 @@ server.listen(PORT, HOST, () => {
     console.error('CODEFORGE_TOKEN is missing! Connection impossible.');
     process.exit(1);
   }
-  
+
+  // The setup wizard's one-liner sets this so the app can pair right away.
+  if (/^(1|true|yes|on)$/i.test(process.env.CODEFORGE_AUTO_PAIR || '')) startPairingBroadcast();
+
   const connectionData = { url: `http://${getEffectivePublicIp()}:${PORT}`, token: TOKEN, projectPath: PROJECT_PATH };
   const connectionKey = Buffer.from(JSON.stringify(connectionData)).toString('base64');
   

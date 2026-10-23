@@ -108,7 +108,7 @@ export const DEFAULT_HARNESSES: CliHarness[] = [
   { id: 'claude', name: 'Claude Code', command: 'claude', icon: 'Sparkles' },
   { id: 'codex', name: 'Codex CLI', command: 'codex', icon: 'Code2' },
   { id: 'antigravity', name: 'Antigravity CLI', command: 'agy', icon: 'Rocket' },
-  { id: 'shell', name: 'Leeres Terminal', command: '', icon: 'Terminal' },
+  { id: 'shell', name: 'Shell', command: '', icon: 'Terminal' },
 ];
 
 export const MAX_AGY_ACCOUNTS = 6;

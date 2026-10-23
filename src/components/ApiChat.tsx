@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Loader2, MessageSquare, Mic, MicOff, Plus, Trash2 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
@@ -5,10 +6,10 @@ import { useDictation } from '../useDictation';
 import { appendSpoken, useVoiceSettings } from '../voice';
 import type { ApiChatProvider, ApiProviderConfig, Chat } from '../types';
 
-export const API_PROVIDER_TYPES: { id: ApiChatProvider; label: string; baseUrl: string; model: string }[] = [
+export const apiProviderTypes = (): { id: ApiChatProvider; label: string; baseUrl: string; model: string }[] => [
   { id: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-5' },
   { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: '' },
-  { id: 'openai-compatible', label: 'OpenAI-kompatibel', baseUrl: 'http://localhost:11434/v1', model: '' },
+  { id: 'openai-compatible', label: tr("OpenAI-kompatibel"), baseUrl: 'http://localhost:11434/v1', model: '' },
 ];
 
 const cleanIpcError = (error: unknown, fallback: string) =>
@@ -38,9 +39,9 @@ export function ApiProvidersSettings() {
     try {
       const list = await fetchModels(provider);
       setModels((current) => ({ ...current, [provider.id]: list }));
-      setNotice((current) => ({ ...current, [provider.id]: list.length ? `${list.length} Modelle gefunden. Verbindung ok.` : 'Keine Modelle gefunden.' }));
+      setNotice((current) => ({ ...current, [provider.id]: list.length ? `${list.length} Modelle gefunden. Verbindung ok.` : tr("Keine Modelle gefunden.") }));
     } catch (err) {
-      setNotice((current) => ({ ...current, [provider.id]: cleanIpcError(err, 'Modelle konnten nicht geladen werden.') }));
+      setNotice((current) => ({ ...current, [provider.id]: cleanIpcError(err, tr("Modelle konnten nicht geladen werden.")) }));
     } finally {
       setBusyId(null);
     }
@@ -52,11 +53,11 @@ export function ApiProvidersSettings() {
         if (provider.provider === 'fancycode') {
           return (
             <div key={provider.id} className="rounded-xl border border-orange-400/20 bg-orange-500/[0.06] p-3 text-xs text-zinc-300">
-              <span className="font-medium text-orange-200">{provider.name}</span> – eingebaute KI, kostenlos mit Tageslimit. Läuft über dein FancyCode-Konto, kein API-Key nötig.
+              <span className="font-medium text-orange-200">{provider.name}</span> {tr("– eingebaute KI, kostenlos mit Tageslimit. Läuft über dein FancyCode-Konto, kein API-Key nötig.")}
             </div>
           );
         }
-        const typeInfo = API_PROVIDER_TYPES.find((item) => item.id === provider.provider) || API_PROVIDER_TYPES[0];
+        const typeInfo = apiProviderTypes().find((item) => item.id === provider.provider) || apiProviderTypes()[0];
         return (
           <div key={provider.id} className="rounded-xl border border-white/10 bg-white/[0.025] p-3 space-y-2">
             <div className="flex gap-2">
@@ -70,12 +71,12 @@ export function ApiProvidersSettings() {
               <select
                 value={provider.provider}
                 onChange={(event) => {
-                  const next = API_PROVIDER_TYPES.find((item) => item.id === event.target.value) || API_PROVIDER_TYPES[0];
+                  const next = apiProviderTypes().find((item) => item.id === event.target.value) || apiProviderTypes()[0];
                   update(provider.id, { provider: next.id, baseUrl: '', model: next.model || provider.model });
                 }}
                 className="input !w-[170px] shrink-0"
               >
-                {API_PROVIDER_TYPES.map((item) => (
+                {apiProviderTypes().map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.label}
                   </option>
@@ -84,7 +85,7 @@ export function ApiProvidersSettings() {
               <button
                 onClick={() => setApiProviders((current) => current.filter((item) => item.id !== provider.id))}
                 className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10"
-                title="Anbieter entfernen"
+                title={tr("Anbieter entfernen")}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -93,7 +94,7 @@ export function ApiProvidersSettings() {
               value={provider.baseUrl}
               onChange={(event) => update(provider.id, { baseUrl: event.target.value })}
               className="input w-full font-mono"
-              placeholder={`API-URL (leer = ${typeInfo.baseUrl})`}
+              placeholder={tr("API-URL (leer = {url})", { url: typeInfo.baseUrl })}
               autoComplete="off"
             />
             <input
@@ -101,7 +102,7 @@ export function ApiProvidersSettings() {
               value={provider.apiKey}
               onChange={(event) => update(provider.id, { apiKey: event.target.value })}
               className="input w-full font-mono"
-              placeholder={provider.provider === 'openai-compatible' ? 'API-Key (optional)' : 'API-Key'}
+              placeholder={provider.provider === 'openai-compatible' ? tr("API-Key (optional)") : tr("API-Key")}
               autoComplete="off"
             />
             <div className="flex gap-2">
@@ -109,7 +110,7 @@ export function ApiProvidersSettings() {
                 value={provider.model}
                 onChange={(event) => update(provider.id, { model: event.target.value })}
                 className="input flex-1 min-w-0 font-mono"
-                placeholder="Standard-Modell"
+                placeholder={tr("Standard-Modell")}
                 list={`models-${provider.id}`}
                 autoComplete="off"
               />
@@ -123,7 +124,7 @@ export function ApiProvidersSettings() {
                 disabled={busyId === provider.id}
                 className="shrink-0 rounded-lg border border-white/10 px-3 text-xs text-zinc-300 hover:bg-white/[0.06] disabled:opacity-50"
               >
-                {busyId === provider.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Modelle laden'}
+                {busyId === provider.id ? <Loader2 className="w-4 h-4 animate-spin" /> : tr("Modelle laden")}
               </button>
             </div>
             {notice[provider.id] && <p className="text-[11px] text-zinc-500 break-words">{notice[provider.id]}</p>}
@@ -147,7 +148,7 @@ export function ApiProvidersSettings() {
         className="inline-flex items-center gap-1 text-xs text-orange-300 hover:text-orange-200"
       >
         <Plus className="w-3.5 h-3.5" />
-        AI-Anbieter hinzufuegen
+        {tr("AI-Anbieter hinzufuegen")}
       </button>
     </div>
   );
@@ -186,9 +187,9 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
     try {
       const list = await fetchModels(activeProvider);
       setModels(list);
-      if (!list.length) setError('Keine Modelle gefunden.');
+      if (!list.length) setError(tr("Keine Modelle gefunden."));
     } catch (err) {
-      setError(cleanIpcError(err, 'Modelle konnten nicht geladen werden.'));
+      setError(cleanIpcError(err, tr("Modelle konnten nicht geladen werden.")));
     } finally {
       setLoadingModels(false);
     }
@@ -200,7 +201,7 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
     try {
       await startApiChat(projectId || null);
     } catch (err) {
-      setError(cleanIpcError(err, 'Chat konnte nicht gestartet werden.'));
+      setError(cleanIpcError(err, tr("Chat konnte nicht gestartet werden.")));
       setStarting(false);
     }
   };
@@ -208,12 +209,12 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
   return (
     <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-5">
       <div>
-        <div className="section-label">AI-Anbieter</div>
+        <div className="section-label">{tr("AI-Anbieter")}</div>
         {apiProviders.length === 0 ? (
           <p className="text-xs text-zinc-500 mt-3">
-            Noch keine AI-Anbieter hinterlegt.{' '}
+            {tr("Noch keine AI-Anbieter hinterlegt.")}{' '}
             <button onClick={openSettings} className="text-orange-300 hover:underline">
-              In den Einstellungen anlegen
+              {tr("In den Einstellungen anlegen")}
             </button>
           </p>
         ) : (
@@ -231,8 +232,8 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
                     selected ? 'border-orange-400/60 bg-orange-500/10' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
                   }`}
                 >
-                  <span className="block text-sm text-white truncate">{item.name || 'Ohne Namen'}</span>
-                  <span className="block text-[11px] font-mono text-zinc-500 truncate">{item.model || 'kein Standard-Modell'}</span>
+                  <span className="block text-sm text-white truncate">{item.name || tr("Ohne Namen")}</span>
+                  <span className="block text-[11px] font-mono text-zinc-500 truncate">{item.model || tr("kein Standard-Modell")}</span>
                 </button>
               );
             })}
@@ -243,7 +244,7 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
       {activeProvider && (
         <div className="grid gap-3">
           <label className="grid gap-1 text-[11px] text-zinc-500">
-            Modell
+            {tr("Modell")}
             <div className="flex gap-2">
               <input
                 value={apiChatConfig.model}
@@ -263,27 +264,27 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
                 disabled={loadingModels}
                 className="shrink-0 rounded-lg border border-white/10 px-3 text-xs text-zinc-300 hover:bg-white/[0.06] disabled:opacity-50"
               >
-                {loadingModels ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Modelle laden'}
+                {loadingModels ? <Loader2 className="w-4 h-4 animate-spin" /> : tr("Modelle laden")}
               </button>
             </div>
           </label>
           <label className="grid gap-1 text-[11px] text-zinc-500">
-            System-Prompt (optional)
+            {tr("System-Prompt (optional)")}
             <textarea
               value={apiChatConfig.systemPrompt}
               onChange={(event) => update({ systemPrompt: event.target.value })}
               className="input w-full min-h-[64px] resize-y"
-              placeholder="z. B. Antworte kurz und auf Deutsch."
+              placeholder={tr("z. B. Antworte kurz und auf Deutsch.")}
             />
           </label>
         </div>
       )}
 
       <div>
-        <div className="section-label">Projekt</div>
+        <div className="section-label">{tr("Projekt")}</div>
         <div className="flex gap-2 mt-3">
           <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input flex-1 min-w-0">
-            <option value="">Ohne Projekt</option>
+            <option value="">{tr("Ohne Projekt")}</option>
             {projects.map((folder) => (
               <option key={folder.id} value={folder.id}>
                 {folder.title}
@@ -294,11 +295,11 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
             onClick={() => void addProject()}
             className="shrink-0 rounded-lg border border-white/10 px-3 text-xs text-zinc-300 hover:bg-white/[0.06]"
           >
-            Ordner oeffnen...
+            {tr("Ordner oeffnen...")}
           </button>
         </div>
         <label className="mt-3 flex items-center justify-between gap-3 text-xs text-zinc-400">
-          <span>Dateiliste des Projekts als Kontext mitschicken</span>
+          <span>{tr("Dateiliste des Projekts als Kontext mitschicken")}</span>
           <input
             type="checkbox"
             checked={apiChatConfig.includeProjectFiles}
@@ -314,7 +315,7 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
 
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
-          Abbrechen
+          {tr("Abbrechen")}
         </button>
         <button
           onClick={handleStart}
@@ -322,7 +323,7 @@ export function ApiChatSetup({ onCancel }: { onCancel(): void }) {
           className="primary-button flex-[2] !py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
         >
           {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-          <span>Chat starten</span>
+          <span>{tr("Chat starten")}</span>
         </button>
       </div>
     </section>
@@ -374,17 +375,17 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
           <div className="pb-4 border-b border-white/5">
             <h2 className="text-lg text-white font-medium">{chat.title}</h2>
             <p className="text-[11px] text-zinc-600 mt-1">
-              {chat.api?.model} · {project && !project.isScratch ? project.path : 'Ohne Projekt'}
+              {chat.api?.model} · {project && !project.isScratch ? project.path : tr("Ohne Projekt")}
             </p>
           </div>
           {chat.messages.length === 0 && !pending && (
-            <p className="text-sm text-zinc-600 text-center py-10">Schreib die erste Nachricht.</p>
+            <p className="text-sm text-zinc-600 text-center py-10">{tr("Schreib die erste Nachricht.")}</p>
           )}
           {chat.messages.map((message) => renderMessage(message))}
           {pending && (
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Antwort wird geladen...
+              {tr("Antwort wird geladen...")}
             </div>
           )}
           <div ref={endRef} />
@@ -406,7 +407,7 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
               }
             }}
             rows={1}
-            placeholder="Nachricht schreiben... (Enter senden, Shift+Enter neue Zeile)"
+            placeholder={tr("Nachricht schreiben... (Enter senden, Shift+Enter neue Zeile)")}
             className="flex-1 min-w-0 resize-none bg-transparent px-2 py-2 text-sm text-white outline-none max-h-48"
           />
           {voice.enabled && voice.showMicButton && <button
@@ -414,11 +415,11 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
             className={`rounded-lg p-2 transition-colors ${
               dictation.listening ? 'bg-red-500/20 text-red-300 animate-pulse' : 'text-zinc-400 hover:bg-white/[0.06] hover:text-white'
             }`}
-            title={dictation.listening ? 'Spracheingabe stoppen (Alt+S)' : 'Spracheingabe (Alt+S)'}
+            title={dictation.listening ? tr("Spracheingabe stoppen (Alt+S)") : tr("Spracheingabe (Alt+S)")}
           >
             {dictation.listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </button>}
-          <button onClick={() => send()} disabled={pending || !text.trim()} className="primary-button !px-4 !py-2 disabled:opacity-40" title="Senden">
+          <button onClick={() => send()} disabled={pending || !text.trim()} className="primary-button !px-4 !py-2 disabled:opacity-40" title={tr("Senden")}>
             <ArrowUp className="w-4 h-4" />
           </button>
         </div>

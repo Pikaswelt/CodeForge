@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, LogOut, Play, RefreshCw, Rocket, Trash2 } from 'lucide-react';
 import { MAX_AGY_ACCOUNTS, useAppContext } from '../AppContext';
@@ -29,7 +30,7 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
       await refreshStatus();
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Profil konnte nicht entfernt werden.');
+      setError(err instanceof Error ? err.message : tr("Profil konnte nicht entfernt werden."));
       return false;
     } finally {
       setBusyId(null);
@@ -42,7 +43,7 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
       await startAgyAccounts([accountId]);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Antigravity konnte nicht gestartet werden.');
+      setError(err instanceof Error ? err.message : tr("Antigravity konnte nicht gestartet werden."));
     }
   };
 
@@ -55,7 +56,7 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
         </span>
         <button onClick={() => void refreshStatus()} className="flex items-center gap-1 normal-case tracking-normal hover:text-white">
           <RefreshCw className="w-3 h-3" />
-          Status
+          {tr("Status")}
         </button>
       </div>
       <div className="space-y-2 mt-3">
@@ -80,31 +81,31 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
                     {info.email}
                   </span>
                 ) : (
-                  <span className="text-zinc-500">Nicht angemeldet</span>
+                  <span className="text-zinc-500">{tr("Nicht angemeldet")}</span>
                 )}
               </span>
               <button
                 onClick={() => void startSingle(account.id)}
                 className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-white/5"
-                title={info?.email ? 'Nur diesen Account starten' : 'Starten und anmelden'}
+                title={info?.email ? tr("Nur diesen Account starten") : tr("Starten und anmelden")}
               >
                 <Play className="w-4 h-4" />
               </button>
               <button
                 onClick={() => {
-                  if (window.confirm(`Login von "${account.name}" auf diesem PC loeschen? Laufende Terminals dieses Accounts werden beendet.`)) {
+                  if (window.confirm(tr('Login von "{name}" auf diesem PC loeschen? Laufende Terminals dieses Accounts werden beendet.', { name: account.name }))) {
                     void removeProfile(account.id);
                   }
                 }}
                 disabled={!info?.profileExists || busyId === account.id}
                 className="p-2 rounded-lg text-zinc-500 hover:text-amber-300 hover:bg-amber-500/10 disabled:opacity-30 disabled:hover:bg-transparent"
-                title="Abmelden (Login-Daten dieses Accounts loeschen)"
+                title={tr("Abmelden (Login-Daten dieses Accounts loeschen)")}
               >
                 <LogOut className="w-4 h-4" />
               </button>
               <button
                 onClick={() => {
-                  if (!window.confirm(`Account "${account.name}" entfernen? Sein Login auf diesem PC wird geloescht.`)) return;
+                  if (!window.confirm(tr('Account "{name}" entfernen? Sein Login auf diesem PC wird geloescht.', { name: account.name }))) return;
                   // Keep the entry if deleting the login failed, otherwise its token folder would be orphaned.
                   void removeProfile(account.id).then((removed) => {
                     if (removed) setAgyAccounts((current) => current.filter((item) => item.id !== account.id));
@@ -112,7 +113,7 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
                 }}
                 disabled={busyId === account.id}
                 className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10"
-                title="Account entfernen"
+                title={tr("Account entfernen")}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -126,17 +127,16 @@ export function AgyAccountsSettings({ onClose }: { onClose(): void }) {
             }
             className="text-xs text-orange-300 hover:text-orange-200"
           >
-            + Account hinzufuegen
+            {tr("+ Account hinzufuegen")}
           </button>
         )}
       </div>
       {error && <div className="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
       <p className="text-[11px] leading-4 text-zinc-500 mt-2">
-        Der Start-Button auf Home oeffnet fuer jeden Account ein eigenes agy-Terminal (bis zu {MAX_AGY_ACCOUNTS}) oder kann frei belegt werden (z. B. 5x Agy + Claude Code, Aufteilung auf PC und V-Server). Jeder Account hat einen
-        eigenen Login-Ordner auf diesem PC; beim ersten Start fragt agy einmal nach dem Google-Login, danach bleibt er gespeichert.
+        {tr("Der Start-Button auf Home oeffnet fuer jeden Account ein eigenes agy-Terminal (bis zu")} {MAX_AGY_ACCOUNTS}{tr(") oder kann frei belegt werden (z. B. 5x Agy + Claude Code, Aufteilung auf PC und V-Server). Jeder Account hat einen eigenen Login-Ordner auf diesem PC; beim ersten Start fragt agy einmal nach dem Google-Login, danach bleibt er gespeichert.")}
       </p>
       <p className="text-[11px] leading-4 text-amber-300/80 mt-2">
-        Nur eigene Google-Accounts eintragen. Logins nicht an andere weitergeben und nicht nutzen, um Nutzungslimits zu umgehen; das verstoesst gegen die Google-Nutzungsbedingungen und kann zur Sperre fuehren.
+        {tr("Nur eigene Google-Accounts eintragen. Logins nicht an andere weitergeben und nicht nutzen, um Nutzungslimits zu umgehen; das verstoesst gegen die Google-Nutzungsbedingungen und kann zur Sperre fuehren.")}
       </p>
     </section>
   );

@@ -1,5 +1,6 @@
-﻿; -- FancyCode Custom Installer Script --
-; CodeForge.exe is the name of versions before the rename to FancyCode.
+﻿; -- FancyCode Desktop Custom Installer Script --
+; The executable keeps the name FancyCode.exe so updates from FancyCode 2.11 replace the
+; running install instead of creating a second app. CodeForge.exe is even older.
 
 !macro preInit
   nsExec::Exec 'taskkill /im "FancyCode.exe" /t /f'

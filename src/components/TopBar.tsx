@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -74,17 +75,17 @@ export default function TopBar({
   const getUpdateLabel = () => {
     switch (updateStatus.status) {
       case 'checking':
-        return 'Prüfe...';
+        return tr('Prüfe...');
       case 'downloading':
         return `Lade Update (${updateStatus.percent}%)`;
       case 'downloaded':
-        return 'Update installieren';
+        return tr("Update installieren");
       case 'available':
-        return 'Update laden...';
+        return tr('Update laden...');
       case 'error':
-        return 'Update-Fehler';
+        return tr('Update-Fehler');
       default:
-        return 'Update';
+        return tr("Update");
     }
   };
 
@@ -105,7 +106,7 @@ export default function TopBar({
   };
 
   const confirmClearChat = () => {
-    if (!window.confirm('Aktuellen Chat wirklich loeschen?')) return;
+    if (!window.confirm(tr("Aktuellen Chat wirklich loeschen?"))) return;
     clearChat();
   };
 
@@ -173,20 +174,20 @@ export default function TopBar({
         <button
           onClick={onToggleSidebar}
           className="-ml-1 flex h-8 w-8 items-center justify-center rounded hover:bg-white/5 hover:text-zinc-200"
-          title={sidebarOpen ? 'Seitenleiste einklappen' : 'Seitenleiste ausklappen'}
+          title={sidebarOpen ? tr("Seitenleiste einklappen") : tr("Seitenleiste ausklappen")}
         >
           {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
         </button>
         <div className="flex items-center gap-2 pr-2 text-zinc-200">
           <AppLogo className="w-5 h-5" />
-          <span className="hidden sm:inline text-[12px] font-semibold tracking-wide">FancyCode</span>
+          <span className="hidden sm:inline text-[12px] font-semibold tracking-wide">FancyCode Desktop</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={navigateBack}
             disabled={!canGoBack}
             className="p-1.5 hover:bg-white/5 rounded disabled:opacity-25"
-            title="Zurueck"
+            title={tr("Zurueck")}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -194,47 +195,47 @@ export default function TopBar({
             onClick={navigateForward}
             disabled={!canGoForward}
             className="p-1.5 hover:bg-white/5 rounded disabled:opacity-25"
-            title="Vor"
+            title={tr("Vor")}
           >
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
         {!compact && (
         <div className="flex items-center gap-1 text-[13px]">
-          {menuButton('Datei', [
+          {menuButton(tr("Datei"), [
             { label: 'Home', action: () => selectChat(null) },
-            { label: 'Projektordner oeffnen...', action: addProject },
-            ...(isWeb ? [] : [{ label: 'App schliessen', action: () => window.agentWorkspace?.closeWindow() }]),
+            { label: tr("Projektordner oeffnen..."), action: addProject },
+            ...(isWeb ? [] : [{ label: tr("App schliessen"), action: () => window.agentWorkspace?.closeWindow() }]),
           ])}
-          {menuButton('Bearbeiten', [
-            { label: 'Aktuellen Chat loeschen', action: confirmClearChat },
-            { label: 'Einstellungen', action: () => setMenu('account'), keepMenu: true },
+          {menuButton(tr("Bearbeiten"), [
+            { label: tr("Aktuellen Chat loeschen"), action: confirmClearChat },
+            { label: tr("Einstellungen"), action: () => setMenu('account'), keepMenu: true },
           ])}
-          {!isWeb && menuButton('Ansicht', [
+          {!isWeb && menuButton(tr("Ansicht"), [
             {
-              label: 'Fenster maximieren / wiederherstellen',
+              label: tr("Fenster maximieren / wiederherstellen"),
               action: () => window.agentWorkspace?.maximizeWindow(),
             },
           ])}
-          {menuButton('Hilfe', [
+          {menuButton(tr("Hilfe"), [
             {
-              label: 'Antigravity Dokumentation',
+              label: tr("Antigravity Dokumentation"),
               action: () => window.agentWorkspace?.openExternal('https://antigravity.google/docs/cli-overview'),
             },
             {
-              label: 'Codex Dokumentation',
+              label: tr("Codex Dokumentation"),
               action: () => window.agentWorkspace?.openExternal('https://developers.openai.com/codex/cli'),
             },
             {
-              label: 'Claude Code Dokumentation',
+              label: tr("Claude Code Dokumentation"),
               action: () => window.agentWorkspace?.openExternal('https://code.claude.com/docs'),
             },
             {
-              label: 'Cursor CLI Dokumentation',
+              label: tr("Cursor CLI Dokumentation"),
               action: () => window.agentWorkspace?.openExternal('https://cursor.com/docs/cli/overview'),
             },
             {
-              label: 'OpenCode Dokumentation',
+              label: tr("OpenCode Dokumentation"),
               action: () => window.agentWorkspace?.openExternal('https://opencode.ai/docs/'),
             },
           ])}
@@ -244,7 +245,7 @@ export default function TopBar({
             className={`px-1.5 py-1 hover:bg-white/5 hover:text-white rounded transition-colors flex items-center gap-1.5 cursor-pointer select-none text-[13px] ${
               updateStatus.status === 'downloaded' ? 'text-emerald-400 font-medium' : ''
             }`}
-            title={updateStatus.message || 'Nach Updates suchen'}
+            title={updateStatus.message || tr("Nach Updates suchen")}
           >
             {getUpdateDot()}
             {getUpdateLabel()}
@@ -257,14 +258,14 @@ export default function TopBar({
         <button
           onClick={addProject}
           className="flex items-center gap-2 max-w-[40vw] sm:max-w-72 px-2.5 py-1 hover:bg-white/5 rounded text-xs transition-colors"
-          title={selectedProject?.path || 'Projektordner auswaehlen'}
+          title={selectedProject?.path || tr("Projektordner auswaehlen")}
         >
           <Folder className="w-3.5 h-3.5 fill-[#dcb85d] text-[#dcb85d] shrink-0" />
-          <span className="truncate">{selectedProject?.title || 'Projekt oeffnen'}</span>
+          <span className="truncate">{selectedProject?.title || tr("Projekt oeffnen")}</span>
           {selectedProject && <Check className="w-3 h-3 text-emerald-400" />}
         </button>
         {isWeb && (
-          <button onClick={requestNextWallpaper} className="p-1.5 hover:bg-white/5 rounded" title="Neues Hintergrundbild">
+          <button onClick={requestNextWallpaper} className="p-1.5 hover:bg-white/5 rounded" title={tr("Neues Hintergrundbild")}>
             <ImagePlus className="w-3.5 h-3.5" />
           </button>
         )}
@@ -272,7 +273,7 @@ export default function TopBar({
           <button
             onClick={() => setMenu(menu === 'account' ? null : 'account')}
             className="p-1.5 hover:bg-white/5 rounded"
-            title="Einstellungen"
+            title={tr("Einstellungen")}
           >
             <Settings className="w-3.5 h-3.5" />
           </button>

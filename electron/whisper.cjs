@@ -1,7 +1,7 @@
 /**
  * Local Whisper speech-to-text (whisper.cpp).
  *
- * The user installs it on demand: FancyCode downloads the whisper.cpp binaries
+ * The user installs it on demand: FancyCode Desktop downloads the whisper.cpp binaries
  * plus a ggml model into userData/whisper. Transcription runs through a local
  * whisper-server process that keeps the model loaded, so each utterance takes
  * about a second instead of reloading the model every time.
@@ -10,6 +10,7 @@ const { spawn, execFile } = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
+const { mt } = require('./i18n.cjs');
 const path = require('node:path');
 
 const WHISPER_VERSION = 'v1.9.2';
@@ -71,7 +72,7 @@ function setupWhisper({ app, getWindow }) {
 
   async function downloadFile(url, target, label, weight, offset) {
     const response = await fetch(url);
-    if (!response.ok || !response.body) throw new Error(`${label} konnte nicht geladen werden (${response.status}).`);
+    if (!response.ok || !response.body) throw new Error(mt('{label} konnte nicht geladen werden ({status}).', { label, status: response.status }));
     const total = Number(response.headers.get('content-length')) || 0;
     const temp = `${target}.part`;
     const out = fs.createWriteStream(temp);
@@ -103,7 +104,7 @@ function setupWhisper({ app, getWindow }) {
   function extract(archive, targetDir) {
     fs.mkdirSync(targetDir, { recursive: true });
     return new Promise((resolve, reject) => {
-      const done = (error) => (error ? reject(new Error(`Entpacken fehlgeschlagen: ${error.message}`)) : resolve());
+      const done = (error) => (error ? reject(new Error(mt('Entpacken fehlgeschlagen: {error}', { error: error.message }))) : resolve());
       if (process.platform === 'win32') {
         const ps = (value) => value.replace(/'/g, "''");
         execFile(
@@ -123,7 +124,7 @@ function setupWhisper({ app, getWindow }) {
     const modelId = MODELS[input.model] ? input.model : 'base';
     installing = (async () => {
       try {
-        if (!BIN_URL) throw new Error('Whisper ist auf diesem System nicht verfuegbar.');
+        if (!BIN_URL) throw new Error(mt('Whisper ist auf diesem System nicht verfuegbar.'));
         fs.mkdirSync(modelsDir(), { recursive: true });
         const needBinary = !serverExe();
         const modelPath = path.join(modelsDir(), MODELS[modelId].file);
@@ -139,7 +140,7 @@ function setupWhisper({ app, getWindow }) {
           await extract(archive, binDir());
           fs.rmSync(archive, { force: true });
           const exe = serverExe();
-          if (!exe) throw new Error('whisper-server wurde im Download nicht gefunden.');
+          if (!exe) throw new Error(mt('whisper-server wurde im Download nicht gefunden.'));
           if (process.platform !== 'win32') fs.chmodSync(exe, 0o755);
         }
         if (needModel) {
@@ -180,12 +181,12 @@ function setupWhisper({ app, getWindow }) {
     const id = MODELS[modelId] && fs.existsSync(path.join(modelsDir(), MODELS[modelId].file))
       ? modelId
       : Object.keys(MODELS).find((key) => fs.existsSync(path.join(modelsDir(), MODELS[key].file)));
-    if (!id) throw new Error('Kein Whisper-Modell installiert.');
+    if (!id) throw new Error(mt('Kein Whisper-Modell installiert.'));
     if (server && server.model === id && !server.child.killed) return server.ready;
     stopServer();
 
     const exe = serverExe();
-    if (!exe) throw new Error('Whisper ist nicht installiert.');
+    if (!exe) throw new Error(mt('Whisper ist nicht installiert.'));
     const port = await freePort();
     const threads = Math.max(2, Math.min(8, (os.cpus()?.length || 4) - 1));
     const child = spawn(exe, ['-m', path.join(modelsDir(), MODELS[id].file), '--host', '127.0.0.1', '--port', String(port), '-t', String(threads), '-l', 'auto'], {
@@ -199,7 +200,7 @@ function setupWhisper({ app, getWindow }) {
     current.ready = (async () => {
       const deadline = Date.now() + 60_000;
       while (Date.now() < deadline) {
-        if (child.exitCode !== null) throw new Error('whisper-server wurde unerwartet beendet.');
+        if (child.exitCode !== null) throw new Error(mt('whisper-server wurde unerwartet beendet.'));
         try {
           await fetch(`http://127.0.0.1:${port}/`);
           return current;
@@ -207,7 +208,7 @@ function setupWhisper({ app, getWindow }) {
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
       }
-      throw new Error('whisper-server startet nicht.');
+      throw new Error(mt('whisper-server startet nicht.'));
     })();
     child.on('exit', () => {
       if (server === current) server = null;
@@ -231,7 +232,7 @@ function setupWhisper({ app, getWindow }) {
       form.append('language', String(input.language || 'de').replace(/[^a-z-]/gi, '') || 'auto');
       if (input.prompt) form.append('prompt', String(input.prompt).slice(0, 200));
       const response = await fetch(`http://127.0.0.1:${running.port}/inference`, { method: 'POST', body: form });
-      if (!response.ok) throw new Error(`Whisper-Fehler (${response.status}).`);
+      if (!response.ok) throw new Error(mt('Whisper-Fehler ({status}).', { status: response.status }));
       const data = await response.json();
       return { ok: true, text: cleanText(data.text || '') };
     } catch (error) {

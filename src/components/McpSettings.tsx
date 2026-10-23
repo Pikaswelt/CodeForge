@@ -1,9 +1,10 @@
+import { tr } from '../i18n';
 import { useCallback, useEffect, useState } from 'react';
 import { Bot, Check, Copy, Loader2, Play, Plug, RefreshCw, Square, Wrench } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import type { McpServerInfo, McpSessionInfo } from '../types';
 
-// The MCP tab: FancyCode's own MCP server, the servers Claude Code / Cursor / Codex spawn from their
+// The MCP tab: FancyCode Desktop's own MCP server, the servers Claude Code / Cursor / Codex spawn from their
 // config files, and a look at the tools each of them exposes. Starting a server speaks the real MCP
 // handshake; stopping it ends the process again.
 
@@ -24,7 +25,7 @@ function StatusBadge({ server, session }: { server: McpServerInfo; session?: Mcp
         : 'text-zinc-500 bg-white/[0.03] border-white/10';
   return (
     <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone}`}>
-      {session ? 'läuft' : server.status === 'missing-command' ? 'nicht gefunden' : 'bereit'}
+      {session ? tr("läuft") : server.status === 'missing-command' ? tr("nicht gefunden") : 'bereit'}
     </span>
   );
 }
@@ -80,15 +81,15 @@ function ServerCard({
           </div>
           {server.details && <p className="mt-1 text-[11px] leading-4 text-zinc-500">{server.details}</p>}
           <div className="mt-2 space-y-0.5">
-            <InfoRow label="Transport" value={TRANSPORT_LABEL[server.transport]} />
-            <InfoRow label="Befehl" value={[server.command, ...(server.args || [])].filter(Boolean).join(' ')} />
+            <InfoRow label={tr("Transport")} value={TRANSPORT_LABEL[server.transport]} />
+            <InfoRow label={tr("Befehl")} value={[server.command, ...(server.args || [])].filter(Boolean).join(' ')} />
             <InfoRow label="URL" value={server.url} />
-            <InfoRow label="Konfig" value={server.sourcePath} />
-            {session?.pid && <InfoRow label="Prozess" value={`PID ${session.pid}`} />}
+            <InfoRow label={tr("Konfig")} value={server.sourcePath} />
+            {session?.pid && <InfoRow label={tr("Prozess")} value={`PID ${session.pid}`} />}
             {session?.serverVersion && (
-              <InfoRow label="Server" value={[session.serverName, session.serverVersion].filter(Boolean).join(' ')} />
+              <InfoRow label={tr("Server")} value={[session.serverName, session.serverVersion].filter(Boolean).join(' ')} />
             )}
-            {session?.protocolVersion && <InfoRow label="Protokoll" value={session.protocolVersion} />}
+            {session?.protocolVersion && <InfoRow label={tr("Protokoll")} value={session.protocolVersion} />}
           </div>
         </div>
         {canControl && (
@@ -102,7 +103,7 @@ function ServerCard({
             }`}
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : session ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            {session ? 'Stoppen' : 'Starten'}
+            {session ? tr("Stoppen") : tr("Starten")}
           </button>
         )}
       </div>
@@ -111,7 +112,7 @@ function ServerCard({
         <div className="mt-3 border-t border-white/5 pt-3">
           <div className="flex items-center gap-2 section-label">
             <Wrench className="w-3.5 h-3.5" />
-            {tools.length} Werkzeug{tools.length === 1 ? '' : 'e'} verfügbar
+            {tools.length} {tr("Werkzeug")}{tools.length === 1 ? '' : 'e'} {tr("verfügbar")}
           </div>
           {tools.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -126,7 +127,7 @@ function ServerCard({
               ))}
             </div>
           ) : (
-            <p className="mt-1 text-[11px] text-zinc-500">Der Server hat geantwortet, aber keine Werkzeuge gemeldet.</p>
+            <p className="mt-1 text-[11px] text-zinc-500">{tr("Der Server hat geantwortet, aber keine Werkzeuge gemeldet.")}</p>
           )}
         </div>
       )}
@@ -152,7 +153,7 @@ export function McpSettings() {
   const [notes, setNotes] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [command, setCommand] = useState('');
   const [copied, setCopied] = useState(false);
-  const [registerBusy, setRegisterBusy] = useState<'' | 'claude' | 'agy'>('');
+  const [registerBusy, setRegisterBusy] = useState<'' | 'claude' | 'agy' | 'fancycode' | 'opencode'>('');
   const [registerResult, setRegisterResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const api = window.agentWorkspace;
@@ -192,7 +193,7 @@ export function McpSettings() {
         const answer = await api!.stopMcpServer!({ id: server.id });
         setNotes((current) => ({
           ...current,
-          [server.id]: { ok: answer.ok, text: answer.ok ? 'Server gestoppt.' : answer.error || 'Stoppen fehlgeschlagen.' },
+          [server.id]: { ok: answer.ok, text: answer.ok ? tr("Server gestoppt.") : answer.error || tr("Stoppen fehlgeschlagen.") },
         }));
       } else {
         const answer = await api!.startMcpServer!({ id: server.id });
@@ -206,7 +207,7 @@ export function McpSettings() {
         } else {
           setNotes((current) => ({
             ...current,
-            [server.id]: { ok: false, text: answer.error || 'Der Server liess sich nicht starten.' },
+            [server.id]: { ok: false, text: answer.error || tr("Der Server liess sich nicht starten.") },
           }));
         }
       }
@@ -214,14 +215,14 @@ export function McpSettings() {
     } catch (error) {
       setNotes((current) => ({
         ...current,
-        [server.id]: { ok: false, text: error instanceof Error ? error.message : 'Aktion fehlgeschlagen.' },
+        [server.id]: { ok: false, text: error instanceof Error ? error.message : tr("Aktion fehlgeschlagen.") },
       }));
     } finally {
       setBusyId('');
     }
   };
 
-  const register = async (target: 'claude' | 'agy') => {
+  const register = async (target: 'claude' | 'agy' | 'fancycode' | 'opencode') => {
     if (!api?.registerMcp) return;
     setRegisterBusy(target);
     setRegisterResult(null);
@@ -230,13 +231,17 @@ export function McpSettings() {
       const name =
         target === 'claude'
           ? 'Claude Code'
-          : `Antigravity (Hauptlogin + ${agyAccounts.length} Account${agyAccounts.length === 1 ? '' : 's'} auf diesem PC)`;
+          : target === 'fancycode'
+            ? 'FancyCode'
+            : target === 'opencode'
+              ? 'OpenCode'
+              : tr("Antigravity (Hauptlogin + {count} Account(s) auf diesem PC)", { count: agyAccounts.length });
       setRegisterResult({
         ok: answer.ok,
-        text: answer.ok ? `In ${name} eingetragen. Dort neu starten, dann ist "codeforge" verfuegbar.` : answer.output,
+        text: answer.ok ? tr('In {name} eingetragen. Dort neu starten, dann ist "fancycode" verfügbar.', { name }) : answer.output,
       });
     } catch (error) {
-      setRegisterResult({ ok: false, text: error instanceof Error ? error.message : 'Eintragen fehlgeschlagen.' });
+      setRegisterResult({ ok: false, text: error instanceof Error ? error.message : tr("Eintragen fehlgeschlagen.") });
     } finally {
       setRegisterBusy('');
     }
@@ -251,26 +256,25 @@ export function McpSettings() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] leading-4 text-zinc-500">
-          MCP-Server verbinden Agenten mit FancyCode und anderen Werkzeugen. Hier startest du einen Server, um seine
-          Werkzeuge zu sehen; Stoppen beendet den Prozess wieder.
+          {tr("MCP-Server verbinden Agenten mit FancyCode Desktop und anderen Werkzeugen. Hier startest du einen Server, um seine Werkzeuge zu sehen; Stoppen beendet den Prozess wieder.")}
         </p>
         <button onClick={() => void refresh()} disabled={loading} className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.08] disabled:opacity-50">
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          Neu laden
+          {tr("Neu laden")}
         </button>
       </div>
 
       {!canControl && (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
-          Server lassen sich nur in der Desktop-App starten und stoppen. Die Infos unten kommen aus deinen Konfigurationsdateien.
+          {tr("Server lassen sich nur in der Desktop-App starten und stoppen. Die Infos unten kommen aus deinen Konfigurationsdateien.")}
         </div>
       )}
 
       <section>
-        {api?.getOwnMcpServer && <div className="section-label">FancyCode MCP-Server</div>}
+        {api?.getOwnMcpServer && <div className="section-label">{tr("FancyCode Desktop MCP-Server")}</div>}
         {!api?.getOwnMcpServer ? (
           <p className="mt-2 text-[11px] leading-4 text-zinc-500">
-            Den eigenen MCP-Server von FancyCode zeigt nur die Desktop-App; hier steht nur, was in deinen Konfigurationsdateien steht.
+            {tr("Den eigenen MCP-Server von FancyCode Desktop zeigt nur die Desktop-App; hier steht nur, was in deinen Konfigurationsdateien steht.")}
           </p>
         ) : own ? (
           <div className="mt-2">
@@ -286,17 +290,24 @@ export function McpSettings() {
                   {api?.registerMcp && (
                     <>
                       <p className="text-[11px] leading-4 text-zinc-500">
-                        Ein Agent wie Claude Code kann damit alle Terminals sehen, Aufgaben schicken, auf Ergebnisse warten und
-                        Sessions starten oder fortsetzen. Lesen und Senden geht auch, wenn FancyCode zu ist.
+                        {tr("Ein Agent wie Claude Code kann damit alle Terminals sehen, Aufgaben schicken, auf Ergebnisse warten und Sessions starten oder fortsetzen. Lesen und Senden geht auch, wenn FancyCode Desktop zu ist. Außerdem kann er dir Popups, Fragen mit Buttons und Formulare schicken (fancycode_notify, fancycode_ask, fancycode_form) und erkennt selbst, ob er in einem Terminal von FancyCode Desktop läuft. FancyCode bekommt den Server automatisch.")}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => void register('claude')} disabled={Boolean(registerBusy)} className={registerButton}>
                           {registerBusy === 'claude' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                          In Claude Code eintragen
+                          {tr("In Claude Code eintragen")}
                         </button>
                         <button onClick={() => void register('agy')} disabled={Boolean(registerBusy)} className={registerButton}>
                           {registerBusy === 'agy' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                          In Antigravity eintragen
+                          {tr("In Antigravity eintragen")}
+                        </button>
+                        <button onClick={() => void register('opencode')} disabled={Boolean(registerBusy)} className={registerButton}>
+                          {registerBusy === 'opencode' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                          {tr("In OpenCode eintragen")}
+                        </button>
+                        <button onClick={() => void register('fancycode')} disabled={Boolean(registerBusy)} className={registerButton}>
+                          {registerBusy === 'fancycode' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                          {tr("In FancyCode eintragen")}
                         </button>
                       </div>
                       {registerResult && (
@@ -308,7 +319,7 @@ export function McpSettings() {
                   )}
                   {command && (
                     <div>
-                      <div className="text-[11px] text-zinc-500">Für andere Tools (stdio-Befehl):</div>
+                      <div className="text-[11px] text-zinc-500">{tr("Für andere Tools (stdio-Befehl):")}</div>
                       <div className="mt-1 flex items-start gap-2">
                         <code className="min-w-0 flex-1 break-all rounded-lg border border-white/5 bg-black/30 px-2 py-1.5 text-[10px] text-zinc-400">{command}</code>
                         <button
@@ -318,7 +329,7 @@ export function McpSettings() {
                             window.setTimeout(() => setCopied(false), 1500);
                           }}
                           className="p-1.5 text-zinc-400 hover:text-zinc-200"
-                          title="Kopieren"
+                          title={tr("Kopieren")}
                         >
                           {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
@@ -330,19 +341,18 @@ export function McpSettings() {
             />
           </div>
         ) : (
-          <p className="mt-2 text-[11px] text-zinc-500">Dieser Rechner hat noch keinen FancyCode-MCP-Server.</p>
+          <p className="mt-2 text-[11px] text-zinc-500">{tr("Dieser Rechner hat noch keinen FancyCode Desktop-MCP-Server.")}</p>
         )}
       </section>
 
       <section>
         <div className="flex items-center justify-between">
-          <div className="section-label">Gefundene Server ({servers.length})</div>
+          <div className="section-label">{tr("Gefundene Server (")}{servers.length})</div>
           <div className="text-[10px] text-zinc-600">{sessions.length} verbunden</div>
         </div>
         {servers.length === 0 ? (
           <p className="mt-2 text-[11px] leading-4 text-zinc-500">
-            In den Konfigurationen von Claude Desktop, Cursor und Codex steht kein MCP-Server. Trage dort einen ein, dann
-            erscheint er hier.
+            {tr("In den Konfigurationen von Claude Desktop, Cursor und Codex steht kein MCP-Server. Trage dort einen ein, dann erscheint er hier.")}
           </p>
         ) : (
           <div className="mt-2 space-y-2">

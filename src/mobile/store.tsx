@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { tr } from '../i18n';
 import { Native, errorCode, errorMessage } from './native';
 import { nativeServer, setSecret } from './remote';
 import {
@@ -125,7 +126,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const askSecret = useCallback((server: MobileServer, message: string) => new Promise<string | null>((resolve) => setSecretRequest({ server, message, resolve })), []);
 
   const confirm = useCallback<Store['confirm']>((input) => new Promise((resolve) => setConfirmRequest({ confirmLabel: 'OK', ...input, resolve })), []);
-  const prompt = useCallback<Store['prompt']>((input) => new Promise((resolve) => setPromptRequest({ confirmLabel: 'Speichern', ...input, resolve })), []);
+  const prompt = useCallback<Store['prompt']>((input) => new Promise((resolve) => setPromptRequest({ confirmLabel: tr('Speichern'), ...input, resolve })), []);
   const closeDialogs = useCallback(() => {
     setSecretRequest(null);
     setConfirmRequest(null);

@@ -1,5 +1,10 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol, net, nativeImage, session, systemPreferences } = require('electron');
 const fancyAccount = require('./fancy-account.cjs');
+const fancycodeHarness = require('./fancycode-harness.cjs');
+const plugins = require('./plugins.cjs');
+const skills = require('./skills.cjs');
+const appI18n = require('./i18n.cjs');
+const mt = appI18n.mt;
 
 process.on('uncaughtException', (error) => {
   console.error('[Main Process Uncaught Exception]:', error);
@@ -8,10 +13,11 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Main Process Unhandled Rejection]:', reason);
 });
 
-// Until 2.10 the app was called CodeForge. Installed builds keep their data folder through the
-// rename, because it is named after package.json "name" (codeforge-desktop), which stays. Started
-// from the sources (npm run dev) Electron uses productName instead, which was "CodeForge": keep
-// using that folder there. Must run before the single instance lock, which lives in the folder.
+// Until 2.10 the app was called CodeForge, until 2.11 FancyCode; since 2.12 it is FancyCode Desktop.
+// Installed builds keep their data folder through the renames, because it is named after package.json
+// "name" (codeforge-desktop), which stays. Started from the sources (npm run dev) Electron uses
+// productName instead, which used to be "CodeForge": keep using that folder there. Must run before
+// the single instance lock, which lives in the folder.
 (() => {
   if (app.isPackaged || app.commandLine.hasSwitch('user-data-dir')) return;
   const legacy = require('node:path').join(app.getPath('appData'), 'CodeForge');
@@ -95,7 +101,7 @@ function startSyncServer() {
   syncToken = process.env.CODEFORGE_SYNC_TOKEN || '';
   if (!syncToken) {
     syncToken = 'codeforge-' + crypto.randomUUID().slice(0, 8);
-    console.log('FancyCode Sync Token (set CODEFORGE_SYNC_TOKEN env to customize): ' + syncToken);
+    console.log('FancyCode Desktop Sync Token (set CODEFORGE_SYNC_TOKEN env to customize): ' + syncToken);
   }
 
   syncServer = http.createServer((req, res) => {
@@ -524,6 +530,16 @@ const PROVIDERS = {
         : 'curl -fsSL https://claude.ai/install.sh | bash',
     installUrl: 'https://code.claude.com/docs',
   },
+  hermes: {
+    command: 'hermes',
+    label: 'Hermes Agent',
+    versionArgs: ['--version'],
+    installCommand:
+      process.platform === 'win32'
+        ? 'iex (irm https://hermes-agent.nousresearch.com/install.ps1)'
+        : 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash',
+    installUrl: 'https://hermes-agent.nousresearch.com/docs/getting-started/installation',
+  },
   cursor: {
     command: 'agent',
     aliases: ['cursor-agent'],
@@ -573,6 +589,7 @@ const USAGE_PROBES = {
     ['status'],
     ['doctor'],
   ],
+  hermes: [],
   cursor: [
     ['status'],
     ['usage'],
@@ -615,6 +632,7 @@ const MODEL_ALLOWLIST = {
   ]),
   openai: new Set(['gpt-5.5', 'gpt-5.4']),
   anthropic: new Set(['sonnet', 'opus', 'haiku', 'fable', 'claude-sonnet-4-6', 'claude-opus-4-6']),
+  hermes: new Set(['default']),
   cursor: new Set(['default', 'gpt-5.5', 'claude-sonnet-4-6']),
   opencode: new Set(['default', 'openai/gpt-5.5', 'anthropic/claude-sonnet-4-6', 'google/gemini-3.5-flash']),
   freebuff: new Set(['default', 'deepseek-v4', 'kimi-k2.6', 'minimax-m2.7']),
@@ -629,7 +647,7 @@ function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#111111',
-    title: 'FancyCode',
+    title: 'FancyCode Desktop',
     icon: (() => {
       const p = getAssetPath(process.platform === 'win32' ? 'fancycode.ico' : 'fancycode.png');
       return p && fs.existsSync(p) ? nativeImage.createFromPath(p) : undefined;
@@ -652,7 +670,7 @@ function createWindow() {
 
   // One clear line in the log once the UI is really there - the Linux smoke test waits for it.
   mainWindow.webContents.on('did-finish-load', () => {
-    console.log(`[Start] FancyCode UI geladen auf ${process.platform} (v${app.getVersion()})`);
+    console.log(`[Start] FancyCode Desktop UI geladen auf ${process.platform} (v${app.getVersion()})`);
   });
 
   // Never open popups as extra app windows; web links go to Chrome instead.
@@ -698,7 +716,7 @@ function findChromeExecutable() {
 // Terminal links (e.g. the Google login of agy) belong in the user's real browser, where their accounts are.
 async function openUrlInChrome(url) {
   const parsed = new URL(String(url));
-  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('URL-Protokoll nicht erlaubt.');
+  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error(mt('URL-Protokoll nicht erlaubt.'));
   const chrome = findChromeExecutable();
   if (chrome) {
     // A failed spawn emits 'error' asynchronously; without a listener it would crash the main process.
@@ -739,7 +757,7 @@ function findExecutable(command) {
 }
 
 function getMainWindowHwnd() {
-  if (!mainWindow) throw new Error('FancyCode-Fenster ist nicht bereit.');
+  if (!mainWindow) throw new Error(mt('Das Fenster von FancyCode Desktop ist nicht bereit.'));
   const handle = mainWindow.getNativeWindowHandle();
   if (handle.length >= 8) return handle.readBigUInt64LE(0).toString();
   return String(handle.readUInt32LE(0));
@@ -886,7 +904,7 @@ if ($action -eq 'attach') {
   }
 
   if ($hwnd -eq [IntPtr]::Zero) {
-    Write-Result @{ ok = $false; pid = $targetPid; hwnd = ""; message = "Die App wurde gestartet, aber FancyCode konnte kein einbettbares Hauptfenster finden." }
+    Write-Result @{ ok = $false; pid = $targetPid; hwnd = ""; message = "Die App wurde gestartet, aber FancyCode Desktop konnte kein einbettbares Hauptfenster finden." }
     exit 0
   }
 
@@ -930,10 +948,10 @@ Write-Result @{ ok = $false; pid = $targetPid; hwnd = ""; message = "Kein guelti
 
 async function runNativeWindowScript(payload) {
   if (process.platform !== 'win32') {
-    return { ok: false, pid: 0, hwnd: '', message: 'Native App-Tabs sind aktuell nur unter Windows verfuegbar.' };
+    return { ok: false, pid: 0, hwnd: '', message: mt('Native App-Tabs sind aktuell nur unter Windows verfuegbar.') };
   }
   const powershell = (await findExecutable('powershell.exe')) || (await findExecutable('powershell'));
-  if (!powershell) throw new Error('PowerShell wurde nicht gefunden.');
+  if (!powershell) throw new Error(mt('PowerShell wurde nicht gefunden.'));
   const script = buildNativeWindowScript(payload);
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
   const result = await runCapture(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-OutputFormat', 'Text', '-EncodedCommand', encoded], {
@@ -957,7 +975,7 @@ async function runNativeWindowScript(payload) {
       ok: false,
       pid: Number(payload.pid || 0),
       hwnd: String(payload.hwnd || ''),
-      message: text || 'Native Fensterantwort konnte nicht gelesen werden.',
+      message: text || mt('Native Fensterantwort konnte nicht gelesen werden.'),
     };
   }
 }
@@ -1013,9 +1031,9 @@ function launchAppInOwnWindow(targetPath, previous = {}) {
 async function attachNativeTab(_event, input = {}) {
   const tabId = String(input.tabId || '').trim();
   const targetPath = String(input.path || '').trim();
-  if (!tabId) throw new Error('Native Tab-ID fehlt.');
-  if (!targetPath) throw new Error('App-Pfad fehlt.');
-  if (!fs.existsSync(targetPath)) throw new Error('Die App wurde auf diesem Pfad nicht gefunden.');
+  if (!tabId) throw new Error(mt('Native Tab-ID fehlt.'));
+  if (!targetPath) throw new Error(mt('App-Pfad fehlt.'));
+  if (!fs.existsSync(targetPath)) throw new Error(mt('Die App wurde auf diesem Pfad nicht gefunden.'));
   const previous = nativeTabInfo(tabId);
   if (process.platform !== 'win32') {
     const launched = launchAppInOwnWindow(targetPath, previous);
@@ -1026,8 +1044,8 @@ async function attachNativeTab(_event, input = {}) {
       pid: launched.pid,
       hwnd: '',
       message: launched.pid
-        ? `Unter ${process.platform === 'darwin' ? 'macOS' : 'Linux'} startet die App in einem eigenen Fenster.`
-        : 'Die App konnte nicht gestartet werden.',
+        ? mt('Unter {platform} startet die App in einem eigenen Fenster.', { platform: process.platform === 'darwin' ? 'macOS' : 'Linux' })
+        : mt('Die App konnte nicht gestartet werden.'),
     };
   }
   const payload = {
@@ -1048,7 +1066,7 @@ async function attachNativeTab(_event, input = {}) {
 async function moveNativeTab(_event, input = {}) {
   const tabId = String(input.tabId || '').trim();
   const previous = nativeTabInfo(tabId);
-  if (!previous.hwnd) return { ok: false, pid: previous.pid || 0, hwnd: '', message: 'Noch kein eingebettetes Fenster.' };
+  if (!previous.hwnd) return { ok: false, pid: previous.pid || 0, hwnd: '', message: mt('Noch kein eingebettetes Fenster.') };
   const result = await runNativeWindowScript({
     action: 'move',
     pid: previous.pid || 0,
@@ -1067,9 +1085,9 @@ async function detachNativeTab(_event, tabId) {
       try { process.kill(previous.pid, 'SIGTERM'); } catch (_) {}
     }
     nativeAppTabs.delete(key);
-    return { ok: true, pid: previous.pid || 0, hwnd: '', message: 'App-Fenster beendet.' };
+    return { ok: true, pid: previous.pid || 0, hwnd: '', message: mt('App-Fenster beendet.') };
   }
-  if (!previous.hwnd) return { ok: true, pid: previous.pid || 0, hwnd: '', message: 'Kein Fenster eingebettet.' };
+  if (!previous.hwnd) return { ok: true, pid: previous.pid || 0, hwnd: '', message: mt('Kein Fenster eingebettet.') };
   const result = await runNativeWindowScript({
     action: 'detach',
     pid: previous.pid || 0,
@@ -1497,19 +1515,19 @@ function normalizeExternalServerConfig(input = {}) {
   const acceptNewHostKey = input.acceptNewHostKey !== false;
 
   if (!host || !/^[a-z0-9._:-]+$/i.test(host) || host.startsWith('-')) {
-    throw new Error('Externer Server: Host ist ungueltig.');
+    throw new Error(mt('Externer Server: Host ist ungueltig.'));
   }
   if (user && (!/^[a-z0-9._~-]+$/i.test(user) || user.startsWith('-'))) {
-    throw new Error('Externer Server: SSH-Benutzer ist ungueltig.');
+    throw new Error(mt('Externer Server: SSH-Benutzer ist ungueltig.'));
   }
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('Externer Server: SSH-Port ist ungueltig.');
+    throw new Error(mt('Externer Server: SSH-Port ist ungueltig.'));
   }
   if (!remoteProjectPath || !/^(\/|~\/)/.test(remoteProjectPath)) {
-    throw new Error('Externer Server: Remote-Projektpfad muss mit / oder ~/ beginnen.');
+    throw new Error(mt('Externer Server: Remote-Projektpfad muss mit / oder ~/ beginnen.'));
   }
   if (identityFile && !fs.existsSync(identityFile)) {
-    throw new Error('Externer Server: SSH-Key-Datei wurde nicht gefunden.');
+    throw new Error(mt('Externer Server: SSH-Key-Datei wurde nicht gefunden.'));
   }
 
   return { enabled: Boolean(input.enabled), host, user, port, remoteProjectPath, identityFile, acceptNewHostKey };
@@ -1517,7 +1535,7 @@ function normalizeExternalServerConfig(input = {}) {
 
 async function buildSshInvocation(externalServer, remoteCommand, options = {}) {
   const ssh = await findExecutable('ssh');
-  if (!ssh) throw new Error('OpenSSH wurde nicht gefunden. Installiere den Windows-OpenSSH-Client oder fuege ssh zum PATH hinzu.');
+  if (!ssh) throw new Error(mt('OpenSSH wurde nicht gefunden. Installiere den Windows-OpenSSH-Client oder fuege ssh zum PATH hinzu.'));
 
   const server = normalizeExternalServerConfig(externalServer);
   const args = [
@@ -1572,16 +1590,21 @@ function safeProjectFolderName(value) {
 }
 
 function scratchProjectFolder() {
-  // Keep the folder of CodeForge installs (the name before FancyCode) so existing chats find it.
-  const legacy = path.join(app.getPath('documents'), 'CodeForge', 'Ohne Projekt');
-  const target = fs.existsSync(legacy) ? legacy : path.join(app.getPath('documents'), 'FancyCode', 'Ohne Projekt');
+  // Keep the folders of older installs (CodeForge, then FancyCode) so existing chats find their
+  // projects; only a fresh install uses the FancyCode Desktop folder.
+  const documents = app.getPath('documents');
+  const legacy = [
+    path.join(documents, 'CodeForge', 'Ohne Projekt'),
+    path.join(documents, 'FancyCode', 'Ohne Projekt'),
+  ].find((candidate) => fs.existsSync(candidate));
+  const target = legacy || path.join(documents, 'FancyCode Desktop', 'Ohne Projekt');
   fs.mkdirSync(target, { recursive: true });
   return target;
 }
 
 async function createProjectFolder(_event, rawName) {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Speicherort fuer neues Projekt auswaehlen',
+    title: mt('Speicherort fuer neues Projekt auswaehlen'),
     properties: ['openDirectory', 'createDirectory'],
   });
   if (result.canceled || !result.filePaths[0]) return null;
@@ -1653,7 +1676,7 @@ async function updateDiscordPresence(_event, input = {}) {
     ).slice(0, 128),
     startTimestamp: discordStartedAt,
     largeImageKey: 'codeforge',
-    largeImageText: 'FancyCode',
+    largeImageText: 'FancyCode Desktop',
     smallImageText: input.isRunning ? 'Agent laeuft' : 'Bereit',
     instance: false,
   };
@@ -1733,6 +1756,9 @@ function buildAgentCommand(providerId, model, prompt, access, projectPath, reaso
         accessToClaudeMode(access),
       );
       // No --dangerously-skip-permissions, stdin stays empty
+    } else if (providerId === 'hermes') {
+      // Bare `hermes` opens the interactive TUI; the user types there, stdin stays empty.
+      if (model && model !== 'default') args.push('--model', model);
     } else if (providerId === 'cursor') {
       args.push('--output-format', 'text');
       if (model && model !== 'default') args.push('--model', model);
@@ -1784,6 +1810,11 @@ function buildAgentCommand(providerId, model, prompt, access, projectPath, reaso
       accessToClaudeMode(access),
     );
     if (access === 'full') args.push('--dangerously-skip-permissions');
+    stdin = prompt;
+  } else if (providerId === 'hermes') {
+    // `--query-file -` passes the prompt verbatim over stdin, no shell interpretation.
+    args.push('chat', '--query-file', '-');
+    if (model && model !== 'default') args.push('--model', model);
     stdin = prompt;
   } else if (providerId === 'cursor') {
     args.push('-p', prompt, '--output-format', 'text');
@@ -1866,14 +1897,14 @@ function quotePowerShellSingle(value) {
 
 async function createWorkspaceTerminalScript(slot, index, projectPath) {
   const provider = PROVIDERS[slot.provider];
-  if (!provider) throw new Error('Unbekannter Anbieter im Workspace.');
+  if (!provider) throw new Error(mt('Unbekannter Anbieter im Workspace.'));
   const found = await findProviderExecutable(provider);
   const executable = found.executable || '';
   if (!executable) {
-    throw new Error(`${provider.label} wurde nicht gefunden. Installiere die CLI und starte FancyCode neu.`);
+    throw new Error(mt('{provider} wurde nicht gefunden. Installiere die CLI und starte FancyCode Desktop neu.', { provider: provider.label }));
   }
   if (slot.provider === 'antigravity' && /\.(cmd|bat)$/i.test(executable)) {
-    throw new Error('Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.');
+    throw new Error(mt('Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.'));
   }
   const safeProjectPath = fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory()
     ? projectPath
@@ -1893,15 +1924,15 @@ async function createWorkspaceTerminalScript(slot, index, projectPath) {
 
 async function launchWorkspaceTerminals(_event, request = {}) {
   if (process.platform !== 'win32') {
-    throw new Error('Workspace-Panes werden aktuell nur mit Windows Terminal unter Windows gestartet.');
+    throw new Error(mt('Workspace-Panes werden aktuell nur mit Windows Terminal unter Windows gestartet.'));
   }
   const projectPath = request.projectPath || app.getPath('home');
   const slots = Array.isArray(request.terminals) ? request.terminals.slice(0, 8) : [];
-  if (slots.length === 0) throw new Error('Keine Workspace-Terminals ausgewaehlt.');
+  if (slots.length === 0) throw new Error(mt('Keine Workspace-Terminals ausgewaehlt.'));
   const wt = (await findExecutable('wt.exe')) || (await findExecutable('wt'));
-  if (!wt) throw new Error('Windows Terminal (wt.exe) wurde nicht gefunden.');
+  if (!wt) throw new Error(mt('Windows Terminal (wt.exe) wurde nicht gefunden.'));
   const powershell = (await findExecutable('powershell.exe')) || (await findExecutable('powershell'));
-  if (!powershell) throw new Error('PowerShell wurde nicht gefunden.');
+  if (!powershell) throw new Error(mt('PowerShell wurde nicht gefunden.'));
   const scripts = [];
   for (let index = 0; index < slots.length; index += 1) {
     scripts.push(await createWorkspaceTerminalScript(slots[index], index, projectPath));
@@ -1938,10 +1969,10 @@ async function launchWorkspaceTerminals(_event, request = {}) {
 function buildPrompt(prompt, attachments, access, projectPath) {
   const accessInstruction =
     access === 'read-only'
-      ? 'WICHTIG: Arbeite ausschliesslich lesend. Veraendere keine Dateien und fuehre keine destruktiven Befehle aus.'
+      ? mt('WICHTIG: Arbeite ausschliesslich lesend. Veraendere keine Dateien und fuehre keine destruktiven Befehle aus.')
       : access === 'workspace-write'
-        ? `WICHTIG: Veraendere nur Dateien innerhalb dieses Projektordners: ${projectPath}`
-        : 'Du darfst die fuer die Aufgabe erforderlichen lokalen Werkzeuge verwenden.';
+        ? mt('WICHTIG: Veraendere nur Dateien innerhalb dieses Projektordners: {path}', { path: projectPath })
+        : mt('Du darfst die fuer die Aufgabe erforderlichen lokalen Werkzeuge verwenden.');
   const attachmentInstruction = attachments?.length
     ? `\n\nLokale Anhaenge, die du bei Bedarf lesen sollst:\n${attachments.map((file) => `- ${file}`).join('\n')}`
     : '';
@@ -2109,7 +2140,7 @@ function assertDirectoryInside(targetPath, allowedRoot) {
   const resolvedRoot = path.resolve(allowedRoot);
   const relative = path.relative(resolvedRoot, resolvedTarget);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('Plugin-Pfad liegt ausserhalb des erlaubten Zielordners.');
+    throw new Error(mt('Plugin-Pfad liegt ausserhalb des erlaubten Zielordners.'));
   }
   return resolvedTarget;
 }
@@ -2119,10 +2150,10 @@ function installCodexPluginFromFolder(_event, input = {}) {
   const target = input.target === 'project' ? 'project' : 'personal';
   const projectPath = String(input.projectPath || '').trim();
   if (!sourcePath || !fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) {
-    throw new Error('Waehle einen gueltigen Plugin-Ordner.');
+    throw new Error(mt('Waehle einen gueltigen Plugin-Ordner.'));
   }
   const manifest = readCodexPluginManifest(sourcePath);
-  if (!manifest) throw new Error('Dieser Ordner enthaelt keine .codex-plugin/plugin.json.');
+  if (!manifest) throw new Error(mt('Dieser Ordner enthaelt keine .codex-plugin/plugin.json.'));
   if (target === 'project' && (!projectPath || !fs.existsSync(projectPath))) {
     throw new Error('Waehle zuerst einen Projektordner.');
   }
@@ -2154,7 +2185,7 @@ function removeCodexPlugin(_event, pluginPath, projectPath = '') {
     const relative = path.relative(path.resolve(root), resolved);
     return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
   });
-  if (!allowed) throw new Error('Dieses Plugin kann in FancyCode nicht entfernt werden.');
+  if (!allowed) throw new Error(mt('Dieses Plugin kann in FancyCode Desktop nicht entfernt werden.'));
   if (fs.existsSync(resolved)) fs.rmSync(resolved, { recursive: true, force: true });
   return true;
 }
@@ -2192,8 +2223,8 @@ function withSystemPrompt(systemPrompt, prompt) {
 
 function showTaskNotification(input = {}) {
   if (!Notification.isSupported()) return false;
-  const title = String(input.title || 'FancyCode').slice(0, 80);
-  const body = String(input.body || 'Aufgabe ist erledigt.').slice(0, 240);
+  const title = String(input.title || 'FancyCode Desktop').slice(0, 80);
+  const body = String(input.body || mt('Aufgabe ist erledigt.')).slice(0, 240);
   const notification = new Notification({
     title,
     body,
@@ -2310,14 +2341,14 @@ function toTitleCase(value) {
 
 async function getProviderUsage(providerId) {
   const provider = PROVIDERS[providerId];
-  if (!provider) throw new Error('Unbekannter Anbieter.');
+  if (!provider) throw new Error(mt('Unbekannter Anbieter.'));
   const { executable, command } = await findProviderExecutable(provider);
   if (!executable) {
     return {
       provider: providerId,
       available: false,
-      label: `${provider.label} ist nicht installiert.`,
-      error: 'CLI fehlt.',
+      label: mt('{provider} ist nicht installiert.', { provider: provider.label }),
+      error: mt('CLI fehlt.'),
       checkedAt: Date.now(),
     };
   }
@@ -2347,7 +2378,7 @@ async function getProviderUsage(providerId) {
   return {
     provider: providerId,
     available: false,
-    label: 'Diese CLI liefert aktuell keine abrufbaren Limitdaten.',
+    label: mt('Diese CLI liefert aktuell keine abrufbaren Limitdaten.'),
     checkedAt: Date.now(),
   };
 }
@@ -2359,8 +2390,8 @@ async function getAntigravityTerminalUsage() {
     return {
       provider: 'antigravity',
       available: false,
-      label: 'Antigravity CLI ist nicht installiert.',
-      error: 'CLI fehlt.',
+      label: mt('Antigravity CLI ist nicht installiert.'),
+      error: mt('CLI fehlt.'),
       checkedAt: Date.now(),
     };
   }
@@ -2373,8 +2404,8 @@ async function getAntigravityTerminalUsage() {
     return {
       provider: 'antigravity',
       available: false,
-      label: 'Antigravity hat keine Terminalausgabe geliefert.',
-      error: result.error || 'Keine Ausgabe.',
+      label: mt('Antigravity hat keine Terminalausgabe geliefert.'),
+      error: result.error || mt('Keine Ausgabe.'),
       sourceCommand: 'agy /usage',
       raw: '',
       checkedAt: Date.now(),
@@ -2504,7 +2535,7 @@ function parseCodexMcpServers(sourcePath) {
     ...server,
     transport: inferMcpTransport(server),
     status: server.command || server.url ? 'configured' : 'unknown',
-    details: server.command || server.url || 'Keine Startdetails in der Konfiguration gefunden.',
+    details: server.command || server.url || mt('Keine Startdetails in der Konfiguration gefunden.'),
   }));
 }
 
@@ -2528,7 +2559,7 @@ function parseJsonMcpServers(sourcePath, sourceLabel) {
       };
       info.transport = inferMcpTransport(info);
       info.status = info.command || info.url ? 'configured' : 'unknown';
-      info.details = info.command || info.url || 'Keine Startdetails in der Konfiguration gefunden.';
+      info.details = info.command || info.url || mt('Keine Startdetails in der Konfiguration gefunden.');
       return info;
     });
   } catch {
@@ -2578,7 +2609,7 @@ function getMcpServers() {
         return {
           ...server,
           status: 'missing-command',
-          details: `${server.command} wurde nicht gefunden.`,
+          details: mt('{command} wurde nicht gefunden.', { command: server.command }),
         };
       }
       return server;
@@ -2587,23 +2618,23 @@ function getMcpServers() {
 
 async function installCli(_event, providerId) {
   const provider = PROVIDERS[providerId];
-  if (!provider) throw new Error('Unbekannter Anbieter.');
+  if (!provider) throw new Error(mt('Unbekannter Anbieter.'));
   const opened = await openInstallTerminal(provider);
   if (!opened) {
     return {
       ok: false,
-      message: `Kein Terminal-Programm gefunden. Installiere ${provider.label} selbst mit: ${provider.installCommand}`,
+      message: mt('Kein Terminal-Programm gefunden. Installiere {provider} selbst mit: {command}', { provider: provider.label, command: provider.installCommand }),
     };
   }
   return {
     ok: true,
-    message: `Installationsfenster fuer ${provider.label} wurde geoeffnet: ${provider.installCommand}`,
+    message: mt('Installationsfenster fuer {provider} wurde geoeffnet: {command}', { provider: provider.label, command: provider.installCommand }),
   };
 }
 
 async function testExternalServer(_event, request = {}) {
   const provider = PROVIDERS[request.provider];
-  if (!provider) throw new Error('Unbekannter Anbieter.');
+  if (!provider) throw new Error(mt('Unbekannter Anbieter.'));
   const server = normalizeExternalServerConfig({ ...request.externalServer, enabled: true });
   const remoteCommand = [
     'set -e',
@@ -2625,9 +2656,9 @@ async function testExternalServer(_event, request = {}) {
 
 async function runAgent(event, request) {
   const provider = PROVIDERS[request.provider];
-  if (!provider) throw new Error('Unbekannter Anbieter.');
+  if (!provider) throw new Error(mt('Unbekannter Anbieter.'));
   if (!MODEL_ALLOWLIST[request.provider]?.has(request.model)) {
-    throw new Error('Das angeforderte Modell ist fuer diesen Anbieter nicht freigegeben.');
+    throw new Error(mt('Das angeforderte Modell ist fuer diesen Anbieter nicht freigegeben.'));
   }
   if (!['read-only', 'workspace-write', 'full'].includes(request.access)) {
     throw new Error('Ungueltiger Zugriffsmodus.');
@@ -2636,14 +2667,14 @@ async function runAgent(event, request) {
     throw new Error('Ungueltiger Reasoning-Level.');
   }
   if (typeof request.prompt !== 'string' || !request.prompt.trim() || request.prompt.length > 100_000) {
-    throw new Error('Die Anfrage ist leer oder zu lang.');
+    throw new Error(mt('Die Anfrage ist leer oder zu lang.'));
   }
   if (
     !request.projectPath ||
     !fs.existsSync(request.projectPath) ||
     !fs.statSync(request.projectPath).isDirectory()
   ) {
-    throw new Error('Der Projektordner existiert nicht.');
+    throw new Error(mt('Der Projektordner existiert nicht.'));
   }
 
   const externalServer = request.externalServer?.enabled
@@ -2658,7 +2689,7 @@ async function runAgent(event, request) {
       return {
         ok: false,
         output: '',
-        error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte FancyCode neu.`,
+        error: mt('{provider} wurde nicht gefunden. Installiere die CLI und starte FancyCode Desktop neu.', { provider: provider.label }),
         exitCode: -1,
       };
     }
@@ -2666,7 +2697,7 @@ async function runAgent(event, request) {
       return {
         ok: false,
         output: '',
-        error: 'Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.',
+        error: mt('Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.'),
         exitCode: -1,
       };
     }
@@ -2703,7 +2734,7 @@ async function runAgent(event, request) {
         onNoOutput: () => {
           event.sender.send('agent:output', {
             runId,
-            chunk: '\nAntigravity laeuft, liefert aber noch keine Konsolenausgabe. Falls das so bleibt, wartet die CLI vermutlich auf Login, Modellzugriff oder Berechtigungen.\n',
+            chunk: '\n' + mt('Antigravity laeuft, liefert aber noch keine Konsolenausgabe. Falls das so bleibt, wartet die CLI vermutlich auf Login, Modellzugriff oder Berechtigungen.') + '\n',
             stream: 'stderr',
           });
         },
@@ -2723,7 +2754,7 @@ async function runAgent(event, request) {
       onNoOutput: () => {
         event.sender.send('agent:output', {
           runId,
-          chunk: '\nAntigravity laeuft, liefert aber noch keine Konsolenausgabe. Bei schreibenden Aufgaben startet FancyCode jetzt mit uebersprungenen CLI-Permissions; falls es trotzdem haengt, pruefe Login/Modellzugriff mit `agy` im Terminal.\n',
+          chunk: '\n' + mt('Antigravity laeuft, liefert aber noch keine Konsolenausgabe. Bei schreibenden Aufgaben startet FancyCode Desktop jetzt mit uebersprungenen CLI-Permissions; falls es trotzdem haengt, pruefe Login/Modellzugriff mit `agy` im Terminal.') + '\n',
           stream: 'stderr',
         });
       },
@@ -2746,7 +2777,7 @@ async function runAgent(event, request) {
       activeProcesses.delete(runId);
       event.sender.send('agent:output', {
         runId,
-        chunk: '\nWindows-Sandbox-Setup blockiert lokale Befehle. Starte Codex erneut ohne User-Config...\n',
+        chunk: '\n' + mt('Windows-Sandbox-Setup blockiert lokale Befehle. Starte Codex erneut ohne User-Config...') + '\n',
         stream: 'stderr',
       });
       result = await runCodex(true);
@@ -2767,7 +2798,7 @@ async function runAgent(event, request) {
       };
       event.sender.send('agent:output', {
         runId,
-        chunk: `\nAntigravity hat keine direkte Konsolenausgabe geliefert; Antwort aus dem lokalen Transcript wiederhergestellt.\n`,
+        chunk: mt('Antigravity hat keine direkte Konsolenausgabe geliefert; Antwort aus dem lokalen Transcript wiederhergestellt.'),
         stream: 'stderr',
       });
     } else {
@@ -2775,7 +2806,7 @@ async function runAgent(event, request) {
         ...result,
         ok: false,
         error:
-          'Antigravity wurde beendet, hat aber keine Textausgabe geliefert. Oeffne Antigravity einmal direkt, pruefe Login/Modellzugriff und fuehre `agy update` aus.',
+          mt('Antigravity wurde beendet, hat aber keine Textausgabe geliefert. Oeffne Antigravity einmal direkt, pruefe Login/Modellzugriff und fuehre `agy update` aus.'),
       };
     }
   }
@@ -2794,7 +2825,7 @@ async function runProjectTest(event, request) {
     !fs.existsSync(request.projectPath) ||
     !fs.statSync(request.projectPath).isDirectory()
   ) {
-    throw new Error('Der Projektordner existiert nicht.');
+    throw new Error(mt('Der Projektordner existiert nicht.'));
   }
 
   const picked = pickProjectTestCommand(request.projectPath);
@@ -2802,7 +2833,7 @@ async function runProjectTest(event, request) {
     return {
       ok: false,
       output: '',
-      error: 'Kein Test-, Lint- oder TypeScript-Pruefbefehl im Projekt gefunden.',
+      error: mt('Kein Test-, Lint- oder TypeScript-Pruefbefehl im Projekt gefunden.'),
       exitCode: -1,
     };
   }
@@ -2812,7 +2843,7 @@ async function runProjectTest(event, request) {
     return {
       ok: false,
       output: '',
-      error: `${picked.command} wurde nicht gefunden.`,
+      error: mt('{command} wurde nicht gefunden.', { command: picked.command }),
       exitCode: -1,
     };
   }
@@ -2840,9 +2871,9 @@ async function runProjectTest(event, request) {
 async function generateSystemPrompt(_event, request) {
   const generationAccess = 'read-only';
   const provider = PROVIDERS[request.provider];
-  if (!provider) throw new Error('Unbekannter Anbieter.');
+  if (!provider) throw new Error(mt('Unbekannter Anbieter.'));
   if (!MODEL_ALLOWLIST[request.provider]?.has(request.model)) {
-    throw new Error('Das angeforderte Modell ist fuer diesen Anbieter nicht freigegeben.');
+    throw new Error(mt('Das angeforderte Modell ist fuer diesen Anbieter nicht freigegeben.'));
   }
   if (!['read-only', 'workspace-write', 'full'].includes(request.access)) {
     throw new Error('Ungueltiger Zugriffsmodus.');
@@ -2855,7 +2886,7 @@ async function generateSystemPrompt(_event, request) {
     !fs.existsSync(request.projectPath) ||
     !fs.statSync(request.projectPath).isDirectory()
   ) {
-    throw new Error('Der Projektordner existiert nicht.');
+    throw new Error(mt('Der Projektordner existiert nicht.'));
   }
 
   const externalServer = request.externalServer?.enabled
@@ -2870,7 +2901,7 @@ async function generateSystemPrompt(_event, request) {
       return {
         ok: false,
         output: '',
-        error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte FancyCode neu.`,
+        error: mt('{provider} wurde nicht gefunden. Installiere die CLI und starte FancyCode Desktop neu.', { provider: provider.label }),
         exitCode: -1,
       };
     }
@@ -2878,14 +2909,14 @@ async function generateSystemPrompt(_event, request) {
       return {
         ok: false,
         output: '',
-        error: 'Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.',
+        error: mt('Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.'),
         exitCode: -1,
       };
     }
   }
 
   const prompt = buildPrompt(
-    'Erstelle einen empfohlenen System-Prompt fuer einen lokalen Coding-Agenten in diesem Projekt. Antworte nur mit dem fertigen System-Prompt, ohne Markdown, ohne Erklaerung. Der Prompt soll kurz, praezise und sicher sein: bestehende Patterns lesen, Nutzerarbeit schuetzen, relevante Dateien aendern, Tests/Builds pruefen, knapp auf Deutsch antworten.',
+    mt('Erstelle einen empfohlenen System-Prompt fuer einen lokalen Coding-Agenten in diesem Projekt. Antworte nur mit dem fertigen System-Prompt, ohne Markdown, ohne Erklaerung. Der Prompt soll kurz, praezise und sicher sein: bestehende Patterns lesen, Nutzerarbeit schuetzen, relevante Dateien aendern, Tests/Builds pruefen, knapp auf Deutsch antworten.'),
     [],
     generationAccess,
     effectiveProjectPath,
@@ -2962,10 +2993,10 @@ function validatePackageName(name) {
 async function runNpm(projectPath, action, packageName) {
   if (!validatePackageName(packageName)) throw new Error('Ungueltiger npm-Paketname.');
   const npm = await findExecutable('npm');
-  if (!npm) throw new Error('npm wurde nicht gefunden.');
+  if (!npm) throw new Error(mt('npm wurde nicht gefunden.'));
   const args = action === 'install' ? ['install', packageName] : ['uninstall', packageName];
   const result = await runCapture(npm, args, { cwd: projectPath });
-  if (!result.ok) throw new Error(result.error || result.stderr || 'npm konnte nicht ausgefuehrt werden.');
+  if (!result.ok) throw new Error(result.error || result.stderr || mt('npm konnte nicht ausgefuehrt werden.'));
   return (result.stdout || result.stderr).trim();
 }
 
@@ -2973,7 +3004,7 @@ function runGit(projectPath, args) {
   return new Promise(async (resolve) => {
     const git = await findExecutable('git');
     if (!git) {
-      resolve({ ok: false, output: '', error: 'Git wurde nicht gefunden.' });
+      resolve({ ok: false, output: '', error: mt('Git wurde nicht gefunden.') });
       return;
     }
     const result = await runCapture(git, args, { cwd: projectPath });
@@ -2987,11 +3018,11 @@ function runGit(projectPath, args) {
 
 async function getSpotifyTrack() {
   if (process.platform !== 'win32') {
-    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: 'Nur Windows Media Session wird aktuell unterstuetzt.' };
+    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: mt('Nur Windows Media Session wird aktuell unterstuetzt.') };
   }
   const powershell = (await findExecutable('powershell.exe')) || (await findExecutable('powershell'));
   if (!powershell) {
-    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: 'PowerShell wurde nicht gefunden.' };
+    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: mt('PowerShell wurde nicht gefunden.') };
   }
   const script = `
 $ErrorActionPreference = 'Stop'
@@ -3028,14 +3059,14 @@ try {
   const result = await runCapture(powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], { timeoutMs: 5000 });
   const output = (result.stdout || '').trim();
   if (!output) {
-    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: result.error || result.stderr || 'Spotify konnte nicht abgefragt werden.' };
+    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: result.error || result.stderr || mt('Spotify konnte nicht abgefragt werden.') };
   }
   try {
     const track = JSON.parse(output);
     track.artworkUrl = await findTrackArtwork(track);
     return track;
   } catch {
-    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: 'Spotify-Antwort konnte nicht gelesen werden.' };
+    return { available: false, isPlaying: false, title: '', artist: '', album: '', appId: '', error: mt('Spotify-Antwort konnte nicht gelesen werden.') };
   }
 }
 
@@ -3117,7 +3148,7 @@ const activeTerminalProcesses = new Map();
 // the old code spawned a binary that does not exist, so the call never returned.
 function requireWindowsActions() {
   if (process.platform !== 'win32') {
-    throw new Error('Aktionen (action.cmd) werden nur unter Windows unterstuetzt.');
+    throw new Error(mt('Aktionen (action.cmd) werden nur unter Windows unterstuetzt.'));
   }
 }
 
@@ -3174,16 +3205,16 @@ async function buildVServerSshArgs(vserver) {
   const keyPath = String(vserver.keyPath || '').trim();
   if (!host || !/^[a-z0-9._:\[\]-]+$/i.test(host) || host.startsWith('-')) throw new Error('V-Server: Adresse ist ungueltig.');
   if (user && (!/^[a-z0-9._~@-]+$/i.test(user) || user.startsWith('-'))) throw new Error('V-Server: Benutzername ist ungueltig.');
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('V-Server: Port ist ungueltig.');
-  if (keyPath && !fs.existsSync(keyPath)) throw new Error('V-Server: Key-Datei fehlt. Bitte Key neu hochladen.');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(mt('V-Server: Port ist ungueltig.'));
+  if (keyPath && !fs.existsSync(keyPath)) throw new Error(mt('V-Server: Key-Datei fehlt. Bitte Key neu hochladen.'));
   const ssh = await findExecutable('ssh');
   if (!ssh) {
     throw new Error(
       process.platform === 'win32'
-        ? 'OpenSSH wurde nicht gefunden. Installiere den Windows-OpenSSH-Client (Einstellungen > Apps > Optionale Features).'
+        ? mt('OpenSSH wurde nicht gefunden. Installiere den Windows-OpenSSH-Client (Einstellungen > Apps > Optionale Features).')
         : process.platform === 'darwin'
-          ? 'OpenSSH (ssh) wurde nicht gefunden. Installiere es z.B. mit: brew install openssh'
-          : 'OpenSSH (ssh) wurde nicht gefunden. Installiere es z.B. mit: sudo apt install openssh-client',
+          ? mt('OpenSSH (ssh) wurde nicht gefunden. Installiere es z.B. mit: brew install openssh')
+          : mt('OpenSSH (ssh) wurde nicht gefunden. Installiere es z.B. mit: sudo apt install openssh-client'),
     );
   }
   const args = ['-p', String(port), '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30', '-o', 'ConnectTimeout=15'];
@@ -3192,16 +3223,16 @@ async function buildVServerSshArgs(vserver) {
   return { command: ssh, args };
 }
 
-// Copies an uploaded private key into FancyCode's own folder with LF line endings
+// Copies an uploaded private key into FancyCode Desktop's own folder with LF line endings
 // and owner-only permissions (OpenSSH refuses keys that others can read).
 function importSshKey(_event, { sourcePath, name } = {}) {
-  if (!sourcePath || !fs.existsSync(sourcePath)) throw new Error('Key-Datei nicht gefunden.');
+  if (!sourcePath || !fs.existsSync(sourcePath)) throw new Error(mt('Key-Datei nicht gefunden.'));
   const content = fs.readFileSync(sourcePath, 'utf8');
   if (!/PRIVATE KEY/.test(content) && !/PuTTY-User-Key-File/.test(content)) {
-    throw new Error('Das ist kein privater SSH-Key (erwartet z.B. id_ed25519 oder id_rsa, nicht die .pub-Datei).');
+    throw new Error(mt('Das ist kein privater SSH-Key (erwartet z.B. id_ed25519 oder id_rsa, nicht die .pub-Datei).'));
   }
   if (/PuTTY-User-Key-File/.test(content)) {
-    throw new Error('PuTTY-Keys (.ppk) werden nicht unterstuetzt. In PuTTYgen: Conversions > Export OpenSSH key.');
+    throw new Error(mt('PuTTY-Keys (.ppk) werden nicht unterstuetzt. In PuTTYgen: Conversions > Export OpenSSH key.'));
   }
   const dir = path.join(app.getPath('userData'), 'ssh-keys');
   fs.mkdirSync(dir, { recursive: true });
@@ -3379,7 +3410,7 @@ async function removeAgyAccountProfile(_event, accountId) {
 }
 
 // Terminal sessions live in the session host (session-host.cjs), so they keep running while
-// FancyCode is closed or updated. Falls back to an in-process PTY if the host cannot start.
+// FancyCode Desktop is closed or updated. Falls back to an in-process PTY if the host cannot start.
 let sessionClient = null;
 function getSessionClient() {
   if (!sessionClient) {
@@ -3401,7 +3432,7 @@ function shellQuote(value) {
 }
 
 // V-Server tabs run inside tmux on the server: they survive a lost connection and a closed
-// FancyCode, and opening the tab again re-attaches. Antigravity accounts use one tmux session
+// FancyCode Desktop, and opening the tab again re-attaches. Antigravity accounts use one tmux session
 // per account (cf-agy-<id>), each with its own HOME so the agy logins stay separate.
 function buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand }) {
   let inner = '';
@@ -3554,6 +3585,10 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
   }
   console.log(`[Shell] Spawning PTY ${shell} in ${spawnCwd}`);
 
+  // Agents in this terminal (and the MCP server they start) can tell they run inside FancyCode Desktop,
+  // and popups know which terminal to bring to the front.
+  env.FANCYCODE_DESKTOP = '1';
+  env.FANCYCODE_SESSION_ID = String(chatId);
   // Full color support so CLIs like Claude Code render their colored UI.
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
@@ -3631,7 +3666,7 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
 // ---------- Agent control (MCP) ----------
 // The MCP server (mcp-server.cjs, started by Claude Code / agy) reads and writes terminals through
 // the session host directly. Everything that needs the UI (start sessions, open workspaces) goes
-// through this control pipe to the renderer, so the agent's actions show up in FancyCode.
+// through this control pipe to the renderer, so the agent's actions show up in FancyCode Desktop.
 
 const controlRequests = new Map();
 let controlSeq = 0;
@@ -3651,13 +3686,13 @@ function controlToken() {
 function askRenderer(op, args, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
-      reject(new Error('Das FancyCode-Fenster ist nicht offen.'));
+      reject(new Error(mt('Das Fenster von FancyCode Desktop ist nicht offen.')));
       return;
     }
     const reqId = ++controlSeq;
     const timer = setTimeout(() => {
       controlRequests.delete(reqId);
-      reject(new Error('FancyCode hat nicht rechtzeitig geantwortet.'));
+      reject(new Error(mt('FancyCode Desktop hat nicht rechtzeitig geantwortet.')));
     }, timeoutMs);
     controlRequests.set(reqId, { resolve, reject, timer });
     mainWindow.webContents.send('control:request', { reqId, op, args: args || {} });
@@ -3670,11 +3705,11 @@ function handleControlResponse(_event, { reqId, ok, result, error } = {}) {
   controlRequests.delete(reqId);
   clearTimeout(pending.timer);
   if (ok) pending.resolve(result);
-  else pending.reject(new Error(error || 'Fehler in FancyCode.'));
+  else pending.reject(new Error(error || mt('Fehler in FancyCode Desktop.')));
 }
 
 // The renderer publishes workspaces, accounts and servers so the MCP server can describe them
-// even while FancyCode is closed.
+// even while FancyCode Desktop is closed.
 function publishControlState(_event, state) {
   try {
     fs.mkdirSync(sessionHostDir(), { recursive: true });
@@ -3685,13 +3720,24 @@ function publishControlState(_event, state) {
   return true;
 }
 
-// The window as JPEG (base64), scaled to at most 1400px wide, for codeforge_screenshot.
+// The window as JPEG (base64), scaled to at most 1400px wide, for fancycode_screenshot.
 async function captureWindow() {
-  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Das FancyCode-Fenster ist nicht offen.');
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error(mt('Das Fenster von FancyCode Desktop ist nicht offen.'));
   let image = await mainWindow.webContents.capturePage();
   const { width } = image.getSize();
   if (width > 1400) image = image.resize({ width: 1400, quality: 'good' });
   return { mimeType: 'image/jpeg', data: image.toJPEG(80).toString('base64') };
+}
+
+// Popups from agents (fancycode_notify / _ask / _form) show up in the window. When the window is in the
+// background, a system notification points there as well; clicking it brings the window up.
+const POPUP_OPS = new Set(['notify', 'ask', 'form']);
+
+function notifyInBackground(args = {}) {
+  if (args.connect) return; // "Verbunden mit …" stays a small popup in the window
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused() && !mainWindow.isMinimized()) return;
+  const fallback = args.questions ? mt('Ein Agent braucht deine Antwort.') : '';
+  showTaskNotification({ title: String(args.title || 'FancyCode Desktop'), body: String(args.message || args.question || fallback || ' ') });
 }
 
 function controlPipePath() {
@@ -3739,6 +3785,7 @@ function startControlServer() {
           }
           continue;
         }
+        if (POPUP_OPS.has(message.op)) notifyInBackground(message.args);
         const work = message.op === 'screenshot' ? captureWindow() : askRenderer(message.op, message.args, message.timeoutMs);
         work
           .then((result) => reply({ id: message.id, ok: true, result }))
@@ -3758,7 +3805,7 @@ function startControlServer() {
 }
 
 // Copies the MCP server with what it needs next to the session host, outside the install folder,
-// so Claude Code / agy keep a stable path across FancyCode updates.
+// so Claude Code / agy keep a stable path across FancyCode Desktop updates.
 function installMcpFiles() {
   const dir = path.join(sessionHostDir(), 'mcp');
   fs.mkdirSync(dir, { recursive: true });
@@ -3803,7 +3850,9 @@ function quoteCliArg(value) {
   return process.platform === 'win32' ? `"${String(value).replace(/"/g, '\\"')}"` : value;
 }
 
-// Registers the FancyCode MCP server with Claude Code (user scope) or agy. For agy it is added to
+const MCP_NAME = 'fancycode';
+
+// Registers the FancyCode Desktop MCP server with Claude Code (user scope) or agy. For agy it is added to
 // the normal login and to every saved Antigravity account on this PC (each has its own HOME).
 async function registerMcp(_event, { target, accountIds = [] } = {}) {
   const mcp = await getMcpCommand();
@@ -3812,14 +3861,16 @@ async function registerMcp(_event, { target, accountIds = [] } = {}) {
   if (target === 'claude') {
     const claude = await findExecutable('claude');
     if (!claude) return { ok: false, output: 'Claude Code (claude) wurde nicht gefunden.' };
+    // The entry used to be called "codeforge"; the old one goes so the tools do not show up twice.
     await runCli('claude', ['mcp', 'remove', '-s', 'user', 'codeforge'], {});
-    return runCli('claude', ['mcp', 'add', '-s', 'user', ...envFlags('-e'), 'codeforge', '--', ...commandArgs], {});
+    await runCli('claude', ['mcp', 'remove', '-s', 'user', MCP_NAME], {});
+    return runCli('claude', ['mcp', 'add', '-s', 'user', ...envFlags('-e'), MCP_NAME, '--', ...commandArgs], {});
   }
   if (target === 'agy') {
     const agyPath = path.join(app.getPath('home'), 'AppData', 'Local', 'agy', 'bin', 'agy.exe');
     const agy = fs.existsSync(agyPath) ? agyPath : await findExecutable('agy');
     if (!agy) return { ok: false, output: 'agy wurde nicht gefunden.' };
-    const agyArgs = ['mcp', 'add', ...envFlags('--env'), 'codeforge', '--', ...commandArgs];
+    const agyArgs = ['mcp', 'add', ...envFlags('--env'), MCP_NAME, '--', ...commandArgs];
     const results = [await runCli(quoteCliArg(agy), agyArgs, {})];
     for (const accountId of Array.isArray(accountIds) ? accountIds.slice(0, 16) : []) {
       const env = {};
@@ -3832,7 +3883,46 @@ async function registerMcp(_event, { target, accountIds = [] } = {}) {
     }
     return { ok: results.every((item) => item.ok), output: results.map((item) => item.output).filter(Boolean).join('\n') };
   }
+  if (target === 'fancycode') return registerOwnHarnessMcp();
+  if (target === 'opencode') {
+    const file = path.join(app.getPath('home'), '.config', 'opencode', 'opencode.json');
+    let config = {};
+    if (fs.existsSync(file)) {
+      try {
+        config = JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch (_) {
+        return { ok: false, output: mt('{file} ist kein reines JSON (Kommentare?). Bitte den Eintrag "{name}" unter "mcp" selbst ergänzen.', { file, name: MCP_NAME }) };
+      }
+    }
+    config.$schema = config.$schema || 'https://opencode.ai/config.json';
+    const { codeforge: _old, ...rest } = config.mcp || {};
+    config.mcp = { ...rest, [MCP_NAME]: { type: 'local', command: [mcp.command, ...mcp.args], environment: mcp.env, enabled: true } };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+    return { ok: true, output: `In ${file} eingetragen.` };
+  }
   return { ok: false, output: 'Unbekanntes Ziel.' };
+}
+
+// The built-in FancyCode harness always gets the FancyCode Desktop MCP server (~/.config/fancycode/mcp.json).
+async function registerOwnHarnessMcp() {
+  try {
+    const mcp = await getMcpCommand();
+    const file = path.join(skills.fancycodeHome(app.getPath('home')), 'mcp.json');
+    let config = {};
+    try {
+      config = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (_) {}
+    const entry = { command: mcp.command, args: mcp.args, env: mcp.env };
+    if (JSON.stringify(config.mcpServers?.[MCP_NAME]) === JSON.stringify(entry) && !config.mcpServers?.codeforge) return { ok: true, output: mt('Schon eingetragen.') };
+    const { codeforge: _old, ...rest } = config.mcpServers || {};
+    config.mcpServers = { ...rest, [MCP_NAME]: entry };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
+    return { ok: true, output: `In ${file} eingetragen.` };
+  } catch (error) {
+    return { ok: false, output: error.message };
+  }
 }
 
 // A few building blocks are only meant for one machine and never travel with a build. They are
@@ -3883,7 +3973,7 @@ function markUpdateSeen(version) {
 
 // ---------- MCP servers: inspect, start and stop ----------
 // The servers Claude Code, Cursor or Codex spawn from their config files can be started here for a
-// look: FancyCode speaks the MCP handshake itself, lists the tools an agent would get and keeps the
+// look: FancyCode Desktop speaks the MCP handshake itself, lists the tools an agent would get and keeps the
 // process until it is stopped. HTTP servers are asked the same way, they have no process to stop.
 const mcpSessions = new Map();
 const MCP_SELF_ID = 'codeforge:self';
@@ -3892,14 +3982,14 @@ async function ownMcpServer() {
   const mcp = await getMcpCommand();
   return {
     id: MCP_SELF_ID,
-    name: 'codeforge',
-    source: 'FancyCode',
+    name: MCP_NAME,
+    source: 'FancyCode Desktop',
     sourcePath: mcp.args[0] || '',
     command: mcp.command,
     args: mcp.args,
     transport: 'stdio',
     status: 'configured',
-    details: 'Steuert die Terminals von FancyCode: lesen, senden, auf Ergebnisse warten, Sessions starten.',
+    details: mt('Steuert die Terminals von FancyCode Desktop: lesen, senden, auf Ergebnisse warten, Sessions starten.'),
   };
 }
 
@@ -3969,7 +4059,7 @@ function startMcpStdio(server) {
     session.pending.clear();
   };
   session.send = (message) => {
-    if (!child.stdin || !child.stdin.writable) throw new Error('Der MCP-Server nimmt keine Eingaben mehr an.');
+    if (!child.stdin || !child.stdin.writable) throw new Error(mt('Der MCP-Server nimmt keine Eingaben mehr an.'));
     child.stdin.write(`${JSON.stringify(message)}\n`);
   };
   child.stdout.setEncoding('utf8');
@@ -3989,7 +4079,7 @@ function startMcpStdio(server) {
       const pending = session.pending.get(message.id);
       if (!pending) continue;
       session.pending.delete(message.id);
-      if (message.error) pending.reject(new Error(message.error.message || `MCP-Fehler ${message.error.code}`));
+      if (message.error) pending.reject(new Error(message.error.message || mt('MCP-Fehler {code}', { code: message.error.code })));
       else pending.resolve(message.result);
     }
   });
@@ -3999,7 +4089,7 @@ function startMcpStdio(server) {
   });
   child.on('error', (error) => failPending(error));
   child.on('exit', (code) => {
-    failPending(new Error(session.error || `Der MCP-Server wurde beendet (Code ${code}).`));
+    failPending(new Error(session.error || mt('Der MCP-Server wurde beendet (Code {code}).', { code })));
     // A server that dies on its own must not stay listed as running.
     if (mcpSessions.get(session.id) === session) {
       mcpSessions.delete(session.id);
@@ -4028,10 +4118,10 @@ async function mcpHttpCall(server, payload) {
       if (message && message.id === payload.id) return message;
     } catch (_) {}
   }
-  throw new Error('Der MCP-Server hat keine verwertbare Antwort geschickt.');
+  throw new Error(mt('Der MCP-Server hat keine verwertbare Antwort geschickt.'));
 }
 
-const mcpClientInfo = { name: 'codeforge', version: '1.0.0' };
+const mcpClientInfo = { name: 'fancycode-desktop', version: '1.0.0' };
 const mcpInitializeParams = {
   protocolVersion: '2025-06-18',
   capabilities: {},
@@ -4048,10 +4138,10 @@ function readMcpHandshake(result) {
 
 async function startMcpServer(_event, { id } = {}) {
   const server = await findMcpServer(id);
-  if (!server) return { ok: false, error: 'Dieser Server steht nicht mehr in den Konfigurationen.' };
+  if (!server) return { ok: false, error: mt('Dieser Server steht nicht mehr in den Konfigurationen.') };
   const running = mcpSessions.get(server.id);
   if (running) return { ok: true, session: describeMcpSession(running) };
-  if (!server.url && !server.command) return { ok: false, error: 'Der Eintrag hat weder command noch url.' };
+  if (!server.url && !server.command) return { ok: false, error: mt('Der Eintrag hat weder command noch url.') };
 
   let stdio = null;
   try {
@@ -4087,13 +4177,13 @@ async function startMcpServer(_event, { id } = {}) {
       } catch (_) {}
     }
     mcpSessions.delete(server.id);
-    return { ok: false, error: error && error.message ? error.message : 'Der Server liess sich nicht starten.' };
+    return { ok: false, error: error && error.message ? error.message : mt('Der Server liess sich nicht starten.') };
   }
 }
 
 function stopMcpServer(_event, { id } = {}) {
   const session = mcpSessions.get(id);
-  if (!session) return { ok: false, error: 'Dieser Server laeuft nicht.' };
+  if (!session) return { ok: false, error: mt('Dieser Server laeuft nicht.') };
   mcpSessions.delete(id);
   if (session.child) {
     try {
@@ -4114,7 +4204,7 @@ function stopAllMcpSessions() {
 }
 
 // Running sessions for the "Laufende Sessions" view: local host sessions plus the
-// FancyCode tmux sessions on each given V-Server.
+// FancyCode Desktop tmux sessions on each given V-Server.
 async function listRunningSessions(_event, { vservers = [] } = {}) {
   const local = await getSessionClient().list();
   const remote = await Promise.all(
@@ -4171,6 +4261,16 @@ function killShellSession(_event, chatId) {
 }
 
 app.whenReady().then(() => {
+  appI18n.init(app.getPath('userData'));
+  // Harness „FancyCode“ vor dem ersten Terminal bereitstellen (PATH, eigene Konto-Sitzung).
+  fancycodeHarness.setup();
+  fancycodeHarness.syncSession();
+  try {
+    skills.sync();
+  } catch (error) {
+    console.warn(`[Skills] sync failed: ${error.message}`);
+  }
+  fancycodeHarness.registerIpc(ipcMain, (event) => !!mainWindow && event.sender === mainWindow.webContents);
   if (session && session.defaultSession) {
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
       const allowedPermissions = ['media', 'audioCapture', 'speech'];
@@ -4239,7 +4339,7 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('dialog:select-project', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Projektordner auswaehlen',
+      title: mt('Projektordner auswaehlen'),
       properties: ['openDirectory', 'createDirectory'],
     });
     return result.canceled ? null : result.filePaths[0];
@@ -4269,11 +4369,38 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('fancy:available', () => !!fancyAccount.apiBase());
   ipcMain.handle('fancy:me', () => fancyAccount.me());
   ipcMain.handle('fancy:was-granted', () => fancyAccount.wasGranted());
-  ipcMain.handle('fancy:login', (_event, provider, invite) => fancyAccount.login(String(provider || ''), invite ? String(invite).slice(0, 40) : ''));
+  ipcMain.handle('fancy:login', async (_event, provider, invite) => {
+    const result = await fancyAccount.login(String(provider || ''), invite ? String(invite).slice(0, 40) : '');
+    fancycodeHarness.syncSession();
+    return result;
+  });
   ipcMain.handle('fancy:guest', (_event, invite) => fancyAccount.guest(String(invite || '')));
   ipcMain.handle('fancy:check-invite', (_event, invite) => fancyAccount.checkInvite(String(invite || '')));
   ipcMain.handle('fancy:cancel', () => fancyAccount.cancelLogin());
+  ipcMain.handle('fancy:usage', () => fancyAccount.usage());
+  ipcMain.handle('fancy:usage-reset', () => fancyAccount.resetUsage());
   ipcMain.handle('fancy:logout', () => fancyAccount.logout());
+
+  // Plugins: Katalog, Installation mit Prüfsumme, Entfernen.
+  ipcMain.handle('plugins:catalog', () => plugins.catalog());
+  ipcMain.handle('plugins:list', () => plugins.list());
+  ipcMain.handle('plugins:install', (_event, id) => plugins.install(String(id || '')));
+  ipcMain.handle('plugins:remove', (_event, id) => plugins.remove(String(id || '')));
+  ipcMain.handle('plugins:source', (_event, id) => plugins.source(String(id || '')));
+
+  // Mitgelieferte Skills und Plugins (z. B. Minecraft Hub) für FancyCode, Claude Code, OpenCode, Codex, Gemini.
+  ipcMain.handle('skills:state', () => skills.state());
+  ipcMain.handle('skills:set-skill', (_event, id, enabled) => skills.setSkill(String(id || ''), Boolean(enabled)));
+  ipcMain.handle('skills:set-target', (_event, id, enabled) => skills.setTarget(String(id || ''), Boolean(enabled)));
+  ipcMain.handle('skills:install-remote', async (_event, vserver) => {
+    if (!vserver || typeof vserver !== 'object') throw new Error(mt('V-Server fehlt.'));
+    const failed = [];
+    for (const item of skills.remoteScripts()) {
+      const result = await runVServerCommand(vserver, item.script, 30000);
+      if (!result.ok) failed.push(item.id);
+    }
+    return { ok: failed.length === 0, failed };
+  });
 
   ipcMain.handle('apichat:send', async (_event, input = {}) => {
     const { provider, baseUrl, apiKey, model, system, messages = [] } = input;
@@ -4284,7 +4411,7 @@ ipcMain.handle('device:status', () => {
         .map((item) => ({ role: item.role, content: String(item.content).slice(0, 60000) }));
       return fancyAccount.chat(system, history);
     }
-    if (!model) throw new Error('Kein Modell angegeben.');
+    if (!model) throw new Error(mt('Kein Modell angegeben.'));
     const base = apiBaseUrl(provider, baseUrl);
     const history = messages
       .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && item.content)
@@ -4295,7 +4422,7 @@ ipcMain.handle('device:status', () => {
         headers: apiHeaders(provider, apiKey),
         body: JSON.stringify({ model, max_tokens: 8192, ...(system ? { system } : {}), messages: history }),
       });
-      if (!response.ok) throw new Error(`API-Fehler ${response.status}: ${await readApiError(response)}`);
+      if (!response.ok) throw new Error(mt('API-Fehler {status}: {error}', { status: response.status, error: await readApiError(response) }));
       const data = await response.json();
       return {
         text: (data.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
@@ -4307,7 +4434,7 @@ ipcMain.handle('device:status', () => {
       headers: apiHeaders(provider, apiKey),
       body: JSON.stringify({ model, messages: [...(system ? [{ role: 'system', content: system }] : []), ...history] }),
     });
-    if (!response.ok) throw new Error(`API-Fehler ${response.status}: ${await readApiError(response)}`);
+    if (!response.ok) throw new Error(mt('API-Fehler {status}: {error}', { status: response.status, error: await readApiError(response) }));
     const data = await response.json();
     return { text: data.choices?.[0]?.message?.content || '', tokens: data.usage?.total_tokens || 0 };
   });
@@ -4316,7 +4443,7 @@ ipcMain.handle('device:status', () => {
     const { provider, baseUrl, apiKey } = input;
     if (provider === 'fancycode') return ['gpt-oss-120b'];
     const response = await fetch(`${apiBaseUrl(provider, baseUrl)}/models`, { headers: apiHeaders(provider, apiKey) });
-    if (!response.ok) throw new Error(`Modelle konnten nicht geladen werden (${response.status}): ${await readApiError(response)}`);
+    if (!response.ok) throw new Error(mt('Modelle konnten nicht geladen werden ({status}): {error}', { status: response.status, error: await readApiError(response) }));
     const data = await response.json();
     return (data.data || data.models || []).map((item) => item.id || item.name).filter(Boolean).sort();
   });
@@ -4352,7 +4479,7 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('dialog:select-attachments', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Dateien anhaengen',
+      title: mt('Dateien anhaengen'),
       properties: ['openFile', 'multiSelections'],
     });
     return result.canceled ? [] : result.filePaths;
@@ -4360,10 +4487,10 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('dialog:select-theme-background', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Theme-Hintergrund auswaehlen',
+      title: mt('Theme-Hintergrund auswaehlen'),
       properties: ['openFile'],
       filters: [
-        { name: 'Alle Medien', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'mp4', 'webm', 'mov', 'm4v', 'ogg', 'ogv', 'avi', 'mkv'] },
+        { name: mt('Alle Medien'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'mp4', 'webm', 'mov', 'm4v', 'ogg', 'ogv', 'avi', 'mkv'] },
         { name: 'Bilder', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif'] },
         { name: 'Videos', extensions: ['mp4', 'webm', 'mov', 'm4v', 'ogg', 'ogv', 'avi', 'mkv'] },
       ],
@@ -4373,22 +4500,22 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('dialog:select-application', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Desktop-App als Tab hinzufuegen',
+      title: mt('Desktop-App als Tab hinzufuegen'),
       defaultPath: app.getPath('desktop'),
       properties: ['openFile'],
       filters: process.platform === 'win32'
         ? [
-            { name: 'Apps und Verknuepfungen', extensions: ['exe', 'lnk', 'cmd', 'bat'] },
-            { name: 'Alle Dateien', extensions: ['*'] },
+            { name: mt('Apps und Verknuepfungen'), extensions: ['exe', 'lnk', 'cmd', 'bat'] },
+            { name: mt('Alle Dateien'), extensions: ['*'] },
           ]
         : process.platform === 'darwin'
           ? [
               { name: 'Apps', extensions: ['app', 'sh', 'command'] },
-              { name: 'Alle Dateien', extensions: ['*'] },
+              { name: mt('Alle Dateien'), extensions: ['*'] },
             ]
           : [
-              { name: 'Alle Dateien', extensions: ['*'] },
-              { name: 'Programme und Starter', extensions: ['desktop', 'sh', 'run', 'bin', 'AppImage'] },
+              { name: mt('Alle Dateien'), extensions: ['*'] },
+              { name: mt('Programme und Starter'), extensions: ['desktop', 'sh', 'run', 'bin', 'AppImage'] },
             ],
     });
     return result.canceled ? null : result.filePaths[0];
@@ -4396,11 +4523,11 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('dialog:select-local-file', async (_event, input = {}) => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : 'Datei auswaehlen',
+      title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : mt('Datei auswaehlen'),
       defaultPath: app.getPath('downloads'),
       properties: ['openFile'],
       filters: [
-        { name: 'Alle Dateien', extensions: ['*'] },
+        { name: mt('Alle Dateien'), extensions: ['*'] },
       ],
     });
     return result.canceled ? null : result.filePaths[0];
@@ -4408,7 +4535,7 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('dialog:select-codex-plugin', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Codex-Plugin-Ordner auswaehlen',
+      title: mt('Codex-Plugin-Ordner auswaehlen'),
       properties: ['openDirectory'],
     });
     return result.canceled ? null : result.filePaths[0];
@@ -4469,10 +4596,11 @@ ipcMain.handle('device:status', () => {
     return runGit(projectPath, ['switch', branch]);
   });
 
-  ipcMain.handle('plugins:install', (_event, projectPath, packageName) =>
+  // Project-level npm plugins (agents' packages), separate from the catalog plugins above.
+  ipcMain.handle('project-plugins:install', (_event, projectPath, packageName) =>
     runNpm(projectPath, 'install', packageName),
   );
-  ipcMain.handle('plugins:remove', (_event, projectPath, packageName) =>
+  ipcMain.handle('project-plugins:remove', (_event, projectPath, packageName) =>
     runNpm(projectPath, 'remove', packageName),
   );
   ipcMain.handle('codex-plugins:list', (_event, projectPath) => getCodexPlugins(projectPath));
@@ -4480,8 +4608,8 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('codex-plugins:remove', removeCodexPlugin);
 
   ipcMain.handle('launcher:open-app', async (_event, targetPath) => {
-    if (typeof targetPath !== 'string' || !targetPath.trim()) throw new Error('Ungueltiger App-Pfad.');
-    if (!fs.existsSync(targetPath)) throw new Error('Die App wurde auf diesem Pfad nicht gefunden.');
+    if (typeof targetPath !== 'string' || !targetPath.trim()) throw new Error(mt('Ungueltiger App-Pfad.'));
+    if (!fs.existsSync(targetPath)) throw new Error(mt('Die App wurde auf diesem Pfad nicht gefunden.'));
     const error = await shell.openPath(targetPath);
     if (error) throw new Error(error);
     return '';
@@ -4492,20 +4620,20 @@ ipcMain.handle('device:status', () => {
 
   ipcMain.handle('launcher:spotify', (_event, uri) => {
     const target = typeof uri === 'string' && uri.trim() ? uri.trim() : 'spotify:';
-    if (!/^spotify:/i.test(target)) throw new Error('Nur spotify:-Links sind hier erlaubt.');
+    if (!/^spotify:/i.test(target)) throw new Error(mt('Nur spotify:-Links sind hier erlaubt.'));
     return shell.openExternal(target);
   });
   ipcMain.handle('spotify:track', getSpotifyTrack);
 
   ipcMain.handle('shell:open-external', (_event, url) => {
     const parsed = new URL(url);
-    if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('URL-Protokoll nicht erlaubt.');
+    if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error(mt('URL-Protokoll nicht erlaubt.'));
     return shell.openExternal(parsed.toString());
   });
   ipcMain.handle('shell:open-in-chrome', (_event, url) => openUrlInChrome(url));
   ipcMain.handle('shell:open-path', (_event, targetPath) => {
-    if (typeof targetPath !== 'string' || !targetPath.trim()) throw new Error('Ungueltiger Pfad.');
-    if (/^[a-z]+:\/\//i.test(targetPath)) throw new Error('Nur lokale Dateipfade sind erlaubt.');
+    if (typeof targetPath !== 'string' || !targetPath.trim()) throw new Error(mt('Ungueltiger Pfad.'));
+    if (/^[a-z]+:\/\//i.test(targetPath)) throw new Error(mt('Nur lokale Dateipfade sind erlaubt.'));
     return shell.openPath(targetPath);
   });
 
@@ -4546,7 +4674,7 @@ ipcMain.handle('device:status', () => {
       }
       return macros;
     } catch (err) {
-      throw new Error(`Fehler beim Lesen des Action-Ordners: ${err.message}`);
+      throw new Error(mt('Fehler beim Lesen des Action-Ordners: {error}', { error: err.message }));
     }
   });
 
@@ -4561,7 +4689,7 @@ ipcMain.handle('device:status', () => {
     return new Promise((resolve, reject) => {
       const cmdPath = path.join(dirPath, 'action.cmd');
       if (!fs.existsSync(cmdPath)) {
-        reject(new Error(`action.cmd wurde im Ordner ${dirPath} nicht gefunden.`));
+        reject(new Error(mt('action.cmd wurde im Ordner {dir} nicht gefunden.', { dir: dirPath })));
         return;
       }
       
@@ -4571,7 +4699,7 @@ ipcMain.handle('device:status', () => {
         shell: false
       });
       // Without this listener a spawn that never starts would leave the promise pending forever.
-      child.on('error', (error) => reject(new Error(`Aktion konnte nicht gestartet werden: ${error.message}`)));
+      child.on('error', (error) => reject(new Error(mt('Aktion konnte nicht gestartet werden: {error}', { error: error.message }))));
       
       let errorOut = '';
       child.stderr.on('data', (data) => {
@@ -4600,7 +4728,7 @@ ipcMain.handle('device:status', () => {
     return new Promise((resolve, reject) => {
       const cmdPath = path.join(dirPath, 'action.cmd');
       if (!fs.existsSync(cmdPath)) {
-        reject(new Error(`action.cmd wurde im Ordner ${dirPath} nicht gefunden.`));
+        reject(new Error(mt('action.cmd wurde im Ordner {dir} nicht gefunden.', { dir: dirPath })));
         return;
       }
       
@@ -4608,13 +4736,13 @@ ipcMain.handle('device:status', () => {
         cwd: dirPath,
         shell: true
       });
-      child.on('error', (error) => reject(new Error(`Aufnahme konnte nicht gestartet werden: ${error.message}`)));
+      child.on('error', (error) => reject(new Error(mt('Aufnahme konnte nicht gestartet werden: {error}', { error: error.message }))));
       
       child.on('close', (code) => {
         if (code === 0) {
           resolve({ success: true });
         } else {
-          reject(new Error(`Recording konnte nicht gestartet werden (Code ${code})`));
+          reject(new Error(mt('Recording konnte nicht gestartet werden (Code {code})', { code })));
         }
       });
     });
@@ -4634,10 +4762,10 @@ ipcMain.handle('device:status', () => {
         fs.unlinkSync(file);
         return { success: true };
       } else {
-        throw new Error(`Action "${name}" existiert nicht.`);
+        throw new Error(mt('Action "{name}" existiert nicht.', { name }));
       }
     } catch (err) {
-      throw new Error(`Fehler beim Loeschen: ${err.message}`);
+      throw new Error(mt('Fehler beim Loeschen: {error}', { error: err.message }));
     }
   });
 
@@ -4688,11 +4816,11 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('whisper:warm-up', (_event, model) => whisper.warmUp(model));
   ipcMain.handle('ssh:import-key', importSshKey);
   // Writes the file the Android app imports ("Vom PC uebernehmen"): V-Servers with their keys
-  // (only keys from FancyCode's own key folder), plus the settings the renderer passes in.
+  // (only keys from FancyCode Desktop's own key folder), plus the settings the renderer passes in.
   ipcMain.handle('vservers:export-android', async (_event, payload = {}) => {
     const keyDir = path.join(app.getPath('userData'), 'ssh-keys');
     const servers = (Array.isArray(payload.servers) ? payload.servers : []).slice(0, 50).map((server) => {
-      const item = { id: String(server.id || ''), name: String(server.name || ''), host: String(server.host || ''), port: Number(server.port || 22), user: String(server.user || '') };
+      const item = { id: String(server.id || 'mt('), name: String(server.name || ')mt('), host: String(server.host || ')mt('), port: Number(server.port || 22), user: String(server.user || ')') };
       const keyPath = path.resolve(String(server.keyPath || ''));
       if (payload.includeKeys && server.keyPath && keyPath.startsWith(keyDir + path.sep) && fs.existsSync(keyPath)) {
         item.privateKey = fs.readFileSync(keyPath, 'utf8');
@@ -4702,7 +4830,7 @@ ipcMain.handle('device:status', () => {
     });
     const data = { type: 'codeforge-mobile-export', version: 1, exportedAt: Date.now(), servers, ...(payload.settings && typeof payload.settings === 'object' ? payload.settings : {}) };
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Fuer FancyCode Android exportieren',
+      title: mt('Fuer FancyCode Android exportieren'),
       defaultPath: path.join(app.getPath('downloads'), 'codeforge-android.json'),
       filters: [{ name: 'FancyCode-Export', extensions: ['json'] }],
     });
@@ -4735,7 +4863,7 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('sftp:delete', sftpSafe(({ vserver, path: remotePath }) => sftp.remove(vserver, remotePath)));
   ipcMain.handle('sftp:download', sftpSafe(async ({ vserver, path: remotePath }) => {
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Datei speichern unter',
+      title: mt('Datei speichern unter'),
       defaultPath: path.join(app.getPath('downloads'), baseName(remotePath)),
     });
     if (result.canceled || !result.filePath) return { canceled: true };
@@ -4744,7 +4872,7 @@ ipcMain.handle('device:status', () => {
   }));
   ipcMain.handle('sftp:upload', sftpSafe(async ({ vserver, path: remoteDir }) => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Dateien zum Hochladen auswaehlen',
+      title: mt('Dateien zum Hochladen auswaehlen'),
       defaultPath: app.getPath('downloads'),
       properties: ['openFile', 'multiSelections'],
     });
@@ -4766,11 +4894,16 @@ ipcMain.handle('device:status', () => {
   ipcMain.on('window:close', () => {
     mainWindow?.close();
   });
+  ipcMain.on('app:set-language', (event, language) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    appI18n.setLanguage(language);
+  });
 
   createWindow();
   try {
     startControlServer();
     installMcpFiles();
+    void registerOwnHarnessMcp();
   } catch (error) {
     console.error(`[Control] setup failed: ${error.message}`);
   }

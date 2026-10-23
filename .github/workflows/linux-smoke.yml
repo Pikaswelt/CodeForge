@@ -2,8 +2,8 @@ name: Linux smoke test
 
 # Boots the built app on real Linux under a virtual display. The 24.04 runner restricts unprivileged
 # user namespaces, which is exactly the case the sandbox fallback in electron/main.cjs exists for, so
-# this job proves the window still opens there. It waits for the "[Start] FancyCode UI geladen" line
-# that electron/main.cjs prints once the renderer has loaded.
+# this job proves the window still opens there. It waits for the "[Start] FancyCode Desktop UI geladen"
+# line that electron/main.cjs prints once the renderer has loaded.
 
 on:
   push:
@@ -44,22 +44,22 @@ jobs:
           echo -n "unprivileged_userns_clone: "; cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo "(fehlt)"
           if unshare -Ur true 2>/dev/null; then echo "User-Namespaces: nutzbar"; else echo "User-Namespaces: gesperrt"; fi
 
-      - name: Start FancyCode and wait for the UI
+      - name: Start FancyCode Desktop and wait for the UI
         run: |
           export DISPLAY=:99
           Xvfb :99 -screen 0 1440x900x24 > xvfb.log 2>&1 &
           sleep 2
           # The packaged AppImage does exactly this in its AppRun: it probes 'unshare -Ur true' and
           # adds --no-sandbox when user namespaces are unavailable (Ubuntu 24.04 blocks them). Without
-          # that flag Chromium aborts before any app code runs, which says nothing about FancyCode.
+          # that flag Chromium aborts before any app code runs, which says nothing about FancyCode Desktop.
           FLAGS=""
           if ! unshare -Ur true 2>/dev/null; then FLAGS="--no-sandbox"; fi
           npx electron $FLAGS . --user-data-dir="$RUNNER_TEMP/codeforge-profile" > smoke.log 2>&1 &
           APP_PID=$!
           loaded=0
           for _ in $(seq 1 60); do
-            if grep -q '\[Start\] FancyCode UI geladen' smoke.log; then loaded=1; break; fi
-            if ! kill -0 "$APP_PID" 2>/dev/null; then echo "FancyCode exited early"; break; fi
+            if grep -q '\[Start\] FancyCode Desktop UI geladen' smoke.log; then loaded=1; break; fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then echo "FancyCode Desktop exited early"; break; fi
             sleep 2
           done
           kill "$APP_PID" 2>/dev/null || true

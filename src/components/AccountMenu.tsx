@@ -1,8 +1,13 @@
-import { useState, type ReactNode } from 'react';
-import { BookOpen, CircleUserRound, Loader2, LogOut, Megaphone, MessageSquare, Play, Settings } from 'lucide-react';
-import { PROVIDER_MODELS, useAppContext } from '../AppContext';
+import { tr } from '../i18n';
+import { useEffect, useState, type ReactNode } from 'react';
+import { BookOpen, CircleUserRound, Gauge, LogOut, Megaphone, MessageSquare, Puzzle, Settings } from 'lucide-react';
+import { useAppContext } from '../AppContext';
+import { PLAN_INFO } from '../plans';
+import type { FancyAccount } from '../electron';
+import { usePlugins } from '../plugins/PluginProvider';
 import TutorialModal from './TutorialModal';
 import NewsPopup from './NewsPopup';
+import UsageModal from './UsageModal';
 
 export default function AccountMenu({
   onSettingsClick,
@@ -18,17 +23,43 @@ export default function AccountMenu({
     apiKeys,
     setApiKey,
     mobileMode,
-    startAntigravityLimit,
     discordRpcEnabled,
     setDiscordRpcEnabled,
   } = useAppContext();
-  const [showLimitStarter, setShowLimitStarter] = useState(false);
-  const [limitModel, setLimitModel] = useState(PROVIDER_MODELS.antigravity[0].id);
-  const [busy, setBusy] = useState<'limit' | null>(null);
-  const [status, setStatus] = useState('');
+  const { items: pluginItems, run: runPlugin } = usePlugins();
+  const [account, setAccount] = useState<FancyAccount | null>(null);
+  const [openPlugin, setOpenPlugin] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showNews, setShowNews] = useState(false);
+  const [showUsage, setShowUsage] = useState(false);
   const providerInfo = PROVIDER_INFO[provider];
+
+  useEffect(() => {
+    const api = window.agentWorkspace?.fancyAccount;
+    if (!api) return;
+    let active = true;
+    api
+      .me()
+      .then((value) => {
+        if (active) setAccount(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const logout = () => {
+    setApiKey(provider, '');
+    const api = window.agentWorkspace?.fancyAccount;
+    if (api) {
+      void api
+        .logout()
+        .catch(() => {})
+        .finally(() => window.dispatchEvent(new Event('fancy:logged-out')));
+    }
+    onClose();
+  };
 
   return (
     <>
@@ -37,29 +68,66 @@ export default function AccountMenu({
       >
         <div className="px-3 pb-2 pt-1">
           <div className="flex items-center gap-2 rounded-lg px-1 py-1.5">
-            <CircleUserRound className="h-4 w-4 text-zinc-500" />
+            {account?.avatar ? (
+              <img src={account.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full border border-white/10 object-cover" />
+            ) : (
+              <CircleUserRound className="h-5 w-5 shrink-0 text-zinc-500" />
+            )}
             <div className="min-w-0">
-              <div className="truncate text-[13px] text-zinc-200">{providerInfo.label} Konto</div>
-              <div className="truncate text-[11px] text-zinc-500">
-                {apiKeys[provider] ? 'API-Key gesetzt' : 'Lokale CLI / ChatGPT Login'}
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-[13px] text-zinc-200">
+                  {account ? account.name : `${providerInfo.label} Konto`}
+                </span>
+                {account?.plan && (
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                      account.plan === 'max'
+                        ? 'bg-violet-400/15 text-violet-300'
+                        : account.plan === 'pro'
+                          ? 'bg-amber-400/15 text-amber-300'
+                          : 'bg-white/10 text-zinc-400'
+                    }`}
+                  >
+                    {PLAN_INFO[account.plan].label}
+                  </span>
+                )}
               </div>
+              <div className="truncate text-[11px] text-zinc-500">
+                {account
+                  ? account.provider === 'discord'
+                    ? tr("Mit Discord angemeldet")
+                    : account.provider === 'github'
+                      ? tr("Mit GitHub angemeldet")
+                      : tr("Angemeldet")
+                  : apiKeys[provider]
+                    ? tr("API-Key gesetzt")
+                    : tr("Lokale CLI / ChatGPT Login")}
+              </div>
+              {account?.plan === 'max' && (
+                <div className="truncate text-[11px] text-violet-300/80">{tr("Beta-Zugang & Priority-Support")}</div>
+              )}
             </div>
           </div>
         </div>
         <div className="border-t border-white/10 py-1">
           <AccountMenuButton
             icon={<Settings className="h-4 w-4" />}
-            label="Einstellungen"
+            label={tr("Einstellungen")}
             shortcut="Ctrl+,"
             onClick={() => {
               onSettingsClick();
               onClose();
             }}
           />
+          <AccountMenuButton
+            icon={<Gauge className="h-4 w-4" />}
+            label={tr("Nutzung")}
+            onClick={() => setShowUsage(true)}
+          />
           <div className="flex items-center justify-between px-3 py-2 text-[13px] text-zinc-200 hover:bg-white/5 transition-colors">
             <div className="flex items-center gap-3">
               <MessageSquare className="h-4 w-4 text-zinc-500" />
-              <span>Discord Status</span>
+              <span>{tr("Discord Status")}</span>
             </div>
             <button
               type="button"
@@ -72,7 +140,7 @@ export default function AccountMenu({
               className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                 discordRpcEnabled ? 'bg-amber-400' : 'bg-white/20'
               }`}
-              title={discordRpcEnabled ? 'Discord Rich Presence ausschalten' : 'Discord Rich Presence einschalten'}
+              title={discordRpcEnabled ? tr("Discord Rich Presence ausschalten") : tr("Discord Rich Presence einschalten")}
             >
               <span
                 className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
@@ -81,58 +149,52 @@ export default function AccountMenu({
               />
             </button>
           </div>
-          <AccountMenuButton
-            icon={busy === 'limit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            label="Limit starten"
-            onClick={() => {
-              setShowLimitStarter((value) => !value);
-              setStatus('');
-            }}
-          />
-          {showLimitStarter && (
-            <div className="mx-3 mb-1 rounded-lg border border-white/10 bg-black/20 p-2">
-              <label className="text-[10px] uppercase tracking-wide text-zinc-600">
-                Antigravity Modell
-                <select
-                  value={limitModel}
-                  onChange={(event) => setLimitModel(event.target.value)}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-[#181516] px-2 py-1.5 text-xs normal-case tracking-normal text-zinc-200 outline-none"
-                >
-                  {PROVIDER_MODELS.antigravity.map((model) => (
-                    <option key={model.id} value={model.id}>{model.name} - {model.intelligence || model.id}</option>
-                  ))}
-                </select>
-              </label>
-              <button
-                disabled={busy === 'limit'}
-                onClick={async () => {
-                  setBusy('limit');
-                  setStatus('');
-                  try {
-                    const ok = await startAntigravityLimit(limitModel);
-                    const message = ok ? 'Limit gestartet. Du kannst aus dem Tab raus.' : 'Antigravity hat nicht nur OK geantwortet.';
-                    setStatus(message);
-                    window.alert(message);
-                  } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Limit konnte nicht gestartet werden.';
-                    setStatus(message);
-                    window.alert(message);
-                  } finally {
-                    setBusy(null);
-                  }
+          {pluginItems.map((item) => {
+            const key = `${item.pluginId}:${item.label}`;
+            if (item.children?.length) {
+              const open = openPlugin === key;
+              return (
+                <div key={key}>
+                  <AccountMenuButton
+                    icon={<Puzzle className="h-4 w-4" />}
+                    label={item.label}
+                    onClick={() => setOpenPlugin(open ? null : key)}
+                  />
+                  {open && (
+                    <div className="mx-3 mb-1 rounded-lg border border-white/10 bg-black/20 p-1">
+                      {item.children.map((child) => (
+                        <button
+                          key={child.id || child.label}
+                          onClick={() => {
+                            if (child.id) runPlugin(item.pluginId, child.id);
+                            onClose();
+                          }}
+                          className="w-full truncate rounded px-2 py-1.5 text-left text-[11px] text-zinc-300 transition-colors hover:bg-white/10"
+                        >
+                          {child.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <AccountMenuButton
+                key={key}
+                icon={<Puzzle className="h-4 w-4" />}
+                label={item.label}
+                onClick={() => {
+                  if (item.id) runPlugin(item.pluginId, item.id);
+                  onClose();
                 }}
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-white/10 px-2 py-1.5 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-              >
-                {busy === 'limit' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Starten
-              </button>
-              {status && <div className="mt-2 text-[10px] text-zinc-500">{status}</div>}
-            </div>
-          )}
+              />
+            );
+          })}
           {mobileMode && (
             <AccountMenuButton
               icon={<BookOpen className="h-4 w-4" />}
-              label="Verbindungsanleitung"
+              label={tr("Verbindungsanleitung")}
               onClick={() => {
                 setShowTutorial(true);
               }}
@@ -140,21 +202,15 @@ export default function AccountMenu({
           )}
           <AccountMenuButton
             icon={<Megaphone className="h-4 w-4" />}
-            label="Was ist neu"
+            label={tr("Was ist neu")}
             onClick={() => setShowNews(true)}
           />
-          <AccountMenuButton
-            icon={<LogOut className="h-4 w-4" />}
-            label="Abmelden"
-            onClick={() => {
-              setApiKey(provider, '');
-              onClose();
-            }}
-          />
+          <AccountMenuButton icon={<LogOut className="h-4 w-4" />} label={tr("Abmelden")} onClick={logout} />
         </div>
       </div>
       {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
       {showNews && <NewsPopup onClose={() => setShowNews(false)} />}
+      {showUsage && <UsageModal onClose={() => setShowUsage(false)} />}
     </>
   );
 }

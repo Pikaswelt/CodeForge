@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 import { useState } from 'react';
 import { Check, Server } from 'lucide-react';
 import { harnessIcon } from '../../harnessIcons';
@@ -30,12 +31,12 @@ export default function NewTerminalSheet({ onClose, serverId: presetServer, cwd:
 
   return (
     <Sheet
-      title="Neues Terminal"
+      title={tr("Neues Terminal")}
       onClose={onClose}
-      footer={<Button variant="primary" className="flex-1" disabled={!server || !harness} onClick={start}>Starten</Button>}
+      footer={<Button variant="primary" className="flex-1" disabled={!server || !harness} onClick={start}>{tr("Starten")}</Button>}
     >
       {servers.length > 1 && (
-        <Section title="V-Server">
+        <Section title={tr("V-Server")}>
           <div className="flex flex-col gap-2">
             {servers.map((item) => (
               <button
@@ -58,7 +59,7 @@ export default function NewTerminalSheet({ onClose, serverId: presetServer, cwd:
         </Section>
       )}
 
-      <Section title="Programm">
+      <Section title={tr("Programm")}>
         <div className="grid grid-cols-2 gap-2">
           {harnesses.map((item) => {
             const Icon = harnessIcon(item.icon);
@@ -81,7 +82,7 @@ export default function NewTerminalSheet({ onClose, serverId: presetServer, cwd:
       </Section>
 
       {isAgy && agyAccounts.length > 0 && (
-        <Section title="Antigravity-Account">
+        <Section title={tr("Antigravity-Account")}>
           <div className="flex flex-wrap gap-2">
             {[{ id: '', name: 'Standard-Login' }, ...agyAccounts].map((item) => (
               <button
@@ -96,7 +97,7 @@ export default function NewTerminalSheet({ onClose, serverId: presetServer, cwd:
         </Section>
       )}
 
-      <Field label="Ordner auf dem Server" hint="Leer lassen für das Home-Verzeichnis. Eine laufende Session behält ihren Ordner.">
+      <Field label={tr("Ordner auf dem Server")} hint={tr("Leer lassen für das Home-Verzeichnis. Eine laufende Session behält ihren Ordner.")}>
         <input className="cf-input" value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="~" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
       </Field>
     </Sheet>

@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, ChevronRight, Cpu, FolderOpen, HardDrive, MemoryStick, Pencil, Plus, RefreshCw, Rocket, Server, SquareTerminal, Upload, Users, X } from 'lucide-react';
 import AppLogo from '../../components/AppLogo';
@@ -21,9 +22,9 @@ export default function HomeScreen() {
         <AppLogo className="h-10 w-10 shrink-0" />
         <div className="min-w-0 flex-1">
           <h1 className="text-[1.45rem] font-bold leading-tight tracking-tight">FancyCode</h1>
-          <p className="cf-muted text-[0.8rem]">Unterwegs auf deinem V-Server</p>
+          <p className="cf-muted text-[0.8rem]">{tr("Unterwegs auf deinem V-Server")}</p>
         </div>
-        <IconButton label="V-Server hinzufügen" onClick={() => setEditing('new')} className="cf-glass">
+        <IconButton label={tr("V-Server hinzufügen")} onClick={() => setEditing('new')} className="cf-glass">
           <Plus className="h-5 w-5" />
         </IconButton>
       </header>
@@ -33,22 +34,22 @@ export default function HomeScreen() {
           <Card className="mt-2 overflow-hidden">
             <EmptyState
               icon={<Server className="h-8 w-8" />}
-              title="Verbinde deinen V-Server"
-              text="FancyCode Mobile arbeitet direkt auf deinem V-Server: Claude Code, Codex, Antigravity und Terminals laufen dort in tmux und überleben Funklöcher. Auf dem Handy selbst läuft nichts lokal."
+              title={tr("Verbinde deinen V-Server")}
+              text={tr("FancyCode Mobile arbeitet direkt auf deinem V-Server: Claude Code, Codex, Antigravity und Terminals laufen dort in tmux und überleben Funklöcher. Auf dem Handy selbst läuft nichts lokal.")}
               action={
                 <div className="flex w-full flex-col gap-2">
                   <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')}>
-                    V-Server hinzufügen
+                    {tr("V-Server hinzufügen")}
                   </Button>
                   <Button icon={<Upload className="h-4 w-4" />} onClick={() => setImporting(true)}>
-                    Vom PC übernehmen
+                    {tr("Vom PC übernehmen")}
                   </Button>
                 </div>
               }
             />
           </Card>
         ) : (
-          <Section title="V-Server">
+          <Section title={tr("V-Server")}>
             <div className="flex flex-col gap-3">
               {servers.map((server) => (
                 <ServerCard key={server.id} server={server} onEdit={() => setEditing(server)} />
@@ -58,7 +59,7 @@ export default function HomeScreen() {
         )}
 
         {terminals.length > 0 && (
-          <Section title="Offene Terminals">
+          <Section title={tr("Offene Terminals")}>
             <Card className="overflow-hidden">
               {terminals.map((session, index) => {
                 const Icon = harnessIcon(session.icon);
@@ -77,7 +78,7 @@ export default function HomeScreen() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[0.93rem] font-medium">{session.title}</span>
-                      <span className="cf-muted block truncate text-[0.78rem]">{server?.name || 'Server fehlt'}</span>
+                      <span className="cf-muted block truncate text-[0.78rem]">{server?.name || tr("Server fehlt")}</span>
                     </span>
                     <ChevronRight className="cf-muted h-4 w-4" />
                   </button>
@@ -138,14 +139,14 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
     openTerminal({
       serverId: server.id,
       title: agyId ? `Antigravity · ${account?.name || agyId.slice(0, 12)}` : `Terminal · ${name.slice(5, 11)}`,
-      icon: agyId ? 'Rocket' : 'Terminal',
+      icon: agyId ? 'Rocket' : tr("Terminal"),
       agyAccountId: agyId || undefined,
       tmuxName: name,
     });
   };
 
   const kill = async (name: string) => {
-    const ok = await confirm({ title: 'Session beenden?', message: `Die tmux-Session ${name} wird auf dem Server beendet. Laufende Programme darin werden gestoppt.`, confirmLabel: 'Beenden', danger: true });
+    const ok = await confirm({ title: tr("Session beenden?"), message: tr("Die tmux-Session {name} wird auf dem Server beendet. Laufende Programme darin werden gestoppt.", { name }), confirmLabel: tr("Beenden"), danger: true });
     if (!ok) return;
     try {
       await withServer(server, () => killTmuxSession(server, name));
@@ -173,7 +174,7 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
             {server.lastConnectedAt ? ` · ${timeAgo(server.lastConnectedAt)}` : ''}
           </div>
         </div>
-        <IconButton label="Bearbeiten" onClick={onEdit}>
+        <IconButton label={tr("Bearbeiten")} onClick={onEdit}>
           <Pencil className="h-4 w-4" />
         </IconButton>
       </div>
@@ -182,21 +183,21 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
         <div className="px-4 pb-4 pt-1">
           {status[server.id]?.message && <p className="mb-3 text-[0.8rem] leading-snug text-red-400">{status[server.id]?.message}</p>}
           <Button variant="primary" className="w-full" busy={state === 'connecting'} onClick={() => void connect(server)}>
-            {state === 'connecting' ? 'Verbinde …' : 'Verbinden'}
+            {state === 'connecting' ? tr("Verbinde …") : tr("Verbinden")}
           </Button>
         </div>
       ) : (
         <>
           {stats && (
             <div className="grid grid-cols-3 gap-2 px-4 pb-1 pt-1">
-              <Stat icon={<Cpu className="h-3.5 w-3.5" />} label="Last" value={stats.load.split(' ')[0] || '–'} />
+              <Stat icon={<Cpu className="h-3.5 w-3.5" />} label={tr("Last")} value={stats.load.split(' ')[0] || '–'} />
               <Stat icon={<MemoryStick className="h-3.5 w-3.5" />} label="RAM" value={stats.memory || '–'} />
               <Stat icon={<HardDrive className="h-3.5 w-3.5" />} label="Disk" value={stats.disk.split(' ')[0] || '–'} />
             </div>
           )}
           {stats && !stats.tools.tmux && (
             <p className="mx-4 mt-2 rounded-xl bg-amber-500/10 px-3 py-2 text-[0.78rem] leading-snug text-amber-300">
-              tmux fehlt auf dem Server. Terminals funktionieren, überleben aber keinen Verbindungsabbruch. Installieren: <code>apt install tmux</code>
+              {tr("tmux fehlt auf dem Server. Terminals funktionieren, überleben aber keinen Verbindungsabbruch. Installieren:")} <code>apt install tmux</code>
             </p>
           )}
 
@@ -213,7 +214,7 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
                   <Icon className="cf-accent-text h-5 w-5 shrink-0" />
                   <span className="min-w-0">
                     <span className="block truncate text-[0.86rem] font-semibold">{harness.name}</span>
-                    {missing ? <span className="block truncate text-[0.68rem] text-amber-400">nicht gefunden</span> : <span className="cf-muted block truncate text-[0.68rem]">{harness.command || 'bash'}</span>}
+                    {missing ? <span className="block truncate text-[0.68rem] text-amber-400">{tr("nicht gefunden")}</span> : <span className="cf-muted block truncate text-[0.68rem]">{harness.command || 'bash'}</span>}
                   </span>
                 </button>
               );
@@ -222,11 +223,11 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
 
           <div className="flex gap-2 px-4 pb-3">
             <Button className="flex-1" icon={<FolderOpen className="h-4 w-4" />} onClick={() => { setFilesTarget({ serverId: server.id }); setTab('files'); }}>
-              Dateien
+              {tr("Dateien")}
             </Button>
             {agyAccounts.length > 0 && (
               <Button className="flex-1" icon={<Users className="h-4 w-4" />} onClick={startAgyAccounts}>
-                {agyAccounts.length} agy-Accounts
+                {agyAccounts.length} {tr("agy-Accounts")}
               </Button>
             )}
           </div>
@@ -234,12 +235,12 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
           <div className="border-t border-cf-line">
             <div className="flex items-center px-4 pb-1 pt-2.5">
               <Activity className="cf-muted mr-2 h-3.5 w-3.5" />
-              <span className="cf-muted flex-1 text-[0.72rem] font-semibold uppercase tracking-[0.08em]">Laufende Sessions</span>
-              <IconButton label="Aktualisieren" onClick={() => void refresh()} className="h-8 w-8">
+              <span className="cf-muted flex-1 text-[0.72rem] font-semibold uppercase tracking-[0.08em]">{tr("Laufende Sessions")}</span>
+              <IconButton label={tr("Aktualisieren")} onClick={() => void refresh()} className="h-8 w-8">
                 {loading ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
               </IconButton>
             </div>
-            {sessions && sessions.length === 0 && <p className="cf-muted px-4 pb-3 text-[0.82rem]">Keine FancyCode-Sessions auf dem Server.</p>}
+            {sessions && sessions.length === 0 && <p className="cf-muted px-4 pb-3 text-[0.82rem]">{tr("Keine FancyCode-Sessions auf dem Server.")}</p>}
             {sessions?.map((item) => {
               const openTab = terminals.find((tab) => tab.serverId === server.id && tab.tmuxName === item.name);
               const open = Boolean(openTab);
@@ -252,11 +253,11 @@ function ServerCard({ server, onEdit }: { server: MobileServer; onEdit: () => vo
                   <button className="min-w-0 flex-1 text-left" onClick={() => attach(item.name)}>
                     <span className="block truncate text-[0.86rem] font-medium">{label}</span>
                     <span className="cf-muted block text-[0.72rem]">
-                      {open ? 'In der App geöffnet' : item.attached ? 'Woanders verbunden (z.B. PC)' : 'Im Hintergrund'} · aktiv {timeAgo(item.lastActivity)}
+                      {open ? tr("In der App geöffnet") : item.attached ? tr("Woanders verbunden (z.B. PC)") : tr("Im Hintergrund")} {tr("· aktiv")} {timeAgo(item.lastActivity)}
                     </span>
                   </button>
-                  <Button className="px-3 py-1.5 text-[0.78rem]" onClick={() => attach(item.name)}>Öffnen</Button>
-                  <IconButton label="Session beenden" className="h-8 w-8 text-red-400" onClick={() => void kill(item.name)}>
+                  <Button className="px-3 py-1.5 text-[0.78rem]" onClick={() => attach(item.name)}>{tr("Öffnen")}</Button>
+                  <IconButton label={tr("Session beenden")} className="h-8 w-8 text-red-400" onClick={() => void kill(item.name)}>
                     <X className="h-4 w-4" />
                   </IconButton>
                 </div>

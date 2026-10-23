@@ -1,3 +1,4 @@
+import { tr, locale } from '../i18n';
 import { useEffect, useState } from 'react';
 import type { ReleaseNote } from '../types';
 
@@ -8,7 +9,7 @@ export function formatReleaseDate(iso: string) {
   if (!iso) return '';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return date.toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 export function useReleaseNotes(version?: string, limit = 5, enabled = true) {
@@ -29,7 +30,7 @@ export function useReleaseNotes(version?: string, limit = 5, enabled = true) {
       try {
         const api = window.agentWorkspace?.getReleaseNotes;
         if (!api) {
-          if (!cancelled) setError('Die Aenderungen zeigt nur die Desktop-App.');
+          if (!cancelled) setError(tr("Die Aenderungen zeigt nur die Desktop-App."));
           return;
         }
         const answer = await api({ version, limit });
@@ -37,7 +38,7 @@ export function useReleaseNotes(version?: string, limit = 5, enabled = true) {
         setReleases(answer.releases || []);
         setCurrent(answer.current || null);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Die Aenderungen konnten nicht geladen werden.');
+        if (!cancelled) setError(err instanceof Error ? err.message : tr("Die Aenderungen konnten nicht geladen werden."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -137,6 +138,6 @@ export function ReleaseBody({ body, compact = false }: { body: string; compact?:
   });
   flushBullets('ul-final');
 
-  if (blocks.length === 0) return <p className="text-[11px] text-zinc-500">Keine Aenderungen notiert.</p>;
+  if (blocks.length === 0) return <p className="text-[11px] text-zinc-500">{tr("Keine Aenderungen notiert.")}</p>;
   return <div className="space-y-1.5">{blocks}</div>;
 }

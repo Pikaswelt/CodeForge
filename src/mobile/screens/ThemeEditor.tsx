@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 import { useState } from 'react';
 import { Film, ImagePlus, Trash2 } from 'lucide-react';
 import { Native, errorMessage, mediaUrl } from '../native';
@@ -13,7 +14,7 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
     () =>
       theme || {
         id: `custom-${newId().slice(0, 8)}`,
-        name: 'Mein Theme',
+        name: tr("Mein Theme"),
         background: current.bg.startsWith('#') ? current.bg : '#111111',
         surface: current.surface.startsWith('#') ? current.surface : '#1c1a1b',
         text: current.text.startsWith('#') ? current.text : '#e4e4e7',
@@ -59,7 +60,7 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
 
   const remove = async () => {
     if (!theme) return;
-    if (!(await confirm({ title: 'Theme löschen?', message: `${theme.name} wird gelöscht.`, confirmLabel: 'Löschen', danger: true }))) return;
+    if (!(await confirm({ title: tr("Theme löschen?"), message: tr("{name} wird gelöscht.", { name: theme.name }), confirmLabel: tr("Löschen"), danger: true }))) return;
     if (theme.backgroundMedia) void Native.deleteMedia({ path: theme.backgroundMedia });
     setCustomThemes((list) => list.filter((item) => item.id !== theme.id));
     if (settings.themeId === theme.id) updateSettings({ themeId: theme.baseTheme || 'modern-dark' });
@@ -75,10 +76,10 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
 
   return (
     <Sheet
-      title={theme ? 'Theme bearbeiten' : 'Eigenes Theme'}
+      title={theme ? tr("Theme bearbeiten") : tr("Eigenes Theme")}
       full
       onClose={cancel}
-      footer={<Button variant="primary" className="flex-1" onClick={save} disabled={!draft.name.trim()}>Speichern & anwenden</Button>}
+      footer={<Button variant="primary" className="flex-1" onClick={save} disabled={!draft.name.trim()}>{tr("Speichern & anwenden")}</Button>}
     >
       <div className="relative mb-4 h-44 overflow-hidden rounded-3xl border border-cf-line" style={{ background: preview.bg }}>
         <div className={cx('absolute inset-[-10%]', preview.animated && 'cf-backdrop-gradient animated')} style={{ backgroundImage: preview.gradient, backgroundSize: '220% 220%' }} />
@@ -86,9 +87,9 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
         {url && draft.backgroundMediaKind !== 'video' && <img className="cf-backdrop-media" src={url} alt="" style={{ filter: draft.mediaBlur ? `blur(${draft.mediaBlur}px)` : undefined }} />}
         {url && <div className="absolute inset-0" style={{ background: `rgb(0 0 0 / ${(draft.mediaDim ?? 40) / 100})` }} />}
         <div className="absolute inset-x-4 bottom-4 rounded-2xl border p-3" style={{ background: `color-mix(in srgb, ${preview.surface} ${settings.surfaceOpacity}%, transparent)`, borderColor: 'rgb(255 255 255 / 0.1)', color: preview.text, backdropFilter: `blur(${settings.blur}px)` }}>
-          <div className="text-[0.9rem] font-semibold">{draft.name || 'Vorschau'}</div>
-          <div className="text-[0.75rem] opacity-70">So sieht FancyCode damit aus</div>
-          <div className="mt-2 inline-block rounded-lg px-3 py-1 text-[0.75rem] font-semibold" style={{ background: preview.accent, color: '#111' }}>Akzent</div>
+          <div className="text-[0.9rem] font-semibold">{draft.name || tr("Vorschau")}</div>
+          <div className="text-[0.75rem] opacity-70">{tr("So sieht FancyCode damit aus")}</div>
+          <div className="mt-2 inline-block rounded-lg px-3 py-1 text-[0.75rem] font-semibold" style={{ background: preview.accent, color: '#111' }}>{tr("Akzent")}</div>
         </div>
       </div>
 
@@ -100,12 +101,12 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
         <Segmented
           value={draft.mediaOnly ? 'media' : 'full'}
           onChange={(value) => set({ mediaOnly: value === 'media' })}
-          options={[{ value: 'full', label: 'Eigene Farben' }, { value: 'media', label: 'Nur Hintergrund' }]}
+          options={[{ value: 'full', label: tr("Eigene Farben") }, { value: 'media', label: tr("Nur Hintergrund") }]}
         />
       </div>
 
       {draft.mediaOnly ? (
-        <Field label="Look übernehmen von" hint="Farben dieses Themes bleiben, nur der Hintergrund wird ersetzt.">
+        <Field label={tr("Look übernehmen von")} hint={tr("Farben dieses Themes bleiben, nur der Hintergrund wird ersetzt.")}>
           <select className="cf-input" value={draft.baseTheme} onChange={(event) => set({ baseTheme: event.target.value })}>
             {BUILT_IN_THEMES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             {customThemes.filter((item) => !item.mediaOnly && item.id !== draft.id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -115,10 +116,10 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
         <>
           <div className="mb-3 grid grid-cols-2 gap-2">
             {([
-              ['background', 'Hintergrund'],
-              ['surface', 'Flächen'],
-              ['text', 'Text'],
-              ['accent', 'Akzent'],
+              ['background', tr("Hintergrund")],
+              ['surface', tr("Flächen")],
+              ['text', tr("Text")],
+              ['accent', tr("Akzent")],
             ] as const).map(([key, label]) => (
               <label key={key} className="cf-press flex items-center gap-3 rounded-2xl border border-cf-line bg-cf-hover px-3 py-2.5">
                 <input type="color" value={draft[key]} onChange={(event) => set({ [key]: event.target.value })} className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border-0 bg-transparent p-0" />
@@ -130,30 +131,30 @@ export default function ThemeEditor({ theme, onClose }: { theme?: MobileTheme; o
             ))}
           </div>
           <div className="cf-glass cf-card mb-3 overflow-hidden">
-            <Toggle checked={Boolean(draft.animatedGradient)} onChange={(value) => set({ animatedGradient: value })} label="Animierter Verlauf" description="Der Farbverlauf bewegt sich langsam" />
+            <Toggle checked={Boolean(draft.animatedGradient)} onChange={(value) => set({ animatedGradient: value })} label={tr("Animierter Verlauf")} description={tr("Der Farbverlauf bewegt sich langsam")} />
           </div>
         </>
       )}
 
-      <div className="mb-2 mt-1 px-0.5 text-[0.8rem] font-medium cf-muted">Hintergrundbild oder -video vom Handy</div>
+      <div className="mb-2 mt-1 px-0.5 text-[0.8rem] font-medium cf-muted">{tr("Hintergrundbild oder -video vom Handy")}</div>
       <div className="mb-3 grid grid-cols-2 gap-2">
-        <Button icon={<ImagePlus className="h-4 w-4" />} busy={busy} onClick={() => void pickMedia('image')}>Bild</Button>
-        <Button icon={<Film className="h-4 w-4" />} busy={busy} onClick={() => void pickMedia('video')}>Video</Button>
+        <Button icon={<ImagePlus className="h-4 w-4" />} busy={busy} onClick={() => void pickMedia('image')}>{tr("Bild")}</Button>
+        <Button icon={<Film className="h-4 w-4" />} busy={busy} onClick={() => void pickMedia('video')}>{tr("Video")}</Button>
       </div>
       {draft.backgroundMedia && (
         <div className="cf-glass cf-card mb-3 overflow-hidden">
-          <Slider label="Abdunkeln" value={draft.mediaDim ?? 40} min={0} max={90} unit="%" onChange={(value) => set({ mediaDim: value })} />
-          <Slider label="Weichzeichnen" value={draft.mediaBlur ?? 0} min={0} max={24} unit="px" onChange={(value) => set({ mediaBlur: value })} />
+          <Slider label={tr("Abdunkeln")} value={draft.mediaDim ?? 40} min={0} max={90} unit="%" onChange={(value) => set({ mediaDim: value })} />
+          <Slider label={tr("Weichzeichnen")} value={draft.mediaBlur ?? 0} min={0} max={24} unit="px" onChange={(value) => set({ mediaBlur: value })} />
           <button onClick={clearMedia} className="cf-press flex w-full items-center gap-2 border-t border-cf-line px-4 py-3 text-[0.9rem] text-red-400">
-            <Trash2 className="h-4 w-4" /> Hintergrund entfernen
+            <Trash2 className="h-4 w-4" /> {tr("Hintergrund entfernen")}
           </button>
         </div>
       )}
-      <p className="cf-muted mb-4 text-[0.75rem] leading-relaxed">Videos laufen stumm in Dauerschleife. Die Datei wird in den App-Speicher kopiert, das Original kannst du danach löschen.</p>
+      <p className="cf-muted mb-4 text-[0.75rem] leading-relaxed">{tr("Videos laufen stumm in Dauerschleife. Die Datei wird in den App-Speicher kopiert, das Original kannst du danach löschen.")}</p>
 
       {theme && (
         <Button variant="danger" className="w-full" icon={<Trash2 className="h-4 w-4" />} onClick={() => void remove()}>
-          Theme löschen
+          {tr("Theme löschen")}
         </Button>
       )}
     </Sheet>

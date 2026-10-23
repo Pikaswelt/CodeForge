@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/fancycode.png" alt="FancyCode logo" width="112" />
+  <img src="assets/fancycode.png" alt="FancyCode Desktop logo" width="112" />
 </p>
 
-<h1 align="center">FancyCode</h1>
+<h1 align="center">FancyCode Desktop</h1>
 
 <p align="center">
   <strong>A desktop workspace for AI coding agents.</strong><br />
@@ -31,7 +31,7 @@
 
 ## Overview
 
-FancyCode is an Electron app that turns your machine into a control center for AI-assisted development. Instead of juggling terminal windows, you start a **workspace** with up to four agent terminals in a grid, or open a **chat** with any Anthropic, OpenAI or OpenAI-compatible model that knows which project you are working on.
+FancyCode Desktop is an Electron app that turns your machine into a control center for AI-assisted development. Instead of juggling terminal windows, you start a **workspace** with up to four agent terminals in a grid, or open a **chat** with any Anthropic, OpenAI or OpenAI-compatible model that knows which project you are working on.
 
 Everything runs locally. Your projects, chats and API keys stay on your computer.
 
@@ -54,7 +54,7 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 ### API chat
 - Chat directly with **Anthropic**, **OpenAI** or any **OpenAI-compatible** endpoint (Ollama, OpenRouter, LM Studio, …).
 - Save multiple **AI providers** with URL, API key and default model; load the model list with one click.
-- Attach a **project** to a chat. FancyCode sends its name, path and file list as context.
+- Attach a **project** to a chat. FancyCode Desktop sends its name, path and file list as context.
 - Chats are grouped by project in the sidebar.
 
 ### Voice input
@@ -82,7 +82,7 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - **Take over from the PC**: on the home screen choose *Für Android exportieren* next to your V-Servers, copy the file to the phone and import it under *Vom PC übernehmen*.
 
 ### Automatic updates
-- FancyCode checks GitHub Releases on start and every six hours.
+- FancyCode Desktop checks GitHub Releases on start and every six hours.
 - Updates download in the background and are verified with SHA-512.
 - Installation starts with one click, so running agents are never interrupted.
 
@@ -92,13 +92,13 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 
 Download the package for your system from the [latest release](https://github.com/Pikaswelt/CodeForge/releases/latest).
 
-**Windows:** run `FancyCode-Setup-<version>.exe`. FancyCode installs per user and needs no admin rights.
+**Windows:** run `FancyCode-Desktop-Setup-<version>.exe`. FancyCode Desktop installs per user and needs no admin rights.
 
 **Linux (AppImage, any distribution):**
 
 ```bash
-chmod +x FancyCode-<version>-x86_64.AppImage
-./FancyCode-<version>-x86_64.AppImage
+chmod +x FancyCode-Desktop-<version>-x86_64.AppImage
+./FancyCode-Desktop-<version>-x86_64.AppImage
 ```
 
 The AppImage updates itself.
@@ -106,10 +106,10 @@ The AppImage updates itself.
 **Debian / Ubuntu:**
 
 ```bash
-sudo apt install ./FancyCode-<version>-amd64.deb
+sudo apt install ./FancyCode-Desktop-<version>-amd64.deb
 ```
 
-With the `.deb` package, FancyCode downloads updates and opens them in your system installer.
+With the `.deb` package, FancyCode Desktop downloads updates and opens them in your system installer.
 
 **Android:** download `FancyCode-Android-<version>.apk` from the release (or the *FancyCode-Android* artifact of the **Android APK** workflow run), open it on the phone and allow the installation from this source. Android 8.0 or newer. New versions install over the old one and keep your servers and settings.
 
@@ -148,7 +148,7 @@ Sessions run in tmux (`apt install tmux`): they keep running when the SSH connec
 
 ```bash
 git clone https://github.com/Pikaswelt/CodeForge.git
-cd FancyCode
+cd CodeForge
 npm install
 
 npm run dev        # Vite dev server + Electron with hot reload
@@ -190,7 +190,7 @@ src/
 
 1. Bump `version` in `package.json`.
 2. Run `npm run dist:win`.
-3. Create a GitHub release `v<version>` and attach `FancyCode-Setup-<version>.exe`, its `.blockmap` and `latest.yml`.
+3. Create a GitHub release `v<version>` and attach `FancyCode-Desktop-Setup-<version>.exe`, its `.blockmap` and `latest.yml`.
 4. The **Linux release** workflow builds the AppImage and `.deb` on GitHub Actions and attaches them, together with `latest-linux.yml`.
 5. The **Android APK** workflow builds `FancyCode-Android-<version>.apk` and attaches it. It is signed with the release key from the secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Together with `ANDROID_OLD_KEYSTORE_BASE64` and `ANDROID_OLD_KEYSTORE_PASSWORD` (the key of the CodeForge releases) the APK also carries the key rotation in `android/app/signing-lineage.bin`, so installed apps update without being uninstalled. Without secrets the APK is signed with a debug key.
 
@@ -198,7 +198,7 @@ Installed apps pick up the new version automatically.
 
 ## Privacy
 
-- FancyCode has no telemetry.
+- FancyCode Desktop has no telemetry.
 - API keys, chats and settings are stored locally in the app's data folder.
 - Network requests go to the AI providers you configure and to GitHub for update checks.
 - If you enable the optional Spotify widget, it looks up album artwork on Deezer or iTunes.

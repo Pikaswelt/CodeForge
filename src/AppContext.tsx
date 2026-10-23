@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 import {
   createContext,
   useCallback,
@@ -8,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { pushAsk, pushForm, pushNotify, setPopupFocusHandler } from './agentPopups';
 import type {
   VServerConnection,
   AccessMode,
@@ -44,6 +46,8 @@ import type {
   WorkDisplayMode,
 } from './types';
 import { uiClick, uiKey, uiSnapshot, uiType } from './uiControl';
+import { planInfo, writePlan } from './plans';
+import { THEME_CREATOR_EVENT, wantsThemeCreator } from './themeIntent';
 import { DEFAULT_MULTI_LAUNCH_CONFIG } from './types';
 
 export type Theme = string;
@@ -81,7 +85,7 @@ export const DEFAULT_LIBRARY_STYLE: LibraryStyle = {
   bannerTitle: '',
   bannerText: '',
 };
-export type MainView = 'library' | 'chat' | 'workspace';
+export type MainView = 'library' | 'chat' | 'workspace' | 'fancycode';
 
 export type ProviderModel = {
   id: string;
@@ -112,6 +116,9 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
   ],
+  hermes: [
+    { id: 'default', name: 'Hermes Standard' },
+  ],
   cursor: [
     { id: 'default', name: 'Cursor Standard' },
     { id: 'gpt-5.5', name: 'GPT-5.5' },
@@ -135,6 +142,7 @@ const DEFAULT_MODEL: Record<ProviderId, string> = {
   antigravity: PROVIDER_MODELS.antigravity[0].id,
   openai: PROVIDER_MODELS.openai[0].id,
   anthropic: PROVIDER_MODELS.anthropic[0].id,
+  hermes: PROVIDER_MODELS.hermes[0].id,
   cursor: PROVIDER_MODELS.cursor[0].id,
   opencode: PROVIDER_MODELS.opencode[0].id,
   freebuff: PROVIDER_MODELS.freebuff[0].id,
@@ -144,6 +152,7 @@ const EMPTY_STATUS: CliStatus = {
   antigravity: { installed: false, executable: '', version: '' },
   openai: { installed: false, executable: '', version: '' },
   anthropic: { installed: false, executable: '', version: '' },
+  hermes: { installed: false, executable: '', version: '' },
   cursor: { installed: false, executable: '', version: '' },
   opencode: { installed: false, executable: '', version: '' },
   freebuff: { installed: false, executable: '', version: '' },
@@ -175,20 +184,20 @@ const MAX_HISTORY_MESSAGE_CHARS = 8_000;
 const SCRATCH_PROJECT_ID = 'scratch-project';
 
 const RESPONSE_STYLE_PROMPTS: Record<ResponseDisplayMode, string> = {
-  bullets: 'Antworte kompakt mit kurzen Abschnitten und wenigen Stichpunkten. Nenne das Ergebnis zuerst.',
-  plain: 'Antworte als klare, natuerliche Kurzantwort ohne viele Listen. Nenne das Ergebnis zuerst.',
-  detailed: 'Antworte etwas ausfuehrlicher mit kurzer Einordnung, konkreten Aenderungen und Pruefung.',
-  checklist: 'Antworte als abhakbare Checkliste mit erledigten Punkten, offenen Punkten und Pruefung.',
-  technical: 'Antworte technisch praezise mit Dateipfaden, Befehlen und relevanten Implementierungsdetails.',
+  bullets: tr('Antworte kompakt mit kurzen Abschnitten und wenigen Stichpunkten. Nenne das Ergebnis zuerst.'),
+  plain: tr('Antworte als klare, natuerliche Kurzantwort ohne viele Listen. Nenne das Ergebnis zuerst.'),
+  detailed: tr('Antworte etwas ausfuehrlicher mit kurzer Einordnung, konkreten Aenderungen und Pruefung.'),
+  checklist: tr('Antworte als abhakbare Checkliste mit erledigten Punkten, offenen Punkten und Pruefung.'),
+  technical: tr('Antworte technisch praezise mit Dateipfaden, Befehlen und relevanten Implementierungsdetails.'),
 };
 
 export const RECOMMENDED_SYSTEM_PROMPT =
-  'Du bist ein sorgfaeltiger Coding-Agent im lokalen Projekt. Arbeite in kleinen, nachvollziehbaren Schritten, lies vorhandene Patterns zuerst, veraendere nur relevante Dateien, schuetze bestehende Nutzerarbeit und pruefe deine Aenderungen mit passenden Tests oder Builds. Antworte knapp, ehrlich und mit konkreten Ergebnissen.';
+  tr('Du bist ein sorgfaeltiger Coding-Agent im lokalen Projekt. Arbeite in kleinen, nachvollziehbaren Schritten, lies vorhandene Patterns zuerst, veraendere nur relevante Dateien, schuetze bestehende Nutzerarbeit und pruefe deine Aenderungen mit passenden Tests oder Builds. Antworte knapp, ehrlich und mit konkreten Ergebnissen.');
 
 export const LYZ_DEV_PLUGIN_NAME = 'Lyz Dev - Gaming Development';
 const LYZ_DEV_CHAT_TITLE = 'Lyz Dev Chat';
 const LYZ_DEV_SYSTEM_PROMPT =
-  'Lyz Dev ist aktiv. Arbeite als Gaming-Development-Agent fuer Unity-Projekte. Pruefe vor Unity-bezogenen Aktionen die verfuegbare Unity-MCP-Verbindung und nutze sie fuer Szenen-, GameObject-, Asset- und Editor-Kontext. Wenn keine Unity-MCP-Verbindung verfuegbar ist, stoppe und erklaere knapp, welche Unity-MCP-Verbindung fehlt.';
+  tr('Lyz Dev ist aktiv. Arbeite als Gaming-Development-Agent fuer Unity-Projekte. Pruefe vor Unity-bezogenen Aktionen die verfuegbare Unity-MCP-Verbindung und nutze sie fuer Szenen-, GameObject-, Asset- und Editor-Kontext. Wenn keine Unity-MCP-Verbindung verfuegbar ist, stoppe und erklaere knapp, welche Unity-MCP-Verbindung fehlt.');
 
 interface AppContextType {
   folders: ProjectFolder[];
@@ -373,6 +382,7 @@ interface AppContextType {
   startLyzDevChat(): Promise<void>;
   startTerminalChat(): Promise<void>;
   startWorkspace(input: { harnessId: string; grid: boolean; count: number }): Promise<void>;
+  startHarnessChat(harness: CliHarness): Promise<void>;
   agyAccounts: AgyAccount[];
   setAgyAccounts: React.Dispatch<React.SetStateAction<AgyAccount[]>>;
   startAgyAccounts(accountIds?: string[], server?: VServerConnection, options?: { resume?: boolean }): Promise<Chat>;
@@ -426,6 +436,47 @@ function writeStorage(key: string, value: unknown) {
   localStorage.setItem(`${STORAGE_PREFIX}.${key}`, JSON.stringify(value));
 }
 
+// Die eigene Harness „FancyCode“ einmalig vorne einreihen; wer sie danach entfernt, bekommt sie nicht zurück.
+function withFancyCode(harnesses: CliHarness[]): CliHarness[] {
+  const flag = `${STORAGE_PREFIX}.fancycodeHarnessAdded`;
+  try {
+    if (localStorage.getItem(flag)) return harnesses;
+    localStorage.setItem(flag, '1');
+  } catch {
+    return harnesses;
+  }
+  if (harnesses.some((h) => h.command === 'fancycode')) return harnesses;
+  return [{ id: 'fancycode', name: 'FancyCode', command: 'fancycode', icon: 'Zap' }, ...harnesses];
+}
+
+// Welcher Chat-Anbieter hinter einer Harness-CLI steckt.
+export function harnessProvider(command: string): ProviderId | null {
+  const bin = command.trim().split(/\s+/)[0].split(/[\\/]/).pop() || '';
+  if (bin === 'claude') return 'anthropic';
+  if (bin === 'codex') return 'openai';
+  if (bin === 'agy' || bin === 'antigravity') return 'antigravity';
+  if (bin === 'hermes') return 'hermes';
+  if (bin === 'agent' || bin === 'cursor-agent') return 'cursor';
+  if (bin === 'opencode') return 'opencode';
+  if (bin === 'freebuff') return 'freebuff';
+  return null;
+}
+
+// „Harness starten“ zeigt Hermes Agent als Auswahl, auch bei bestehenden Installationen.
+function withHermes(harnesses: CliHarness[]): CliHarness[] {
+  const flag = `${STORAGE_PREFIX}.hermesHarnessAdded`;
+  try {
+    if (localStorage.getItem(flag)) return harnesses;
+    localStorage.setItem(flag, '1');
+  } catch {
+    return harnesses;
+  }
+  if (harnesses.some((h) => h.command === 'hermes')) return harnesses;
+  const index = harnesses.findIndex((h) => !h.command);
+  const entry: CliHarness = { id: 'hermes', name: 'Hermes Agent', command: 'hermes', icon: 'Sparkles' };
+  return index === -1 ? [...harnesses, entry] : [...harnesses.slice(0, index), entry, ...harnesses.slice(index)];
+}
+
 function getInitialLibrarySettings(): {
   bannerBackgroundEnabled: boolean;
   libraryStyle: LibraryStyle;
@@ -441,7 +492,7 @@ function getInitialLibrarySettings(): {
 
   if (!isMigrated) {
     try {
-      // Check if user is an existing user who previously had data in FancyCode
+      // Check if user is an existing user who previously had data in FancyCode Desktop
       const hasAnyExistingData = Boolean(
         localStorage.getItem('agentWorkspace.setup') !== null ||
         localStorage.getItem('agentWorkspace.folders') !== null ||
@@ -502,7 +553,7 @@ export const MAX_AGY_ACCOUNTS = 8;
 // Claude Code without permission prompts; it reaches all terminals through the codeforge MCP server.
 const MANAGER_TAB = (id: string, inServerWorkspace: boolean): TerminalTab => ({
   id,
-  title: 'Manager (Claude Code)',
+  title: tr("Manager (Claude Code)"),
   shellType: 'cmd',
   command: 'claude --dangerously-skip-permissions',
   // The MCP server runs on this PC, so the manager must too, even in a V-Server workspace.
@@ -533,13 +584,13 @@ function formatDurationForNotification(ms: number) {
 
 function buildLocalFormattingTestOutput(projectPath: string) {
   return [
-    'Lokaler Testmodus: Diese Antwort wurde ohne KI- oder CLI-Aufruf erzeugt und verbraucht keine Tokens.',
+    tr("Lokaler Testmodus: Diese Antwort wurde ohne KI- oder CLI-Aufruf erzeugt und verbraucht keine Tokens."),
     '',
-    'Die Chat-Formatierung sollte jetzt normalen Text, Listen, Codebloecke und Diffs sauber anzeigen.',
+    tr("Die Chat-Formatierung sollte jetzt normalen Text, Listen, Codebloecke und Diffs sauber anzeigen."),
     '',
-    '- Statusmeldungen bleiben lesbar.',
-    '- Code wird als Codeblock formatiert.',
-    '- Diffs werden als Datei-Aenderung erkannt.',
+    tr("- Statusmeldungen bleiben lesbar."),
+    tr("- Code wird als Codeblock formatiert."),
+    tr("- Diffs werden als Datei-Aenderung erkannt."),
     '',
     '```ts',
     'type FormatCheck = {',
@@ -549,7 +600,7 @@ function buildLocalFormattingTestOutput(projectPath: string) {
     '',
     'const result: FormatCheck = {',
     '  ok: true,',
-    "  message: 'FancyCode formatiert diese Testantwort lokal.',",
+    "  message: '" + tr("FancyCode Desktop formatiert diese Testantwort lokal.") + "',",
     '};',
     '```',
     '',
@@ -562,12 +613,12 @@ function buildLocalFormattingTestOutput(projectPath: string) {
     '+++ b/src/format-test.ts',
     '@@ -0,0 +1,5 @@',
     '+export function localFormattingTest() {',
-    "+  return 'Keine Tokens verbraucht.';",
+    "+  return '" + tr("Keine Tokens verbraucht.") + "';",
     '+}',
     '+',
     '+console.log(localFormattingTest());',
     '',
-    'Fertig: Der lokale Test ist abgeschlossen.',
+    tr("Fertig: Der lokale Test ist abgeschlossen."),
   ].join('\n');
 }
 
@@ -584,24 +635,24 @@ function buildAgentPrompt(chat: Chat, latestText: string) {
   const priorMessages = chat.messages.slice(0, -1).slice(-8);
   const context = priorMessages
     .map((message) => {
-      const speaker = message.sender === 'user' ? 'Nutzer' : 'Assistent';
+      const speaker = message.sender === 'user' ? tr("Nutzer") : tr("Assistent");
       return `${speaker}: ${trimForAgentHistory(message.text)}`;
     })
     .join('\n\n');
   const prompt = [
-    'Setze diese Unterhaltung fort.',
+    tr("Setze diese Unterhaltung fort."),
     context ? `Bisheriger Kontext, gekuerzt:\n\n${context}` : '',
     `Letzte Nutzeranfrage:\n\n${latestUser}`,
-    'Bearbeite die letzte Nutzeranfrage im Projektordner.',
+    tr("Bearbeite die letzte Nutzeranfrage im Projektordner."),
   ]
     .filter(Boolean)
     .join('\n\n');
 
   if (prompt.length <= MAX_AGENT_PROMPT_CHARS) return prompt;
   return [
-    'Setze diese Unterhaltung fort. Der bisherige Kontext wurde gekuerzt, weil er sehr lang ist.',
+    tr("Setze diese Unterhaltung fort. Der bisherige Kontext wurde gekuerzt, weil er sehr lang ist."),
     `Letzte Nutzeranfrage:\n\n${latestUser}`,
-    'Bearbeite die letzte Nutzeranfrage im Projektordner.',
+    tr("Bearbeite die letzte Nutzeranfrage im Projektordner."),
   ].join('\n\n');
 }
 
@@ -646,12 +697,12 @@ function isUnityMcpServer(server: McpServerInfo) {
 }
 
 async function requireUnityMcpConnection() {
-  if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+  if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
   const servers = await window.agentWorkspace.getMcpServers();
   const unityServer = servers.find(isUnityMcpServer);
   if (!unityServer) {
     throw new Error(
-      'Lyz Dev braucht eine aktive Unity-MCP-Verbindung. In den MCP-Konfigurationen wurde kein nutzbarer Unity-MCP-Server gefunden.',
+      tr('Lyz Dev braucht eine aktive Unity-MCP-Verbindung. In den MCP-Konfigurationen wurde kein nutzbarer Unity-MCP-Server gefunden.'),
     );
   }
   return unityServer;
@@ -686,7 +737,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (legacy.provider && (legacy.apiKey || legacy.baseUrl)) {
       return withBuiltin([{
         id: newId(),
-        name: legacy.provider === 'anthropic' ? 'Anthropic' : legacy.provider === 'openai' ? 'OpenAI' : 'OpenAI-kompatibel',
+        name: legacy.provider === 'anthropic' ? 'Anthropic' : legacy.provider === 'openai' ? 'OpenAI' : tr("OpenAI-kompatibel"),
         provider: legacy.provider,
         baseUrl: legacy.baseUrl || '',
         apiKey: legacy.apiKey || '',
@@ -769,6 +820,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       antigravity: readStorage<Theme>('theme', 'modern-dark'),
       openai: 'modern-dark',
       anthropic: 'modern-dark',
+      hermes: 'modern-dark',
       cursor: 'modern-dark',
       opencode: 'modern-dark',
       freebuff: 'modern-dark',
@@ -831,7 +883,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readStorage('discordRpcEnabled', true),
   );
   const [discordIdleMessage, setDiscordIdleMessageState] = useState(() =>
-    readStorage('discordIdleMessage', 'Bereit'),
+    readStorage('discordIdleMessage', tr("Bereit")),
   );
   const [terminalStartPath, setTerminalStartPath] = useState(() =>
     readStorage('terminalStartPath', ''),
@@ -843,12 +895,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readStorage('terminalStartCommand', ''),
   );
   const [cliHarnesses, setCliHarnesses] = useState<CliHarness[]>(() =>
-    readStorage('cliHarnesses', [
+    withHermes(withFancyCode(readStorage('cliHarnesses', [
+      { id: 'fancycode', name: 'FancyCode', command: 'fancycode', icon: 'Zap' },
       { id: 'claude', name: 'Claude Code', command: 'claude', icon: 'Sparkles' },
       { id: 'codex', name: 'Codex CLI', command: 'codex', icon: 'Code2' },
+      { id: 'hermes', name: 'Hermes Agent', command: 'hermes', icon: 'Sparkles' },
       { id: 'antigravity', name: 'Antigravity CLI', command: 'agy', icon: 'Rocket' },
-      { id: 'shell', name: 'Leeres Terminal', command: '', icon: 'Terminal' },
-    ]),
+      { id: 'shell', name: tr('Leeres Terminal'), command: '', icon: tr("Terminal") },
+    ]))),
   );
   const [agyAccounts, setAgyAccounts] = useState<AgyAccount[]>(() => readStorage('agyAccounts', []));
   const [multiLaunchConfig, setMultiLaunchConfig] = useState<MultiLaunchConfig>(() =>
@@ -882,6 +936,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readStorage('platformStartCommands', {
       antigravity: 'agy',
       anthropic: 'claude',
+      hermes: 'hermes',
       openai: 'codex',
       cursor: 'cursor',
       opencode: 'opencode',
@@ -892,6 +947,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readStorage('platformWaitTimes', {
       antigravity: 3000,
       anthropic: 5000,
+      hermes: 5000,
       openai: 5000,
       cursor: 5000,
       opencode: 5000,
@@ -942,6 +998,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   useEffect(() => writeStorage('homeApps', homeApps), [homeApps]);
   useEffect(() => writeStorage('libraryApps', libraryApps), [libraryApps]);
+
+  // Tarif vom Server übernehmen, damit Terminal- und V-Server-Grenzen stimmen.
+  // Beim Zurückkehren ins Fenster wird neu geladen, damit Tarifwechsel sofort greifen.
+  useEffect(() => {
+    const api = window.agentWorkspace?.fancyAccount;
+    if (!api) return;
+    let active = true;
+    const syncPlan = () => {
+      api
+        .me()
+        .then((account) => {
+          if (active && account?.plan) writePlan(account.plan);
+        })
+        .catch(() => {});
+    };
+    syncPlan();
+    window.addEventListener('focus', syncPlan);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', syncPlan);
+    };
+  }, []);
   useEffect(() => writeStorage('libraryTags', libraryTags), [libraryTags]);
   useEffect(
     () => writeStorage('libraryBannerBackgroundEnabled', libraryBannerBackgroundEnabled),
@@ -1222,7 +1300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const installCli = useCallback(async (installProvider: ProviderId) => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const result = await window.agentWorkspace.installCli(installProvider);
     await refreshCliStatus();
     return result.message;
@@ -1374,11 +1452,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const info: ProviderUsageInfo = {
       provider: 'antigravity',
       available: true,
-      label: 'Antigravity Terminal Nutzung',
+      label: tr("Antigravity Terminal Nutzung"),
       usedTokens: usedTokens || undefined,
       limitTokens: limitTokens || undefined,
       quotaGroups: parseAntigravityQuotaGroups(cleanOutput),
-      raw: extracted || cleanOutput || 'Keine Terminalausgabe erhalten.',
+      raw: extracted || cleanOutput || tr("Keine Terminalausgabe erhalten."),
       checkedAt: Date.now(),
     };
 
@@ -1432,8 +1510,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void window.agentWorkspace?.updateDiscordPresence({
       enabled: discordRpcEnabled,
-      details: isAnySending ? 'Agent arbeitet' : discordIdleMessage.trim() || 'Bereit',
-      projectName: selectedProject?.title || 'Ohne Projekt',
+      details: isAnySending ? tr("Agent arbeitet") : discordIdleMessage.trim() || tr("Bereit"),
+      projectName: selectedProject?.title || tr("Ohne Projekt"),
       provider,
       model: aiModel,
       isRunning: isAnySending,
@@ -1458,12 +1536,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const lastOutput = lines.at(-1)?.trim() || chunk.trim() || run.lastOutput;
         const phase =
           testSignals > 0
-            ? 'Prueft Ergebnis'
+            ? tr("Prueft Ergebnis")
             : codeSignals > 0
-              ? 'Codet im Projekt'
+              ? tr("Codet im Projekt")
               : run.outputLines === 0
-                ? 'Startet Agent'
-                : 'Analysiert Kontext';
+                ? tr("Startet Agent")
+                : tr("Analysiert Kontext");
 
         return {
           ...current,
@@ -1536,15 +1614,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const testExternalServer = async () => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const result = await window.agentWorkspace.testExternalServer({
       provider,
       externalServer: { ...externalServer, enabled: true },
     });
     if (!result.ok) {
-      throw new Error(result.error || result.output || 'Externer Server konnte nicht erreicht werden.');
+      throw new Error(result.error || result.output || tr("Externer Server konnte nicht erreicht werden."));
     }
-    return result.output || 'Externer Server ist erreichbar.';
+    return result.output || tr("Externer Server ist erreichbar.");
   };
 
   const setSystemPrompt = (prompt: string) => {
@@ -1557,7 +1635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const generateSystemPrompt = async () => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     if (!selectedProject) throw new Error('Waehle zuerst einen Projektordner.');
     const result = await window.agentWorkspace.generateSystemPrompt({
       provider,
@@ -1569,7 +1647,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       externalServer: externalServer.enabled ? externalServer : undefined,
     });
     if (!result.ok) {
-      throw new Error(result.error || result.output || 'System-Prompt konnte nicht generiert werden.');
+      throw new Error(result.error || result.output || tr("System-Prompt konnte nicht generiert werden."));
     }
     const generatedPrompt = result.output.trim();
     setSystemPrompt(generatedPrompt);
@@ -1717,7 +1795,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const tab: HomeAppTab = {
       id: newId(),
       appId: 'browser-' + newId(),
-      name: title || 'Browser',
+      name: title || tr("Browser"),
       path: url,
       kind: 'web',
       url: url,
@@ -1775,8 +1853,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     writeStorage('discordRpcEnabled', value);
     void window.agentWorkspace?.updateDiscordPresence({
       enabled: value,
-      details: isAnySending ? 'Agent arbeitet' : discordIdleMessage.trim() || 'Bereit',
-      projectName: selectedProject?.title || 'Ohne Projekt',
+      details: isAnySending ? tr("Agent arbeitet") : discordIdleMessage.trim() || tr("Bereit"),
+      projectName: selectedProject?.title || tr("Ohne Projekt"),
       provider,
       model: aiModel,
       isRunning: isAnySending,
@@ -1797,7 +1875,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const programPath = input.programPath || '';
     const fallbackName =
       folderPath.split(/[\\/]/).filter(Boolean).at(-1) ||
-      'Projekt';
+      tr("Projekt");
     const promptedName = input.name?.trim() || window.prompt('Projektname:', fallbackName)?.trim();
     if (!promptedName) return;
     const promptedDescription = input.description?.trim() || window.prompt('Beschreibung:', '')?.trim() || '';
@@ -1861,7 +1939,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const kind = 'native';
     const runPath = resolveHomeAppRunPath(app);
     if (!hasHomeAppRunFile(app)) {
-      window.alert('Dieses Projekt hat noch keine ausfuehrbare Datei. Fuege per Rechtsklick eine Latest Release, einen Installer oder ein Programm hinzu.');
+      window.alert(tr("Dieses Projekt hat noch keine ausfuehrbare Datei. Fuege per Rechtsklick eine Latest Release, einen Installer oder ein Programm hinzu."));
       return;
     }
     const existing = homeTabs.find((tab) => tab.appId === app.id);
@@ -1896,8 +1974,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const createLibraryNewProject = async () => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
-    const name = window.prompt('Name fuer das neue Projekt:', 'Neues Projekt')?.trim();
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
+    const name = window.prompt(tr("Name fuer das neue Projekt:"), 'Neues Projekt')?.trim();
     if (!name) return;
     const selectedPath = await window.agentWorkspace.createProjectFolder(name);
     if (!selectedPath) return;
@@ -1908,7 +1986,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const saveLibraryProject = async (input: Partial<ProjectFolder> & { title: string }) => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const title = input.title.trim();
     if (!title) return null;
     const selectedPath = input.path || await window.agentWorkspace.createProjectFolder(title);
@@ -1945,7 +2023,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const programPath = input.programPath || '';
     const fallbackName =
       folderPath.split(/[\\/]/).filter(Boolean).at(-1) ||
-      'Projekt';
+      tr("Projekt");
     const promptedName = input.name?.trim() || window.prompt('Projektname:', fallbackName)?.trim();
     if (!promptedName) return;
     const promptedDescription = input.description?.trim() || window.prompt('Beschreibung:', '')?.trim() || '';
@@ -2003,7 +2081,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const launchLibraryApp = async (app: HomeApp) => {
     const runPath = resolveHomeAppRunPath(app);
     if (!hasHomeAppRunFile(app)) {
-      window.alert('Dieses Projekt hat noch keine ausfuehrbare Datei. Fuege per Rechtsklick eine Latest Release, einen Installer oder ein Programm hinzu.');
+      window.alert(tr("Dieses Projekt hat noch keine ausfuehrbare Datei. Fuege per Rechtsklick eine Latest Release, einen Installer oder ein Programm hinzu."));
       return;
     }
     await window.agentWorkspace?.launchApplication(runPath);
@@ -2090,7 +2168,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedFolderId(id);
     setSelectedChatId(null);
     setActiveHomeTabId(null);
-    setMainView('chat');
+    // In der FancyCode-Ansicht bleiben: dort wechselt nur der Projektordner.
+    setMainView((view) => (view === 'fancycode' ? view : 'chat'));
   };
 
   const addProject = async () => {
@@ -2108,7 +2187,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const saveProject = async (input: Partial<ProjectFolder> & { title: string }) => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const title = input.title.trim();
     if (!title) return null;
     const selectedPath = input.path || await window.agentWorkspace.createProjectFolder(title);
@@ -2140,8 +2219,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const createNewProject = async () => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
-    const name = window.prompt('Name fuer das neue Projekt:', 'Neues Projekt')?.trim();
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
+    const name = window.prompt(tr("Name fuer das neue Projekt:"), 'Neues Projekt')?.trim();
     if (!name) return;
     const selectedPath = await window.agentWorkspace.createProjectFolder(name);
     if (!selectedPath) return;
@@ -2166,7 +2245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const defaultPath = mobileConnectionConfig?.vpsProjectPath || '/root/codeforge-project';
       const scratch = {
         id: SCRATCH_PROJECT_ID,
-        title: 'Ohne Projekt',
+        title: tr("Ohne Projekt"),
         path: defaultPath,
         isScratch: true,
       };
@@ -2181,7 +2260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const scratchPath = await window.agentWorkspace.getScratchProjectFolder();
     const scratch = {
       id: SCRATCH_PROJECT_ID,
-      title: 'Ohne Projekt',
+      title: tr("Ohne Projekt"),
       path: scratchPath,
       isScratch: true,
     };
@@ -2239,7 +2318,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       messages: [
         {
           id: newId(),
-          text: `Lyz Dev ist bereit. Unity-MCP erkannt: ${unityServer.name} (${unityServer.source}).`,
+          text: tr("Lyz Dev ist bereit. Unity-MCP erkannt: {server} ({source}).", { server: unityServer.name, source: unityServer.source }),
           sender: 'system',
           timestamp: Date.now(),
         },
@@ -2254,14 +2333,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const projectForRun = await ensureRunnableProject();
     const chat: Chat = {
       id: newId(),
-      title: 'Terminal Chat',
+      title: tr("Terminal Chat"),
       updatedAt: Date.now(),
       folderId: projectForRun.id,
       mode: 'terminal',
       messages: [
         {
           id: newId(),
-          text: 'Terminal-Sitzung gestartet. Gib Befehle oder Prompts ein, die vom Agenten ausgeführt werden sollen.',
+          text: tr("Terminal-Sitzung gestartet. Gib Befehle oder Prompts ein, die vom Agenten ausgeführt werden sollen."),
           sender: 'system',
           timestamp: Date.now(),
         },
@@ -2274,6 +2353,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // One workspace with one SSH tab per server; several servers open as a grid.
   const startVServerSessions = async (servers: VServerConnection[]) => {
     if (servers.length === 0) return;
+    const maxTabs = planInfo().terminals;
+    if (servers.length > maxTabs) {
+      window.alert(tr("Dein Tarif erlaubt höchstens {max} Terminals gleichzeitig.", { max: maxTabs }));
+      servers = servers.slice(0, maxTabs);
+    }
     const projectForRun = await ensureRunnableProject();
     const chatId = newId();
     const connections = servers.map((server) => ({
@@ -2313,9 +2397,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startWorkspace = async ({ harnessId, grid, count }: { harnessId: string; grid: boolean; count: number }) => {
     const projectForRun = await ensureRunnableProject();
     const harness = cliHarnesses.find((item) => item.id === harnessId) || cliHarnesses[0];
-    const size = Math.max(1, Math.min(8, Math.round(count) || 1));
+    const maxTerminals = planInfo().terminals;
+    const requested = Math.max(1, Math.min(8, Math.round(count) || 1));
+    const size = Math.min(requested, maxTerminals);
+    if (requested > size) {
+      window.alert(tr("Dein Tarif erlaubt höchstens {max} Terminals gleichzeitig.", { max: maxTerminals }));
+    }
     const chatId = newId();
-    const label = harness?.name || 'Terminal';
+    const label = harness?.name || tr("Terminal");
     const chat: Chat = {
       id: chatId,
       title: `${label} Workspace`,
@@ -2337,11 +2426,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectChat(chat.id);
   };
 
+  // GUI chat for a CLI harness: the CLI runs headless, messages land in the chat window.
+  const startHarnessChat = async (harness: CliHarness) => {
+    const providerId = harnessProvider(harness.command);
+    if (!providerId) throw new Error(tr('Für diese Harness gibt es keine Chat-Ansicht.'));
+    const projectForRun = await ensureRunnableProject();
+    const model = PROVIDER_MODELS[providerId][0].id;
+    const chatId = newId();
+    const chat: Chat = {
+      id: chatId,
+      title: harness.name,
+      updatedAt: Date.now(),
+      folderId: projectForRun.id,
+      mode: 'standard',
+      gui: true,
+      agent: { provider: providerId, model },
+      harness: { name: harness.name, command: harness.command, icon: harness.icon },
+      messages: [],
+    };
+    setChats((current) => [chat, ...current]);
+    selectChat(chatId);
+    setProvider(providerId);
+    setAiModel(model);
+    setMainView('chat');
+  };
+
   // One terminal per saved Antigravity account, side by side in a single workspace.
   // With a V-Server the tabs log in via SSH and keep each account's login in its own folder there.
   const startAgyAccounts = async (accountIds?: string[], server?: VServerConnection, options: { resume?: boolean } = {}) => {
-    const accounts = (accountIds ? agyAccounts.filter((account) => accountIds.includes(account.id)) : agyAccounts).slice(0, MAX_AGY_ACCOUNTS);
-    if (accounts.length === 0) throw new Error('Keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen hinzu.');
+    const maxTabs = planInfo().terminals;
+    const accounts = (accountIds ? agyAccounts.filter((account) => accountIds.includes(account.id)) : agyAccounts)
+      .slice(0, Math.max(1, Math.min(MAX_AGY_ACCOUNTS, maxTabs - 1)));
+    if (accounts.length === 0) throw new Error(tr('Keine Antigravity-Accounts angelegt. Fuege sie in den Einstellungen hinzu.'));
     const projectForRun = await ensureRunnableProject();
     const chatId = newId();
     const vserver = server
@@ -2387,7 +2503,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const slots = config.slots || [];
     if (slots.length === 0) {
-      throw new Error('Keine Slots konfiguriert. Bitte Start-Button anpassen.');
+      throw new Error(tr('Keine Slots konfiguriert. Bitte Start-Button anpassen.'));
     }
 
     let savedServers: VServer[] = [];
@@ -2399,7 +2515,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const projectForRun = await ensureRunnableProject();
     const chatId = newId();
     const activeSlots = slots.slice(0, 8);
-    const title = config.buttonLabel?.trim() || (activeSlots.length === 1 ? activeSlots[0].name : 'Multi-Agent Workspace');
+    const title = config.buttonLabel?.trim() || (activeSlots.length === 1 ? activeSlots[0].name : tr("Multi-Agent Workspace"));
 
     const terminalTabs: TerminalTab[] = activeSlots.map((slot, index) => {
       const tabId = index === 0 ? chatId : newId();
@@ -2457,11 +2573,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const startApiChat = async (projectId: string | null) => {
     const providerConfig = apiProviders.find((item) => item.id === apiChatConfig.providerId);
-    if (!providerConfig) throw new Error('Bitte einen AI-Anbieter auswaehlen oder in den Einstellungen anlegen.');
+    if (!providerConfig) throw new Error(tr('Bitte einen AI-Anbieter auswaehlen oder in den Einstellungen anlegen.'));
     const model = (apiChatConfig.model || providerConfig.model).trim();
-    if (!model) throw new Error('Bitte ein Modell angeben.');
+    if (!model) throw new Error(tr('Bitte ein Modell angeben.'));
     if (providerConfig.provider !== 'openai-compatible' && !providerConfig.apiKey.trim()) {
-      throw new Error(`Fuer "${providerConfig.name}" ist kein API-Key hinterlegt (Einstellungen > KI).`);
+      throw new Error(tr('Fuer "{provider}" ist kein API-Key hinterlegt (Einstellungen > KI).', { provider: providerConfig.name }));
     }
     const chosen = projectId ? folders.find((folder) => folder.id === projectId) : undefined;
     const projectForRun = chosen || (await ensureScratchProject());
@@ -2481,7 +2597,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sendApiMessage = async (chatId: string, text: string) => {
     const chat = chats.find((item) => item.id === chatId);
     if (!chat?.api || !text.trim() || apiPending[chatId]) return;
-    if (!window.agentWorkspace?.apiChatSend) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace?.apiChatSend) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const userMessage: Message = { id: newId(), text: text.trim(), sender: 'user', timestamp: Date.now() };
     const history = [...chat.messages, userMessage];
     const isFirstMessage = !chat.messages.some((message) => message.sender === 'user');
@@ -2497,6 +2613,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : item,
       ),
     );
+    // Theme-Wunsch: Der Agent öffnet das Theme-Fenster, statt eine Textantwort zu erzeugen.
+    if (wantsThemeCreator(userMessage.text)) {
+      const reply: Message = {
+        id: newId(),
+        text: tr("Klar – ich habe dir das Theme-Fenster geöffnet. Wähle ein Bild oder Video, klicke auf „Anwenden“ und gib dem Theme einen Namen. Danach ist es sofort aktiv."),
+        sender: 'ai',
+        timestamp: Date.now(),
+      };
+      setChats((current) =>
+        current.map((item) =>
+          item.id === chatId
+            ? {
+                ...item,
+                title: isFirstMessage ? (userMessage.text.length > 42 ? `${userMessage.text.slice(0, 42)}...` : userMessage.text) : item.title,
+                updatedAt: Date.now(),
+                messages: [...history, reply],
+              }
+            : item,
+        ),
+      );
+      window.dispatchEvent(new Event(THEME_CREATOR_EVENT));
+      return;
+    }
     setApiPending((current) => ({ ...current, [chatId]: true }));
     const startedAt = Date.now();
     try {
@@ -2511,7 +2650,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       // Use the provider's current settings so key/URL changes apply to existing chats.
       const providerConfig = apiProviders.find((item) => item.id === chat.api?.providerId);
-      if (!providerConfig) throw new Error('Der AI-Anbieter dieses Chats wurde in den Einstellungen geloescht.');
+      if (!providerConfig) throw new Error(tr('Der AI-Anbieter dieses Chats wurde in den Einstellungen geloescht.'));
       const result = await window.agentWorkspace.apiChatSend({
         provider: providerConfig.provider,
         baseUrl: providerConfig.baseUrl,
@@ -2524,7 +2663,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       const reply: Message = {
         id: newId(),
-        text: result.text || '(Leere Antwort)',
+        text: result.text || tr("(Leere Antwort)"),
         sender: 'ai',
         timestamp: Date.now(),
         runDurationMs: Date.now() - startedAt,
@@ -2536,7 +2675,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       const reply: Message = {
         id: newId(),
-        text: error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : 'API-Aufruf fehlgeschlagen.',
+        text: error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("API-Aufruf fehlgeschlagen."),
         sender: 'system',
         timestamp: Date.now(),
         isError: true,
@@ -2571,16 +2710,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     overrides?: { provider?: ProviderId; model?: string },
   ) => {
     const isMobile = mobileMode && mobileConnectionConfig?.connected;
-    if (!window.agentWorkspace && !isMobile) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace && !isMobile) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const projectForRun = await ensureRunnableProject();
     const tokenFreeTest = text.trim().toLowerCase() === 'test';
-    const runProvider = overrides?.provider || provider;
-    const runModel = overrides?.model || (overrides?.provider ? DEFAULT_MODEL[overrides.provider] : aiModel);
 
     const targetId = !forceNewChat && selectedChatId ? selectedChatId : newId();
     if (activeRuns[targetId]) return;
     onTargetId?.(targetId);
     const existingChat = chats.find((chat) => chat.id === targetId);
+    // A harness chat keeps the agent it was started with, even if the global provider changes.
+    const runProvider = overrides?.provider || existingChat?.agent?.provider || provider;
+    const runModel =
+      overrides?.model ||
+      (overrides?.provider ? DEFAULT_MODEL[overrides.provider] : existingChat?.agent?.model || aiModel);
     const shouldUseLyzDev = existingChat?.mode === 'lyz-dev' || (!existingChat && lyzDevPluginEnabled);
     const unityServer = shouldUseLyzDev ? await requireUnityMcpConnection() : null;
     const userMessage: Message = {
@@ -2618,8 +2760,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ]);
     if (forceNewChat || !selectedChatId) selectChat(targetId);
 
-    // Standard chats run via terminal principle (interactively), so skip background run
-    if (!shouldUseLyzDev && !tokenFreeTest) {
+    // Standard chats run via terminal principle (interactively), so skip background run.
+    // Harness chats (gui) are the exception: their CLI runs headless and the reply lands as a message.
+    if (!shouldUseLyzDev && !tokenFreeTest && !existingChat?.gui) {
       if (runProvider === 'antigravity') {
         const runId = newId();
         const runStartedAt = Date.now();
@@ -2635,7 +2778,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             codeSignals: 0,
             testSignals: 0,
             files: [],
-            lastOutput: 'Hintergrund-Terminal wird gestartet...',
+            lastOutput: tr("Hintergrund-Terminal wird gestartet..."),
             liveOutput: '',
             phase: 'Startet Antigravity',
           },
@@ -2672,7 +2815,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             
             const reply: Message = {
               id: newId(),
-              text: cleanText || 'Aufgabe beendet.',
+              text: cleanText || tr("Aufgabe beendet."),
               sender: 'ai',
               timestamp: Date.now(),
             };
@@ -2767,7 +2910,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       [targetId]: {
         runId,
         provider: runProvider,
-        model: tokenFreeTest ? 'lokaler Test' : runModel,
+        model: tokenFreeTest ? tr("lokaler Test") : runModel,
         startedAt: runStartedAt,
         outputLines: 0,
         outputBytes: 0,
@@ -2775,12 +2918,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         testSignals: 0,
         files: [],
         lastOutput: tokenFreeTest
-          ? 'Lokaler Test wird gestartet...'
+          ? tr("Lokaler Test wird gestartet...")
           : shouldUseLyzDev
-            ? 'Lyz Dev prueft Unity-MCP und startet...'
-            : 'Agent wird gestartet...',
+            ? tr("Lyz Dev prueft Unity-MCP und startet...")
+            : tr("Agent wird gestartet..."),
         liveOutput: '',
-        phase: tokenFreeTest ? 'Fuehrt lokalen Test aus' : shouldUseLyzDev ? 'Startet Lyz Dev' : 'Startet Agent',
+        phase: tokenFreeTest ? tr("Fuehrt lokalen Test aus") : shouldUseLyzDev ? tr("Startet Lyz Dev") : tr("Startet Agent"),
       },
     }));
 
@@ -2820,7 +2963,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   acceptNewHostKey: true,
                 }
               : undefined,
-            originalPluginEnabled,
+            // A harness chat always runs headless: the "Original plugin" mode would start the
+            // interactive CLI with an empty stdin and hang instead of answering the message.
+            originalPluginEnabled: existingChat?.gui ? false : originalPluginEnabled,
           });
       const tokenUsage = parseTokenUsage(result.output || result.error || '');
       const durationMs = Date.now() - runStartedAt;
@@ -2829,8 +2974,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const reply: Message = {
         id: newId(),
         text: result.ok
-          ? cleanedOutput || 'Der Agent wurde beendet, hat aber keine verwertbare finale Antwort geliefert. Bitte pruefe die Raw-Terminal-Ausgabe.'
-          : cleanedError || cleanedOutput || 'Der Agent-Aufruf ist fehlgeschlagen.',
+          ? cleanedOutput || tr("Der Agent wurde beendet, hat aber keine verwertbare finale Antwort geliefert. Bitte pruefe die Raw-Terminal-Ausgabe.")
+          : cleanedError || cleanedOutput || tr("Der Agent-Aufruf ist fehlgeschlagen."),
         sender: 'ai',
         timestamp: Date.now(),
         runDurationMs: durationMs,
@@ -2838,7 +2983,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isError: !result.ok,
       };
       void window.agentWorkspace.notifyAgentComplete({
-        title: result.ok ? 'FancyCode: Aufgabe erledigt' : 'FancyCode: Aufgabe fehlgeschlagen',
+        title: result.ok ? tr("FancyCode Desktop: Aufgabe erledigt") : tr("FancyCode Desktop: Aufgabe fehlgeschlagen"),
         body: `${updatedChat.title} - ${formatDurationForNotification(durationMs)}`,
       });
       if (tokenUsage > 0) {
@@ -2869,14 +3014,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       const reply: Message = {
         id: newId(),
-        text: error instanceof Error ? error.message : 'Unbekannter Fehler beim Agent-Aufruf.',
+        text: error instanceof Error ? error.message : tr("Unbekannter Fehler beim Agent-Aufruf."),
         sender: 'system',
         timestamp: Date.now(),
         isError: true,
       };
       void window.agentWorkspace.notifyAgentComplete({
-        title: 'FancyCode: Aufgabe fehlgeschlagen',
-        body: error instanceof Error ? error.message : 'Unbekannter Fehler beim Agent-Aufruf.',
+        title: tr("FancyCode Desktop: Aufgabe fehlgeschlagen"),
+        body: error instanceof Error ? error.message : tr("Unbekannter Fehler beim Agent-Aufruf."),
       });
       setChats((current) =>
         current.map((chat) =>
@@ -2892,7 +3037,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const startAntigravityLimit = async (model: string) => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const targetModel = PROVIDER_MODELS.antigravity.some((item) => item.id === model) ? model : DEFAULT_MODEL.antigravity;
     const projectForRun = await ensureRunnableProject();
     const prompt = 'Sag nur "OK".';
@@ -2907,7 +3052,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     const chat: Chat = {
       id: targetId,
-      title: 'Limit starten',
+      title: tr("Limit starten"),
       updatedAt: Date.now(),
       folderId: projectForRun.id,
       mode: 'standard',
@@ -2932,7 +3077,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         codeSignals: 0,
         testSignals: 0,
         files: [],
-        lastOutput: 'Limit-Start wird geprueft...',
+        lastOutput: tr("Limit-Start wird geprueft..."),
         liveOutput: '',
         phase: 'Startet Antigravity',
       },
@@ -2953,7 +3098,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         externalServer: externalServer.enabled ? externalServer : undefined,
       });
       const durationMs = Date.now() - runStartedAt;
-      const text = result.ok ? result.output || 'OK' : result.error || result.output || 'Antigravity-Aufruf fehlgeschlagen.';
+      const text = result.ok ? result.output || 'OK' : result.error || result.output || tr("Antigravity-Aufruf fehlgeschlagen.");
       const ok = /^"?OK"?[.!]?$/i.test(text.trim());
       const reply: Message = {
         id: newId(),
@@ -2981,7 +3126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const importAntigravityChats = async () => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     const projectForImport = await ensureRunnableProject();
     const imported = await window.agentWorkspace.importAntigravityChats(projectForImport.path);
     if (imported.length === 0) return 0;
@@ -3055,7 +3200,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const installPlugin = async (name: string) => {
-    if (!selectedProject || !window.agentWorkspace) throw new Error('Waehle zuerst ein Projekt.');
+    if (!selectedProject || !window.agentWorkspace) throw new Error(tr('Waehle zuerst ein Projekt.'));
     await window.agentWorkspace.installPlugin(selectedProject.path, name);
     setPlugins((current) => [...new Set([...current, name])]);
   };
@@ -3093,8 +3238,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const installCodexPlugin = async (target: 'personal' | 'project') => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
-    if (target === 'project' && !selectedProject) throw new Error('Waehle zuerst ein Projekt.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
+    if (target === 'project' && !selectedProject) throw new Error(tr('Waehle zuerst ein Projekt.'));
     const sourcePath = await window.agentWorkspace.selectCodexPluginFolder();
     if (!sourcePath) return;
     await window.agentWorkspace.installCodexPluginFromFolder({
@@ -3106,7 +3251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const removeCodexPlugin = async (plugin: CodexPluginInfo) => {
-    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!window.agentWorkspace) throw new Error(tr('Diese Funktion ist nur in der Desktop-App verfuegbar.'));
     await window.agentWorkspace.removeCodexPlugin(plugin.path, selectedProject?.path);
     await refreshCodexPlugins();
   };
@@ -3155,7 +3300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.agentWorkspace?.killShellSession(selectedChatId);
       delete activeShellSessions.current[selectedChatId];
     }
-    // Terminals now outlive FancyCode, so deleting the workspace has to end them.
+    // Terminals now outlive FancyCode Desktop, so deleting the workspace has to end them.
     const removed = chats.find((chat) => chat.id === selectedChatId);
     if (removed) endTerminals(removed);
     setSavedTerminalWorkspaces((current) => current.filter((chat) => chat.id !== selectedChatId));
@@ -3201,7 +3346,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!key) return undefined;
     const wanted = key.trim().toLowerCase();
     const server = readSavedServers().find((item) => item.id === key || item.name.toLowerCase() === wanted || item.host === key);
-    if (!server) throw new Error(`V-Server "${key}" ist in FancyCode nicht gespeichert.`);
+    if (!server) throw new Error(tr('V-Server "{key}" ist in FancyCode Desktop nicht gespeichert.', { key }));
     return server;
   };
 
@@ -3239,7 +3384,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? args.accounts.map((key: string) => {
               const wanted = String(key).trim().toLowerCase();
               const account = agyAccounts.find((item) => item.id === key || item.name.toLowerCase() === wanted);
-              if (!account) throw new Error(`Antigravity-Account "${key}" gibt es nicht.`);
+              if (!account) throw new Error(tr('Antigravity-Account "{key}" gibt es nicht.', { key }));
               return account.id;
             })
           : undefined;
@@ -3278,9 +3423,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       case 'add-tab': {
         const target = chats.find((chat) => chat.id === args.workspaceId) || savedTerminalWorkspaces.find((chat) => chat.id === args.workspaceId);
-        if (!target) throw new Error('Diesen Workspace gibt es nicht.');
+        if (!target) throw new Error(tr('Diesen Workspace gibt es nicht.'));
         const tabs = target.terminalTabs?.length ? target.terminalTabs : [{ id: target.id, title: target.title } as TerminalTab];
-        if (tabs.length >= 6) throw new Error('Der Workspace hat schon 6 Terminals.');
+        if (tabs.length >= 6) throw new Error(tr('Der Workspace hat schon 6 Terminals.'));
         const server = findServer(args.server);
         const tab: TerminalTab = args.manager
           ? MANAGER_TAB(newId(), Boolean(target.vserver))
@@ -3292,6 +3437,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               // In a V-Server workspace a tab without server runs on this PC.
               ...(server ? { vserver: server } : target.vserver ? { location: 'local' as const } : {}),
             };
+        const maxTabs = planInfo().terminals;
+        if (tabs.length >= maxTabs) return tr("Dein Tarif erlaubt höchstens {max} Terminals in einem Workspace.", { max: maxTabs });
         const nextTabs = [...tabs, tab];
         const updated: Chat = {
           ...target,
@@ -3308,7 +3455,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const open = chats.find((chat) => chat.id === args.workspaceId);
         if (open) selectChat(open.id);
         else if (savedTerminalWorkspaces.some((chat) => chat.id === args.workspaceId)) rejoinTerminalWorkspace(args.workspaceId);
-        else throw new Error('Diesen Workspace gibt es nicht.');
+        else throw new Error(tr('Diesen Workspace gibt es nicht.'));
         return { ok: true };
       }
       case 'end-workspace':
@@ -3343,7 +3490,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       case 'layout': {
         // grid/single and which terminal is in front.
         const target = chats.find((chat) => chat.id === args.workspaceId);
-        if (!target) throw new Error('Workspace ist nicht offen (zuerst codeforge_open_workspace).');
+        if (!target) throw new Error(tr('Workspace ist nicht offen (zuerst fancycode_open_workspace).'));
         setChats((current) =>
           current.map((chat) =>
             chat.id === target.id
@@ -3355,6 +3502,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
               : chat,
           ),
         );
+        selectChat(target.id);
+        return { ok: true };
+      }
+      case 'notify':
+        pushNotify(args);
+        return { ok: true };
+      case 'ask':
+        return pushAsk(args);
+      case 'form':
+        return pushForm(args);
+      case 'focus-session': {
+        // Button under an agent popup: open its workspace and bring its terminal to the front.
+        const sessionId = String(args.sessionId || '');
+        const hasTab = (chat: Chat) => chat.id === sessionId || Boolean(chat.terminalTabs?.some((tab) => tab.id === sessionId));
+        const target = chats.find(hasTab) || savedTerminalWorkspaces.find(hasTab);
+        if (!target) return { ok: false };
+        if (!chats.some((chat) => chat.id === target.id)) rejoinTerminalWorkspace(target.id);
+        if (target.terminalTabs?.some((tab) => tab.id === sessionId)) {
+          setChats((current) => current.map((chat) => (chat.id === target.id ? { ...chat, activeTerminalTabId: sessionId } : chat)));
+        }
         selectChat(target.id);
         return { ok: true };
       }
@@ -3377,6 +3544,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   controlHandlerRef.current = handleControlRequest;
 
   useEffect(() => window.agentWorkspace?.onControlRequest?.((request) => controlHandlerRef.current(request)), []);
+  useEffect(() => setPopupFocusHandler((sessionId) => void controlHandlerRef.current({ op: 'focus-session', args: { sessionId } })), []);
   useEffect(() => {
     void window.agentWorkspace?.publishControlState?.(controlState());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3571,6 +3739,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startLyzDevChat,
       startTerminalChat,
       startWorkspace,
+      startHarnessChat,
       agyAccounts,
       setAgyAccounts,
       startAgyAccounts,

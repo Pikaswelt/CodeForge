@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUp, Download, File, Folder, FolderPlus, Home, KeyRound, Loader2, Pencil, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import type { SftpEntry, VServerConnection } from '../types';
@@ -132,7 +133,7 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
     if (!nameDialog) return;
     const name = nameDialog.value.trim();
     if (!name) return;
-    if (/[\/]/.test(name)) return setError('Name darf keine Schraegstriche enthalten.');
+    if (/[\/]/.test(name)) return setError(tr("Name darf keine Schraegstriche enthalten."));
     const { kind, entry } = nameDialog;
     setNameDialog(null);
     if (kind === 'mkdir') {
@@ -145,8 +146,8 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
   };
 
   const remove = (entry: SftpEntry) => {
-    const what = entry.type === 'dir' ? `Ordner "${entry.name}" mit allem Inhalt` : `"${entry.name}"`;
-    if (!window.confirm(`${what} auf ${server.name} endgueltig loeschen?`)) return;
+    const what = entry.type === 'dir' ? tr('Ordner "{name}" mit allem Inhalt', { name: entry.name }) : `"${entry.name}"`;
+    if (!window.confirm(tr("{what} auf {server} endgueltig loeschen?", { what, server: server.name }))) return;
     void run('delete', () => window.agentWorkspace.sftpDelete({ vserver: server, path: joinPath(path, entry.name) }));
   };
 
@@ -165,34 +166,34 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
       >
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-white">SFTP · {server.name}</div>
+            <div className="text-sm font-semibold text-white">{tr("SFTP ·")} {server.name}</div>
             <div className="truncate font-mono text-[11px] text-zinc-500">
               {server.user ? `${server.user}@` : ''}{server.host}:{server.port}
             </div>
           </div>
-          <button onClick={close} className={iconButton} title="Schliessen">
+          <button onClick={close} className={iconButton} title={tr("Schliessen")}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {connected && (
           <div className="flex items-center gap-1.5 border-b border-white/5 px-4 py-2">
-            <button onClick={() => void load(parentPath(path))} disabled={Boolean(busy) || path === '/'} className={iconButton} title="Ordner hoch">
+            <button onClick={() => void load(parentPath(path))} disabled={Boolean(busy) || path === '/'} className={iconButton} title={tr("Ordner hoch")}>
               <ArrowUp className="w-4 h-4" />
             </button>
-            <button onClick={() => void load(home)} disabled={Boolean(busy)} className={iconButton} title="Home-Verzeichnis">
+            <button onClick={() => void load(home)} disabled={Boolean(busy)} className={iconButton} title={tr("Home-Verzeichnis")}>
               <Home className="w-4 h-4" />
             </button>
-            <button onClick={() => void load(path)} disabled={Boolean(busy)} className={iconButton} title="Neu laden">
+            <button onClick={() => void load(path)} disabled={Boolean(busy)} className={iconButton} title={tr("Neu laden")}>
               <RefreshCw className={`w-4 h-4 ${busy === 'list' ? 'animate-spin' : ''}`} />
             </button>
             <div className="mx-1 min-w-0 flex-1 truncate rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs text-zinc-300">{path}</div>
-            <button onClick={() => setNameDialog({ kind: 'mkdir', value: '' })} disabled={Boolean(busy)} className={iconButton} title="Neuer Ordner">
+            <button onClick={() => setNameDialog({ kind: 'mkdir', value: '' })} disabled={Boolean(busy)} className={iconButton} title={tr("Neuer Ordner")}>
               <FolderPlus className="w-4 h-4" />
             </button>
             <button onClick={() => void upload()} disabled={Boolean(busy)} className="primary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5 disabled:opacity-50">
               {busy === 'upload' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              Hochladen
+              {tr("Hochladen")}
             </button>
           </div>
         )}
@@ -205,7 +206,7 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
               submitName();
             }}
           >
-            <span className="shrink-0 text-xs text-zinc-400">{nameDialog.kind === 'mkdir' ? 'Neuer Ordner:' : `Umbenennen "${nameDialog.entry?.name}":`}</span>
+            <span className="shrink-0 text-xs text-zinc-400">{nameDialog.kind === 'mkdir' ? tr("Neuer Ordner:") : `Umbenennen "${nameDialog.entry?.name}":`}</span>
             <input
               autoFocus
               value={nameDialog.value}
@@ -214,7 +215,7 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
               className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs text-white outline-none focus:border-orange-400/60"
             />
             <button type="submit" className="primary-button !py-1.5 !px-3 text-xs">OK</button>
-            <button type="button" onClick={() => setNameDialog(null)} className="text-xs text-zinc-500 hover:text-white">Abbrechen</button>
+            <button type="button" onClick={() => setNameDialog(null)} className="text-xs text-zinc-500 hover:text-white">{tr("Abbrechen")}</button>
           </form>
         )}
 
@@ -222,7 +223,7 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
           {!connected && busy === 'connect' && (
             <div className="flex h-full items-center justify-center gap-2 text-sm text-zinc-400">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Verbinde...
+              {tr("Verbinde...")}
             </div>
           )}
 
@@ -237,7 +238,7 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
               <label className="block">
                 <span className="mb-1 flex items-center gap-1.5 text-[11px] text-zinc-500">
                   <KeyRound className="w-3.5 h-3.5" />
-                  {server.keyPath ? 'Passphrase des SSH-Keys' : `Passwort fuer ${server.user || 'den Benutzer'}`}
+                  {server.keyPath ? tr("Passphrase des SSH-Keys") : tr("Passwort fuer {user}", { user: server.user || tr("den Benutzer") })}
                 </span>
                 <input
                   type="password"
@@ -248,9 +249,9 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
                 />
               </label>
               <button type="submit" disabled={!secret || Boolean(busy)} className="primary-button !py-2.5 disabled:opacity-50">
-                Verbinden
+                {tr("Verbinden")}
               </button>
-              <p className="text-[11px] text-zinc-600">Wird nur fuer diese Sitzung verwendet und nicht gespeichert.</p>
+              <p className="text-[11px] text-zinc-600">{tr("Wird nur fuer diese Sitzung verwendet und nicht gespeichert.")}</p>
             </form>
           )}
 
@@ -259,8 +260,8 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
               <thead className="sticky top-0 bg-[#18161a] text-[10px] uppercase tracking-wider text-zinc-600">
                 <tr>
                   <th className="px-5 py-2 font-medium">Name</th>
-                  <th className="px-2 py-2 font-medium">Groesse</th>
-                  <th className="px-2 py-2 font-medium">Geaendert</th>
+                  <th className="px-2 py-2 font-medium">{tr("Groesse")}</th>
+                  <th className="px-2 py-2 font-medium">{tr("Geaendert")}</th>
                   <th className="px-2 py-2" />
                 </tr>
               </thead>
@@ -281,14 +282,14 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
                     <td className="px-2 py-2">
                       <div className="flex justify-end gap-0.5 opacity-0 group-hover:opacity-100">
                         {entry.type !== 'dir' && (
-                          <button onClick={() => void download(entry)} disabled={Boolean(busy)} className={iconButton} title="Herunterladen">
+                          <button onClick={() => void download(entry)} disabled={Boolean(busy)} className={iconButton} title={tr("Herunterladen")}>
                             <Download className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button onClick={() => setNameDialog({ kind: 'rename', entry, value: entry.name })} disabled={Boolean(busy)} className={iconButton} title="Umbenennen">
+                        <button onClick={() => setNameDialog({ kind: 'rename', entry, value: entry.name })} disabled={Boolean(busy)} className={iconButton} title={tr("Umbenennen")}>
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => remove(entry)} disabled={Boolean(busy)} className={`${iconButton} hover:!bg-red-500/15 hover:!text-red-300`} title="Loeschen">
+                        <button onClick={() => remove(entry)} disabled={Boolean(busy)} className={`${iconButton} hover:!bg-red-500/15 hover:!text-red-300`} title={tr("Loeschen")}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -298,7 +299,7 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
                 {entries.length === 0 && busy !== 'list' && (
                   <tr>
                     <td colSpan={4} className="px-5 py-8 text-center text-zinc-600">
-                      Ordner ist leer.
+                      {tr("Ordner ist leer.")}
                     </td>
                   </tr>
                 )}
@@ -316,7 +317,7 @@ export function SftpBrowser({ server, onClose }: { server: VServerConnection; on
             ) : (
               <span className="flex items-center gap-2 text-zinc-400">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Uebertragung laeuft...
+                {tr("Uebertragung laeuft...")}
               </span>
             )}
           </div>

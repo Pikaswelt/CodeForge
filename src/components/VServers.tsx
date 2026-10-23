@@ -1,12 +1,14 @@
+import { tr } from '../i18n';
 import { useState, useSyncExternalStore } from 'react';
 import { FolderOpen, KeyRound, Loader2, Monitor, Pencil, Plug, Plus, Server, Smartphone, SquareTerminal, Trash2, Upload, X } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { planInfo } from '../plans';
 import { harnessIcon } from '../harnessIcons';
 import type { CliHarness, VServer, VServerConnection } from '../types';
 import { SftpBrowser } from './SftpBrowser';
 
 // Saved V-Servers (SSH hosts). Stored locally; the private key is copied into
-// FancyCode's data folder when uploaded, so the original file may be moved.
+// FancyCode Desktop's data folder when uploaded, so the original file may be moved.
 
 const STORAGE_KEY = 'agentWorkspace.vservers';
 const listeners = new Set<() => void>();
@@ -59,13 +61,13 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
       saveServers(servers.map((item) => (ids.has(item.id) ? { ...item, lastConnectedAt: Date.now() } : item)));
       await startVServerSessions(targets);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verbindung konnte nicht gestartet werden.');
+      setError(err instanceof Error ? err.message : tr("Verbindung konnte nicht gestartet werden."));
       setConnecting(false);
     }
   };
 
   const remove = (server: VServer) => {
-    if (!window.confirm(`V-Server "${server.name}" entfernen?`)) return;
+    if (!window.confirm(tr('V-Server "{name}" entfernen?', { name: server.name }))) return;
     if (server.keyPath && !servers.some((item) => item.id !== server.id && item.keyPath === server.keyPath)) {
       void window.agentWorkspace?.removeSshKey(server.keyPath);
     }
@@ -107,29 +109,29 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
   return (
     <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="section-label">V-Server ({list.length})</div>
+        <div className="section-label">{tr("V-Server (")}{list.length})</div>
         <div className="flex items-center gap-2">
           {sorted.length > 1 && (
             <button
               onClick={() => setSelected(allSelected ? new Set() : new Set(sorted.map((server) => server.id)))}
               className="text-xs text-zinc-400 hover:text-white"
             >
-              {allSelected ? 'Keine auswaehlen' : 'Alle auswaehlen'}
+              {allSelected ? tr("Keine auswaehlen") : tr("Alle auswaehlen")}
             </button>
           )}
           {sorted.length > 0 && window.agentWorkspace?.exportForAndroid && (
             <button
               onClick={() => setExporting((value) => !value)}
               className="secondary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5"
-              title="Server, Keys und Einstellungen in die FancyCode-Android-App uebernehmen"
+              title={tr("Server, Keys und Einstellungen in die FancyCode-Android-App uebernehmen")}
             >
               <Smartphone className="w-3.5 h-3.5" />
-              Fuer Android exportieren
+              {tr("Fuer Android exportieren")}
             </button>
           )}
           <button onClick={() => setEditing('new')} className="primary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5">
             <Plus className="w-3.5 h-3.5" />
-            Server hinzufuegen
+            {tr("Server hinzufuegen")}
           </button>
         </div>
       </div>
@@ -147,7 +149,7 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
               checked={selected.has(server.id)}
               onChange={() => toggle(server.id)}
               className="h-4 w-4 shrink-0 accent-sky-500"
-              title="Fuer die Mehrfach-Verbindung auswaehlen"
+              title={tr("Fuer die Mehrfach-Verbindung auswaehlen")}
             />
             <button onClick={() => void connect([server])} disabled={connecting} className="flex min-w-0 flex-1 items-center gap-3 text-left">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-sky-400/20 bg-sky-500/10">
@@ -157,23 +159,23 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
                 <span className="block truncate text-sm text-white">{server.name}</span>
                 <span className="block truncate font-mono text-[11px] text-zinc-500">
                   {server.user ? `${server.user}@` : ''}{server.host}:{server.port}
-                  {server.keyName ? ` · ${server.keyName}` : ' · Passwort'}
+                  {server.keyName ? ` · ${server.keyName}` : tr("· Passwort")}
                 </span>
               </span>
             </button>
-            <button onClick={() => setEditing(server)} className="rounded-lg p-2 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100" title="Bearbeiten">
+            <button onClick={() => setEditing(server)} className="rounded-lg p-2 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100" title={tr("Bearbeiten")}>
               <Pencil className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => remove(server)} className="rounded-lg p-2 text-zinc-500 opacity-0 transition hover:bg-red-500/15 hover:text-red-300 group-hover:opacity-100" title="Entfernen">
+            <button onClick={() => remove(server)} className="rounded-lg p-2 text-zinc-500 opacity-0 transition hover:bg-red-500/15 hover:text-red-300 group-hover:opacity-100" title={tr("Entfernen")}>
               <Trash2 className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setSftpServer(server)}
               className="secondary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5"
-              title="Dateien per SFTP durchsuchen, hoch- und herunterladen"
+              title={tr("Dateien per SFTP durchsuchen, hoch- und herunterladen")}
             >
               <FolderOpen className="w-3.5 h-3.5" />
-              SFTP
+              {tr("SFTP")}
             </button>
             <button
               onClick={() => void connect([server])}
@@ -181,7 +183,7 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
               className="primary-button !py-1.5 !px-3 text-xs flex items-center gap-1.5 disabled:opacity-50"
             >
               <Plug className="w-3.5 h-3.5" />
-              Verbinden
+              {tr("Verbinden")}
             </button>
           </div>
         ))}
@@ -195,25 +197,25 @@ export function VServerPanel({ onCancel }: { onCancel(): void }) {
             className="primary-button flex-1 !py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-40"
           >
             {connecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
-            Auswahl verbinden ({chosen.length})
+            {tr("Auswahl verbinden (")}{chosen.length})
           </button>
           <button
             onClick={() => void connect(sorted)}
             disabled={connecting}
             className="secondary-button flex-1 !py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-40"
           >
-            Mit allen verbinden ({sorted.length})
+            {tr("Mit allen verbinden (")}{sorted.length})
           </button>
         </div>
       )}
       {sorted.length > 8 && (
-        <p className="text-[11px] text-zinc-600">Ab neun Servern oeffnen sich die Terminals als Tabs statt im Grid.</p>
+        <p className="text-[11px] text-zinc-600">{tr("Ab neun Servern oeffnen sich die Terminals als Tabs statt im Grid.")}</p>
       )}
 
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
 
       <button onClick={onCancel} className="w-full rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
-        Zurueck
+        {tr("Zurueck")}
       </button>
 
       {sftpServer && <SftpBrowser server={sftpServer} onClose={() => setSftpServer(null)} />}
@@ -226,13 +228,18 @@ export function AddVServerDialog({ onCancel, onSaved }: { onCancel(): void; onSa
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto bg-black/60 p-6 backdrop-blur-sm" onMouseDown={onCancel}>
       <div className="relative w-full max-w-[520px]" onMouseDown={(event) => event.stopPropagation()}>
-        <button onClick={onCancel} className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title="Schliessen">
+        <button onClick={onCancel} className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title={tr("Schliessen")}>
           <X className="w-4 h-4" />
         </button>
         <VServerForm
           modal
           onCancel={onCancel}
           onSave={(server) => {
+            const max = planInfo().vservers;
+            if (servers.length >= max) {
+              window.alert(tr("Dein Tarif erlaubt höchstens {max} gespeicherte V-Server.", { max }));
+              return;
+            }
             saveServers([...servers, server]);
             onSaved(server);
           }}
@@ -254,7 +261,7 @@ function VServerForm({ initial, modal, onCancel, onSave }: { initial?: VServer; 
 
   const uploadKey = async () => {
     setError('');
-    const source = await window.agentWorkspace?.selectLocalFile({ title: 'Privaten SSH-Key auswaehlen (z.B. id_ed25519)' });
+    const source = await window.agentWorkspace?.selectLocalFile({ title: tr("Privaten SSH-Key auswaehlen (z.B. id_ed25519)") });
     if (!source) return;
     setBusy(true);
     try {
@@ -272,10 +279,10 @@ function VServerForm({ initial, modal, onCancel, onSave }: { initial?: VServer; 
   const submit = () => {
     const portNumber = Number(port);
     const cleanHost = host.trim().replace(/^ssh:\/\//i, '');
-    if (!cleanHost) return setError('Adresse fehlt.');
-    if (!/^[a-z0-9._:\[\]-]+$/i.test(cleanHost)) return setError('Adresse ist ungueltig (nur IP oder Hostname).');
-    if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) return setError('Port muss zwischen 1 und 65535 liegen.');
-    if (user.trim() && !/^[a-z0-9._~@-]+$/i.test(user.trim())) return setError('Benutzername ist ungueltig.');
+    if (!cleanHost) return setError(tr("Adresse fehlt."));
+    if (!/^[a-z0-9._:\[\]-]+$/i.test(cleanHost)) return setError(tr("Adresse ist ungueltig (nur IP oder Hostname)."));
+    if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) return setError(tr("Port muss zwischen 1 und 65535 liegen."));
+    if (user.trim() && !/^[a-z0-9._~@-]+$/i.test(user.trim())) return setError(tr("Benutzername ist ungueltig."));
     onSave({
       id: initial?.id || newId(),
       name: name.trim() || cleanHost,
@@ -292,37 +299,37 @@ function VServerForm({ initial, modal, onCancel, onSave }: { initial?: VServer; 
 
   return (
     <section className={`panel w-full p-6 border border-white/10 backdrop-blur-md rounded-2xl shadow-xl space-y-4 ${modal ? 'bg-[#18161a]' : 'mt-8 bg-black/20'}`}>
-      <div className="section-label">{initial ? 'V-Server bearbeiten' : 'V-Server hinzufuegen'}</div>
+      <div className="section-label">{initial ? tr("V-Server bearbeiten") : tr("V-Server hinzufuegen")}</div>
       <label className="block">
-        <span className="mb-1 block text-[11px] text-zinc-500">Name (optional)</span>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="z.B. Hetzner VPS" className={field} />
+        <span className="mb-1 block text-[11px] text-zinc-500">{tr("Name (optional)")}</span>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder={tr("z.B. Hetzner VPS")} className={field} />
       </label>
       <div className="grid grid-cols-[1fr_110px] gap-3">
         <label className="block">
-          <span className="mb-1 block text-[11px] text-zinc-500">Adresse</span>
-          <input value={host} onChange={(event) => setHost(event.target.value)} placeholder="123.45.67.89 oder server.de" className={`${field} font-mono`} autoFocus />
+          <span className="mb-1 block text-[11px] text-zinc-500">{tr("Adresse")}</span>
+          <input value={host} onChange={(event) => setHost(event.target.value)} placeholder={tr("123.45.67.89 oder server.de")} className={`${field} font-mono`} autoFocus />
         </label>
         <label className="block">
-          <span className="mb-1 block text-[11px] text-zinc-500">Port</span>
+          <span className="mb-1 block text-[11px] text-zinc-500">{tr("Port")}</span>
           <input value={port} onChange={(event) => setPort(event.target.value.replace(/\D/g, ''))} className={`${field} font-mono`} />
         </label>
       </div>
       <label className="block">
-        <span className="mb-1 block text-[11px] text-zinc-500">Benutzername</span>
+        <span className="mb-1 block text-[11px] text-zinc-500">{tr("Benutzername")}</span>
         <input value={user} onChange={(event) => setUser(event.target.value)} placeholder="root" className={`${field} font-mono`} />
       </label>
       <div>
-        <span className="mb-1 block text-[11px] text-zinc-500">SSH-Key</span>
+        <span className="mb-1 block text-[11px] text-zinc-500">{tr("SSH-Key")}</span>
         <div className="flex items-center gap-2">
           <div className={`${field} flex min-w-0 items-center gap-2 !py-2`}>
             <KeyRound className={`w-4 h-4 shrink-0 ${keyPath ? 'text-emerald-400' : 'text-zinc-600'}`} />
             <span className={`truncate font-mono text-xs ${keyPath ? 'text-zinc-200' : 'text-zinc-600'}`}>
-              {keyName || 'Kein Key (Passwort-Login)'}
+              {keyName || tr("Kein Key (Passwort-Login)")}
             </span>
           </div>
           <button onClick={() => void uploadKey()} disabled={busy} className="secondary-button !py-2 !px-3 text-xs flex shrink-0 items-center gap-1.5 disabled:opacity-50">
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-            Key hochladen
+            {tr("Key hochladen")}
           </button>
           {keyPath && (
             <button
@@ -331,23 +338,23 @@ function VServerForm({ initial, modal, onCancel, onSave }: { initial?: VServer; 
                 setKeyName('');
               }}
               className="rounded-lg p-2 text-zinc-500 hover:bg-white/10 hover:text-white"
-              title="Key entfernen"
+              title={tr("Key entfernen")}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
-        <p className="mt-1.5 text-[11px] text-zinc-600">Privaten Key waehlen (z.B. id_ed25519), nicht die .pub-Datei. Der Key wird in FancyCode gespeichert.</p>
+        <p className="mt-1.5 text-[11px] text-zinc-600">{tr("Privaten Key waehlen (z.B. id_ed25519), nicht die .pub-Datei. Der Key wird in FancyCode Desktop gespeichert.")}</p>
       </div>
 
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
 
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
-          Abbrechen
+          {tr("Abbrechen")}
         </button>
         <button onClick={submit} className="primary-button flex-[2] !py-2.5">
-          Speichern
+          {tr("Speichern")}
         </button>
       </div>
     </section>
@@ -385,12 +392,12 @@ export function NewTabMenu({
   if (sshChat && !target) {
     return (
       <div className={box}>
-        <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">Wo soll das Tab laufen?</div>
+        <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">{tr("Wo soll das Tab laufen?")}</div>
         <button onClick={() => setTarget('local')} className={row}>
           <Monitor className="w-4 h-4 shrink-0 text-emerald-400" />
           <span>
-            <span className="block font-medium">Auf diesem PC</span>
-            <span className="block text-[10px] text-zinc-500">Lokales Terminal</span>
+            <span className="block font-medium">{tr("Auf diesem PC")}</span>
+            <span className="block text-[10px] text-zinc-500">{tr("Lokales Terminal")}</span>
           </span>
         </button>
         {savedServers.map((server) => (
@@ -401,18 +408,18 @@ export function NewTabMenu({
             >
               <Server className="w-4 h-4 shrink-0 text-sky-300" />
               <span className="min-w-0">
-                <span className="block truncate font-medium">Auf {server.name}</span>
+                <span className="block truncate font-medium">{tr("Auf")} {server.name}</span>
                 <span className="block truncate font-mono text-[10px] text-zinc-500">{server.user ? `${server.user}@` : ''}{server.host}</span>
               </span>
             </button>
-            <button onClick={() => onSftp(server)} className="mr-1 rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title="SFTP-Dateien">
+            <button onClick={() => onSftp(server)} className="mr-1 rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title={tr("SFTP-Dateien")}>
               <FolderOpen className="w-3.5 h-3.5" />
             </button>
           </div>
         ))}
         <button onClick={onAddServer} className={`${row} !text-sky-300`}>
           <Plus className="w-4 h-4" />
-          <span className="font-medium">Neuen Server hinzufuegen</span>
+          <span className="font-medium">{tr("Neuen Server hinzufuegen")}</span>
         </button>
       </div>
     );
@@ -423,21 +430,21 @@ export function NewTabMenu({
       {chosen && (
         <button onClick={() => setTarget(null)} className="mb-1 flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[10px] uppercase tracking-wider text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300">
           {chosen === 'local' ? <Monitor className="w-3 h-3 text-emerald-400" /> : <Server className="w-3 h-3 text-sky-400" />}
-          <span className="truncate">{chosen === 'local' ? 'Dieser PC' : chosen.name}</span>
+          <span className="truncate">{chosen === 'local' ? tr("Dieser PC") : chosen.name}</span>
           <span className="ml-auto shrink-0">aendern</span>
         </button>
       )}
       <button onClick={() => onBlank(chosen ?? undefined)} className={row}>
         <SquareTerminal className="w-4 h-4 text-zinc-400" />
         <span>
-          <span className="block font-medium">Leer</span>
-          <span className="block text-[10px] text-zinc-500">Terminal ohne Start-Befehl</span>
+          <span className="block font-medium">{tr("Leer")}</span>
+          <span className="block text-[10px] text-zinc-500">{tr("Terminal ohne Start-Befehl")}</span>
         </span>
       </button>
       <div className="my-1 border-t border-white/5" />
-      <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">Harness starten</div>
+      <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">{tr("Harness starten")}</div>
       {harnesses.length === 0 ? (
-        <p className="px-2.5 py-2 text-[11px] text-zinc-500">Keine Harnesses angelegt (Einstellungen).</p>
+        <p className="px-2.5 py-2 text-[11px] text-zinc-500">{tr("Keine Harnesses angelegt (Einstellungen).")}</p>
       ) : (
         harnesses.map((harness) => {
           const Icon = harnessIcon(harness.icon);
@@ -446,7 +453,7 @@ export function NewTabMenu({
               <Icon className="w-4 h-4 shrink-0 text-orange-300" />
               <span className="min-w-0">
                 <span className="block truncate font-medium">{harness.name}</span>
-                <span className="block truncate font-mono text-[10px] text-zinc-500">{harness.command || 'kein Befehl'}</span>
+                <span className="block truncate font-mono text-[10px] text-zinc-500">{harness.command || tr("kein Befehl")}</span>
               </span>
             </button>
           );
@@ -455,7 +462,7 @@ export function NewTabMenu({
       {!sshChat && (
         <>
           <div className="my-1 border-t border-white/5" />
-          <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">V-Server</div>
+          <div className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-wider text-zinc-600">{tr("V-Server")}</div>
           {savedServers.map((server) => (
             <div key={server.id} className="flex items-center rounded-lg hover:bg-white/[0.07]">
               <button onClick={() => onServer(server)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left text-xs text-zinc-200">
@@ -465,14 +472,14 @@ export function NewTabMenu({
                   <span className="block truncate font-mono text-[10px] text-zinc-500">{server.user ? `${server.user}@` : ''}{server.host}</span>
                 </span>
               </button>
-              <button onClick={() => onSftp(server)} className="mr-1 rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title="SFTP-Dateien">
+              <button onClick={() => onSftp(server)} className="mr-1 rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white" title={tr("SFTP-Dateien")}>
                 <FolderOpen className="w-3.5 h-3.5" />
               </button>
             </div>
           ))}
           <button onClick={onAddServer} className={`${row} !text-sky-300`}>
             <Plus className="w-4 h-4" />
-            <span className="font-medium">Neuen Server hinzufuegen</span>
+            <span className="font-medium">{tr("Neuen Server hinzufuegen")}</span>
           </button>
         </>
       )}
@@ -510,7 +517,7 @@ function AndroidExport({ servers: list, onDone }: { servers: VServer[]; onDone()
           terminal: { prefixSuffixEnabled: terminalPrefixSuffixEnabled, prefix: terminalPrefix, suffix: terminalSuffix, triggerWords: terminalTriggerWords },
         },
       });
-      if (result.saved) setMessage(`Gespeichert: ${result.path}${result.keys ? ` (${result.keys} Key${result.keys > 1 ? 's' : ''})` : ''}. Datei aufs Handy kopieren, in der App unter "Vom PC uebernehmen" auswaehlen und danach loeschen.`);
+      if (result.saved) setMessage(tr('Gespeichert: {path}{keys}. Datei aufs Handy kopieren, in der App unter "Vom PC uebernehmen" auswaehlen und danach loeschen.', { path: result.path, keys: result.keys ? ` (${result.keys} Key${result.keys > 1 ? 's' : ''})` : '' }));
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -522,30 +529,30 @@ function AndroidExport({ servers: list, onDone }: { servers: VServer[]; onDone()
     <div className="rounded-xl border border-sky-400/20 bg-sky-500/[0.06] p-4 space-y-3">
       <div className="flex items-center gap-2 text-sm text-white">
         <Smartphone className="w-4 h-4 text-sky-300" />
-        FancyCode auf Android einrichten
+        {tr("FancyCode auf Android einrichten")}
       </div>
       <p className="text-xs leading-relaxed text-zinc-400">
-        Erstellt eine Datei mit deinen {list.length} V-Servern, CLI-Harnesses, Antigravity-Accounts und Themes. Die Android-App arbeitet nur auf den V-Servern, nicht auf diesem PC.
+        {tr("Erstellt eine Datei mit deinen")} {list.length} {tr("V-Servern, CLI-Harnesses, Antigravity-Accounts und Themes. Die Android-App arbeitet nur auf den V-Servern, nicht auf diesem PC.")}
       </p>
       <label className="flex items-start gap-2 text-xs text-zinc-300">
         <input type="checkbox" checked={includeKeys} onChange={(event) => setIncludeKeys(event.target.checked)} className="mt-0.5 accent-sky-500" />
-        <span>SSH-Keys mitnehmen <span className="text-zinc-500">(sonst in der App einen neuen Key erzeugen oder Passwort nutzen)</span></span>
+        <span>{tr("SSH-Keys mitnehmen")} <span className="text-zinc-500">{tr("(sonst in der App einen neuen Key erzeugen oder Passwort nutzen)")}</span></span>
       </label>
       <label className="flex items-start gap-2 text-xs text-zinc-300">
         <input type="checkbox" checked={includeApi} onChange={(event) => setIncludeApi(event.target.checked)} className="mt-0.5 accent-sky-500" />
-        <span>KI-Provider mit API-Keys mitnehmen</span>
+        <span>{tr("KI-Provider mit API-Keys mitnehmen")}</span>
       </label>
       {(includeKeys || includeApi) && (
         <p className="text-[11px] leading-relaxed text-amber-300/90">
-          Die Datei enthaelt dann geheime Schluessel. Nur auf dein eigenes Handy uebertragen und danach ueberall loeschen.
+          {tr("Die Datei enthaelt dann geheime Schluessel. Nur auf dein eigenes Handy uebertragen und danach ueberall loeschen.")}
         </p>
       )}
       {message && <p className="text-xs leading-relaxed text-zinc-300 break-all">{message}</p>}
       <div className="flex gap-2">
-        <button onClick={onDone} className="flex-1 rounded-lg border border-white/10 py-2 text-xs text-zinc-400 hover:bg-white/[0.05]">Schliessen</button>
+        <button onClick={onDone} className="flex-1 rounded-lg border border-white/10 py-2 text-xs text-zinc-400 hover:bg-white/[0.05]">{tr("Schliessen")}</button>
         <button onClick={() => void run()} disabled={busy} className="primary-button flex-[2] !py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Smartphone className="w-3.5 h-3.5" />}
-          Exportdatei speichern
+          {tr("Exportdatei speichern")}
         </button>
       </div>
     </div>

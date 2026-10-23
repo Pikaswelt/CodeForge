@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { tr } from './i18n';
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Wifi } from 'lucide-react';
@@ -16,9 +17,16 @@ import { isVideoPath, toFileUrl } from './media';
 import UpdateModal from './components/UpdateModal';
 import { VoiceIndicator, VoiceInstallModal } from './components/VoiceSettings';
 import { syncWakeMode } from './voice';
+import { useLanguage } from './i18n';
 import { useCompactLayout } from './useCompactLayout';
 import { isWebBuild, useWallpaper } from './wallpaper';
 import { FancyAccessGate } from './components/FancyAccessGate';
+import Onboarding from './components/Onboarding';
+import ThemeCreator from './components/ThemeCreator';
+import { animatedEffectsAllowed } from './plans';
+import { PluginProvider } from './plugins/PluginProvider';
+import AgentPopups from './components/AgentPopups';
+import WelcomeTour, { welcomeTourSeen } from './components/WelcomeTour';
 import type { UpdateSpotlight } from './types';
 
 // Modals and widgets load on demand to keep startup fast.
@@ -29,6 +37,8 @@ const MobileConnectModal = lazy(() => import('./components/MobileConnectModal'))
 const SIDEBAR_STORAGE_KEY = 'agentWorkspace.sidebarCollapsed';
 
 function AppLayout() {
+  // Re-renders the whole tree when the app language changes.
+  useLanguage();
   const {
     theme,
     customThemes,
@@ -252,6 +262,7 @@ function AppLayout() {
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
         </AnimatePresence>
         <UpdateModal />
+        <ThemeCreator />
         <VoiceInstallModal />
         <VoiceIndicator />
 
@@ -266,10 +277,10 @@ function AppLayout() {
           <button
             onClick={() => setShowMobileConnect(true)}
             className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md text-xs shadow-2xl border border-amber-400/20 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 transition-all"
-            title="Mit Server verbinden"
+            title={tr("Mit Server verbinden")}
           >
             <Wifi className="w-3.5 h-3.5" />
-            Verbinden
+            {tr("Verbinden")}
           </button>
         )}
 
@@ -284,7 +295,7 @@ function AppLayout() {
               <span className="absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400 animate-ping" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
             </span>
-            <Wifi className="w-3.5 h-3.5" /> Live
+            <Wifi className="w-3.5 h-3.5" /> {tr("Live")}
           </button>
         )}
       </div>
@@ -293,8 +304,13 @@ function AppLayout() {
 }
 
 function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppContext>['customThemes'][number]> }) {
-  const mediaPath = theme.backgroundMedia || theme.backgroundImage || '';
-  const isVideo = isVideoPath(mediaPath);
+  // Animierte Hintergründe (bewegter Verlauf, Video) gibt es ab Pro.
+  const animated = animatedEffectsAllowed();
+  const requestedMedia = theme.backgroundMedia || theme.backgroundImage || '';
+  const videoFile = isVideoPath(requestedMedia);
+  // Ohne Pro bleibt ein Video ungespielt, dann greift der ruhige Farbverlauf.
+  const mediaPath = animated || !videoFile ? requestedMedia : '';
+  const isVideo = animated && videoFile;
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
   React.useEffect(() => {
@@ -320,7 +336,7 @@ function ThemeBackdrop({ theme }: { theme: NonNullable<ReturnType<typeof useAppC
 
   return (
     <div className="theme-backdrop" aria-hidden="true">
-      {!theme.mediaOnly && <div className={`theme-custom-gradient ${theme.animatedGradient ? 'theme-custom-gradient-animated' : ''}`} />}
+      {!theme.mediaOnly && <div className={`theme-custom-gradient ${theme.animatedGradient && animated ? 'theme-custom-gradient-animated' : ''}`} />}
       {mediaPath && isVideo && (
         <video
           ref={videoRef}
@@ -377,7 +393,7 @@ function VersionIntro({ version, updated, onComplete }: { version: string; updat
         className="flex flex-col items-center"
       >
         <AppLogo className="h-16 w-16" />
-        <div className="mt-6 text-[11px] font-semibold uppercase tracking-[0.45em] text-zinc-500">FancyCode</div>
+        <div className="mt-6 text-[11px] font-semibold uppercase tracking-[0.45em] text-zinc-500">FancyCode Desktop</div>
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -401,7 +417,7 @@ function VersionIntro({ version, updated, onComplete }: { version: string; updat
             className="flex items-center gap-2 text-[11px] uppercase tracking-[0.3em] text-zinc-400"
           >
             <Sparkles className="h-3.5 w-3.5 text-amber-300/80" />
-            Update installiert
+            {tr("Update installiert")}
           </motion.div>
         )}
       </motion.div>
@@ -414,6 +430,8 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [showNews, setShowNews] = useState(false);
+  // Erster Start (auch nach dem Wechsel von CodeForge): kurze Einführung vor Login und Setup.
+  const [showTour, setShowTour] = useState(() => !welcomeTourSeen());
 
   // The desktop app knows whether this start follows an update; the version itself comes from the
   // build, so the animation works on every platform.
@@ -439,7 +457,8 @@ export default function App() {
 
   const finishIntro = () => {
     setShowIntro(false);
-    if (updated) setShowNews(true);
+    // The tour already explains what is new; the changelog follows only for later updates.
+    if (updated && welcomeTourSeen()) setShowNews(true);
   };
 
   // Only once the changelog was really shown is the version remembered, so the animation comes
@@ -457,9 +476,14 @@ export default function App() {
         <AnimatePresence mode="wait">
           {showIntro ? (
             <VersionIntro key="version-intro" version={version} updated={updated} onComplete={finishIntro} />
+          ) : showTour ? (
+            <WelcomeTour key="welcome-tour" onDone={() => setShowTour(false)} />
           ) : (
             <FancyAccessGate key="layout">
-              <AppLayout />
+              <PluginProvider>
+                <AppLayout />
+              </PluginProvider>
+              <Onboarding />
             </FancyAccessGate>
           )}
         </AnimatePresence>
@@ -467,6 +491,7 @@ export default function App() {
       <AnimatePresence>
         {showNews && <NewsPopup key="news" version={version} onClose={closeNews} />}
       </AnimatePresence>
+      <AgentPopups />
     </AppProvider>
   );
 }

@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, ChevronLeft, Copy, FolderGit2, MessageSquare, Plus, SendHorizontal, Settings2, Trash2 } from 'lucide-react';
 import { listModels, sendChat } from '../apiChat';
@@ -20,9 +21,9 @@ export default function ChatScreen() {
     <div className="flex h-full flex-col">
       <ScreenHeader
         title="Chat"
-        subtitle="Direkt mit Claude, GPT & Co. über deine API-Keys"
+        subtitle={tr("Direkt mit Claude, GPT & Co. über deine API-Keys")}
         actions={apiProviders.length > 0 && (
-          <IconButton label="Neuer Chat" className="cf-glass" onClick={() => setCreating(true)}>
+          <IconButton label={tr("Neuer Chat")} className="cf-glass" onClick={() => setCreating(true)}>
             <Plus className="h-5 w-5" />
           </IconButton>
         )}
@@ -32,18 +33,18 @@ export default function ChatScreen() {
           <Card>
             <EmptyState
               icon={<Bot className="h-8 w-8" />}
-              title="Noch kein KI-Provider"
-              text="Lege in den Einstellungen einen Provider an (Anthropic, OpenAI oder OpenAI-kompatibel wie OpenRouter oder Ollama auf deinem Server)."
-              action={<Button variant="primary" icon={<Settings2 className="h-4 w-4" />} onClick={() => setTab('settings')}>Zu den Einstellungen</Button>}
+              title={tr("Noch kein KI-Provider")}
+              text={tr("Lege in den Einstellungen einen Provider an (Anthropic, OpenAI oder OpenAI-kompatibel wie OpenRouter oder Ollama auf deinem Server).")}
+              action={<Button variant="primary" icon={<Settings2 className="h-4 w-4" />} onClick={() => setTab('settings')}>{tr("Zu den Einstellungen")}</Button>}
             />
           </Card>
         ) : sorted.length === 0 ? (
           <Card>
             <EmptyState
               icon={<MessageSquare className="h-8 w-8" />}
-              title="Noch keine Chats"
-              text="Starte einen Chat. Du kannst einen Projektordner auf dem V-Server anhängen, dann kennt das Modell die Dateiliste."
-              action={<Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>Neuer Chat</Button>}
+              title={tr("Noch keine Chats")}
+              text={tr("Starte einen Chat. Du kannst einen Projektordner auf dem V-Server anhängen, dann kennt das Modell die Dateiliste.")}
+              action={<Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>{tr("Neuer Chat")}</Button>}
             />
           </Card>
         ) : (
@@ -59,7 +60,7 @@ export default function ChatScreen() {
                     <span className="cf-muted block truncate text-[0.76rem]">{item.model} · {timeAgo(item.updatedAt)}</span>
                   </span>
                 </button>
-                <IconButton label="Löschen" className="mr-1" onClick={() => setChats((current) => current.filter((entry) => entry.id !== item.id))}>
+                <IconButton label={tr("Löschen")} className="mr-1" onClick={() => setChats((current) => current.filter((entry) => entry.id !== item.id))}>
                   <Trash2 className="cf-muted h-4 w-4" />
                 </IconButton>
               </div>
@@ -106,7 +107,7 @@ function NewChatSheet({ onClose, onCreated }: { onClose: () => void; onCreated: 
     const server = servers.find((item) => item.id === serverId);
     const chat: ApiChat = {
       id: newId(),
-      title: server && projectPath.trim() ? projectPath.trim().split('/').filter(Boolean).pop() || 'Neuer Chat' : 'Neuer Chat',
+      title: server && projectPath.trim() ? projectPath.trim().split('/').filter(Boolean).pop() || tr("Neuer Chat") : tr("Neuer Chat"),
       providerId: provider.id,
       model: model.trim(),
       systemPrompt,
@@ -120,13 +121,13 @@ function NewChatSheet({ onClose, onCreated }: { onClose: () => void; onCreated: 
   };
 
   return (
-    <Sheet title="Neuer Chat" full onClose={onClose} footer={<Button variant="primary" className="flex-1" disabled={!provider || !model.trim()} onClick={create}>Chat starten</Button>}>
-      <Field label="Provider">
+    <Sheet title={tr("Neuer Chat")} full onClose={onClose} footer={<Button variant="primary" className="flex-1" disabled={!provider || !model.trim()} onClick={create}>{tr("Chat starten")}</Button>}>
+      <Field label={tr("Provider")}>
         <select className="cf-input" value={providerId} onChange={(event) => setProviderId(event.target.value)}>
           {apiProviders.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
       </Field>
-      <Field label="Modell">
+      <Field label={tr("Modell")}>
         <div className="flex gap-2">
           {models.length ? (
             <select className="cf-input flex-1" value={model} onChange={(event) => setModel(event.target.value)}>
@@ -134,33 +135,33 @@ function NewChatSheet({ onClose, onCreated }: { onClose: () => void; onCreated: 
               {models.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           ) : (
-            <input className="cf-input flex-1" value={model} onChange={(event) => setModel(event.target.value)} placeholder="z.B. claude-sonnet-4-5" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+            <input className="cf-input flex-1" value={model} onChange={(event) => setModel(event.target.value)} placeholder={tr("z.B. claude-sonnet-4-5")} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
           )}
-          <Button onClick={() => void loadModels()} busy={loadingModels}>Laden</Button>
+          <Button onClick={() => void loadModels()} busy={loadingModels}>{tr("Laden")}</Button>
         </div>
       </Field>
-      <Field label="System-Prompt (optional)">
-        <textarea className="cf-input h-24 resize-none" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} placeholder="Du bist ein hilfreicher Senior-Entwickler …" />
+      <Field label={tr("System-Prompt (optional)")}>
+        <textarea className="cf-input h-24 resize-none" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} placeholder={tr("Du bist ein hilfreicher Senior-Entwickler …")} />
       </Field>
       {servers.length > 0 && (
-        <Section title="Projekt auf dem V-Server (optional)">
-          <Field label="V-Server">
+        <Section title={tr("Projekt auf dem V-Server (optional)")}>
+          <Field label={tr("V-Server")}>
             <select className="cf-input" value={serverId} onChange={(event) => {
               setServerId(event.target.value);
               const server = servers.find((item) => item.id === event.target.value);
               if (server?.defaultPath && !projectPath) setProjectPath(server.defaultPath);
             }}>
-              <option value="">Kein Projekt</option>
+              <option value="">{tr("Kein Projekt")}</option>
               {servers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </Field>
           {serverId && (
             <>
-              <Field label="Projektordner">
+              <Field label={tr("Projektordner")}>
                 <input className="cf-input" value={projectPath} onChange={(event) => setProjectPath(event.target.value)} placeholder="/root/mein-projekt" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
               </Field>
               <div className="cf-glass cf-card overflow-hidden">
-                <Toggle checked={includeFiles} onChange={setIncludeFiles} label="Dateiliste mitsenden" description="Name, Pfad, Git-Branch und bis zu 400 Dateien als Kontext" />
+                <Toggle checked={includeFiles} onChange={setIncludeFiles} label={tr("Dateiliste mitsenden")} description={tr("Name, Pfad, Git-Branch und bis zu 400 Dateien als Kontext")} />
               </div>
             </>
           )}
@@ -191,7 +192,7 @@ function ChatView({ chat, onBack }: { chat: ApiChat; onBack: () => void }) {
     try {
       const [files, branch] = await withServer(server, () => Promise.all([chat.includeFiles ? projectFiles(server, chat.project!.path) : Promise.resolve([]), gitBranch(server, chat.project!.path)]));
       context.current = [
-        `Projekt: ${chat.project.path.split('/').filter(Boolean).pop()} (auf dem V-Server ${server.name})`,
+        tr("Projekt: {name} (auf dem V-Server {server})", { name: chat.project.path.split('/').filter(Boolean).pop(), server: server.name }),
         `Pfad: ${chat.project.path}`,
         branch ? `Git-Branch: ${branch}` : '',
         files.length ? `Dateien:\n${files.join('\n')}` : '',
@@ -214,7 +215,7 @@ function ChatView({ chat, onBack }: { chat: ApiChat; onBack: () => void }) {
       const project = await projectContext();
       const system = [chat.systemPrompt, project].filter(Boolean).join('\n\n');
       const result = await sendChat(provider, chat.model, system, history.map((item) => ({ role: item.role, content: item.content })));
-      update((current) => ({ ...current, messages: [...current.messages, { id: newId(), role: 'assistant', content: result.text || '(leere Antwort)', at: Date.now(), tokens: result.tokens }], updatedAt: Date.now() }));
+      update((current) => ({ ...current, messages: [...current.messages, { id: newId(), role: 'assistant', content: result.text || tr("(leere Antwort)"), at: Date.now(), tokens: result.tokens }], updatedAt: Date.now() }));
     } catch (error) {
       update((current) => ({ ...current, messages: [...current.messages, { id: newId(), role: 'assistant', content: errorMessage(error), at: Date.now(), error: true }], updatedAt: Date.now() }));
     } finally {
@@ -225,23 +226,23 @@ function ChatView({ chat, onBack }: { chat: ApiChat; onBack: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <div className="cf-glass cf-safe-top flex shrink-0 items-center gap-1 border-x-0 border-t-0 px-2 pb-2">
-        <IconButton label="Zurück" onClick={onBack}>
+        <IconButton label={tr("Zurück")} onClick={onBack}>
           <ChevronLeft className="h-5 w-5" />
         </IconButton>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[1rem] font-semibold">{chat.title}</div>
-          <div className="cf-muted truncate text-[0.74rem]">{provider?.name || 'Provider fehlt'} · {chat.model}{chat.project ? ` · ${chat.project.path}` : ''}</div>
+          <div className="cf-muted truncate text-[0.74rem]">{provider?.name || tr("Provider fehlt")} · {chat.model}{chat.project ? ` · ${chat.project.path}` : ''}</div>
         </div>
       </div>
       <div ref={list} className="cf-scroll min-h-0 flex-1 space-y-3 px-3 py-3">
-        {chat.messages.length === 0 && <p className="cf-muted py-10 text-center text-[0.88rem]">Schreib die erste Nachricht.</p>}
+        {chat.messages.length === 0 && <p className="cf-muted py-10 text-center text-[0.88rem]">{tr("Schreib die erste Nachricht.")}</p>}
         {chat.messages.map((message) => (
-          <Bubble key={message.id} message={message} onCopy={() => void Native.copyText({ text: message.content }).then(() => toast('Kopiert.', 'success'))} />
+          <Bubble key={message.id} message={message} onCopy={() => void Native.copyText({ text: message.content }).then(() => toast(tr("Kopiert."), 'success'))} />
         ))}
         {pending && (
           <div className="cf-glass flex w-fit items-center gap-2 rounded-2xl rounded-bl-md px-4 py-3">
             <Spinner className="h-4 w-4" />
-            <span className="cf-muted text-[0.85rem]">Denkt nach …</span>
+            <span className="cf-muted text-[0.85rem]">{tr("Denkt nach …")}</span>
           </div>
         )}
       </div>
@@ -250,11 +251,11 @@ function ChatView({ chat, onBack }: { chat: ApiChat; onBack: () => void }) {
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={Math.min(6, Math.max(1, text.split('\n').length))}
-          placeholder={provider ? 'Nachricht …' : 'Provider fehlt'}
+          placeholder={provider ? tr("Nachricht …") : tr("Provider fehlt")}
           disabled={!provider}
           className="cf-input min-h-[2.75rem] flex-1 resize-none py-2.5 leading-snug"
         />
-        <button onClick={() => void send()} disabled={!text.trim() || pending || !provider} className="cf-press cf-accent-bg flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-lg" aria-label="Senden">
+        <button onClick={() => void send()} disabled={!text.trim() || pending || !provider} className="cf-press cf-accent-bg flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-lg" aria-label={tr("Senden")}>
           <SendHorizontal className="h-5 w-5" />
         </button>
       </div>
@@ -283,7 +284,7 @@ function Bubble({ message, onCopy }: { message: ChatMessage; onCopy: () => void 
         )}
         {!mine && !message.error && (
           <button onClick={onCopy} className="cf-muted mt-1 flex items-center gap-1 text-[0.72rem]">
-            <Copy className="h-3 w-3" /> Kopieren{message.tokens ? ` · ${message.tokens} Tokens` : ''}
+            <Copy className="h-3 w-3" /> {tr("Kopieren")}{message.tokens ? ` · ${message.tokens} Tokens` : ''}
           </button>
         )}
       </div>

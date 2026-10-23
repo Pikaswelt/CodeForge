@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, Download, Loader2, RefreshCw, Sparkles, X, XCircle } from 'lucide-react';
@@ -19,11 +20,11 @@ function formatBytes(bytes = 0) {
   return `${bytes} B`;
 }
 
-const STEPS = [
-  { id: 'checking', label: 'Suchen' },
-  { id: 'downloading', label: 'Herunterladen' },
-  { id: 'downloaded', label: 'Bereit' },
-  { id: 'installing', label: 'Installieren' },
+const steps = () => [
+  { id: 'checking', label: tr("Suchen") },
+  { id: 'downloading', label: tr("Herunterladen") },
+  { id: 'downloaded', label: tr("Bereit") },
+  { id: 'installing', label: tr("Installieren") },
 ];
 
 export default function UpdateModal() {
@@ -54,8 +55,8 @@ export default function UpdateModal() {
   if (!open || !status) return null;
 
   const current = status.status;
-  const activeIndex = STEPS.findIndex((step) => step.id === current);
-  const upToDate = current === 'idle' && status.message?.includes('aktuell');
+  const activeIndex = steps().findIndex((step) => step.id === current);
+  const upToDate = current === 'idle' && (status.message?.includes('aktuell') || /up to date/i.test(status.message || ''));
   const installing = current === 'installing' || installClicked;
   const busy = current === 'checking' || current === 'downloading' || installing;
 
@@ -84,9 +85,9 @@ export default function UpdateModal() {
               </span>
               <div>
                 <div className="text-base font-medium text-white">
-                  {upToDate ? 'FancyCode ist aktuell' : status.availableVersion ? `Update ${status.availableVersion}` : 'Update'}
+                  {upToDate ? tr("FancyCode Desktop ist aktuell") : status.availableVersion ? `Update ${status.availableVersion}` : tr("Update")}
                 </div>
-                <div className="text-xs text-zinc-500">Installiert: v{status.currentVersion}</div>
+                <div className="text-xs text-zinc-500">{tr("Installiert: v")}{status.currentVersion}</div>
               </div>
             </div>
             {!installing && (
@@ -98,7 +99,7 @@ export default function UpdateModal() {
 
           {!upToDate && current !== 'error' && (
             <div className="mt-5 flex items-center gap-1.5">
-              {STEPS.map((step, index) => {
+              {steps().map((step, index) => {
                 const done = activeIndex > index || (installing && index < 3);
                 const active = activeIndex === index || (installing && index === 3);
                 return (
@@ -111,19 +112,19 @@ export default function UpdateModal() {
             </div>
           )}
 
-          <div className="mt-5 text-sm text-zinc-300">{installing ? 'FancyCode wird beendet und installiert...' : status.message}</div>
+          <div className="mt-5 text-sm text-zinc-300">{installing ? tr("FancyCode Desktop wird beendet und installiert...") : status.message}</div>
 
           {!installing && current !== 'error' && (
             <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-black/30">
               <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-amber-300/80">
                 <Sparkles className="h-3.5 w-3.5" />
-                {upToDate ? 'Was zuletzt neu war' : 'Was sich aendert'}
+                {upToDate ? tr("Was zuletzt neu war") : tr("Was sich aendert")}
               </div>
               <div className="max-h-52 overflow-y-auto px-3 py-2.5 custom-scrollbar">
                 {notes.loading ? (
                   <div className="flex items-center gap-2 text-[11px] text-zinc-500">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Aenderungen werden geladen ...
+                    {tr("Aenderungen werden geladen ...")}
                   </div>
                 ) : notes.error ? (
                   <p className="text-[11px] leading-5 text-zinc-500">{notes.error}</p>
@@ -136,7 +137,7 @@ export default function UpdateModal() {
                     <ReleaseBody body={noteHead.body} compact />
                   </>
                 ) : (
-                  <p className="text-[11px] text-zinc-500">Keine Aenderungen notiert.</p>
+                  <p className="text-[11px] text-zinc-500">{tr("Keine Aenderungen notiert.")}</p>
                 )}
               </div>
             </div>
@@ -149,7 +150,7 @@ export default function UpdateModal() {
               </div>
               <div className="mt-1.5 flex justify-between text-[11px] text-zinc-500">
                 <span>
-                  {formatBytes(status.receivedBytes)} {status.totalBytes ? `von ${formatBytes(status.totalBytes)}` : ''}
+                  {formatBytes(status.receivedBytes)} {status.totalBytes ? tr("von {size}", { size: formatBytes(status.totalBytes) }) : ''}
                 </span>
                 <span>
                   {status.bytesPerSecond ? `${formatBytes(status.bytesPerSecond)}/s · ` : ''}
@@ -161,7 +162,7 @@ export default function UpdateModal() {
 
           {installing && (
             <p className="mt-3 text-[11px] leading-5 text-zinc-500">
-              Ein kleines Fenster zeigt den Installationsfortschritt. FancyCode startet danach automatisch neu.
+              {tr("Ein kleines Fenster zeigt den Installationsfortschritt. FancyCode Desktop startet danach automatisch neu.")}
             </p>
           )}
 
@@ -173,17 +174,17 @@ export default function UpdateModal() {
             {current === 'downloaded' && !installing ? (
               <>
                 <button onClick={() => setOpen(false)} className="flex-1 rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
-                  Spaeter
+                  {tr("Spaeter")}
                 </button>
                 <button onClick={() => void install()} className="primary-button flex flex-[2] items-center justify-center gap-2 !py-2.5">
                   <RefreshCw className="h-4 w-4" />
-                  Jetzt installieren und neu starten
+                  {tr("Jetzt installieren und neu starten")}
                 </button>
               </>
             ) : current === 'error' || upToDate ? (
               <>
                 <button onClick={() => setOpen(false)} className="flex-1 rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
-                  Schliessen
+                  {tr("Schliessen")}
                 </button>
                 {current === 'error' && (
                   <button
@@ -191,13 +192,13 @@ export default function UpdateModal() {
                     className="primary-button flex flex-[2] items-center justify-center gap-2 !py-2.5"
                   >
                     <RefreshCw className="h-4 w-4" />
-                    Erneut versuchen
+                    {tr("Erneut versuchen")}
                   </button>
                 )}
               </>
             ) : !installing ? (
               <button onClick={() => setOpen(false)} className="flex-1 rounded-lg border border-white/10 py-2.5 text-sm text-zinc-400 hover:bg-white/[0.05]">
-                Im Hintergrund weiter
+                {tr("Im Hintergrund weiter")}
               </button>
             ) : null}
           </div>

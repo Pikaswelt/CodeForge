@@ -20,16 +20,24 @@ export function toFileUrl(filePath: string) {
   }
   if ((window as any).agentWorkspace?.isWeb) {
     let baseUrl = '';
+    let token = '';
     try {
-      const storedConfig = localStorage.getItem('mobileConnectionConfig');
+      // The app stores settings under the agentWorkspace prefix; the unprefixed key is only a
+      // fallback for older builds. Without the prefix the URL pointed at the web origin instead
+      // of the configured server.
+      const storedConfig =
+        localStorage.getItem('agentWorkspace.mobileConnectionConfig') ||
+        localStorage.getItem('mobileConnectionConfig');
       if (storedConfig) {
         const config = JSON.parse(storedConfig);
         if (config.connected && config.type === 'vps' && config.vpsUrl) {
           baseUrl = config.vpsUrl;
+          token = config.vpsToken || '';
         }
       }
     } catch (e) {}
-    return `${baseUrl}/media?path=${encodeURIComponent(filePath)}`;
+    const auth = token ? `&token=${encodeURIComponent(token)}` : '';
+    return `${baseUrl}/media?path=${encodeURIComponent(filePath)}${auth}`;
   }
   // In Capacitor Android, file:// URLs with content:// or file:/// work
   if (typeof (window as any).Capacitor !== 'undefined' || filePath.startsWith('content://')) {

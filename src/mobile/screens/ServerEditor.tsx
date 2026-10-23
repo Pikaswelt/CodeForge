@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 import { useRef, useState } from 'react';
 import { Check, Copy, FileKey2, KeyRound, ShieldCheck, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { Native, errorCode, errorMessage } from '../native';
@@ -56,7 +57,7 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
       setPublicKey(result.publicKey || '');
       setKeyName(label);
       setKeyText('');
-      toast(result.encrypted ? 'Key gespeichert. Er ist mit einer Passphrase geschützt.' : 'Key gespeichert.', 'success');
+      toast(result.encrypted ? tr("Key gespeichert. Er ist mit einer Passphrase geschützt.") : tr("Key gespeichert."), 'success');
     } catch (error) {
       setKeyReady(false);
       toast(errorMessage(error), 'error');
@@ -68,22 +69,22 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
   const pickFile = async (file: File | undefined) => {
     if (!file) return;
     if (file.size > 64 * 1024) {
-      toast('Die Datei ist zu groß für einen SSH-Key.', 'error');
+      toast(tr("Die Datei ist zu groß für einen SSH-Key."), 'error');
       return;
     }
     await storeKey(await file.text(), file.name);
   };
 
   const generate = async () => {
-    if (keyReady && !(await confirm({ title: 'Neuen Key erzeugen?', message: 'Der bisher gespeicherte Key dieses Servers wird ersetzt.', confirmLabel: 'Erzeugen' }))) return;
+    if (keyReady && !(await confirm({ title: tr("Neuen Key erzeugen?"), message: tr("Der bisher gespeicherte Key dieses Servers wird ersetzt."), confirmLabel: 'Erzeugen' }))) return;
     setBusy('generate');
     try {
       const result = await Native.generateKey({ keyId, comment: `codeforge-android-${new Date().toISOString().slice(0, 10)}` });
       setKeyReady(true);
       setKeyEncrypted(false);
       setPublicKey(result.publicKey);
-      setKeyName('Ed25519 (auf diesem Handy erzeugt)');
-      toast('Neuer Key erzeugt. Jetzt auf dem Server eintragen.', 'success');
+      setKeyName(tr("Ed25519 (auf diesem Handy erzeugt)"));
+      toast(tr("Neuer Key erzeugt. Jetzt auf dem Server eintragen."), 'success');
     } catch (error) {
       toast(errorMessage(error), 'error');
     } finally {
@@ -94,16 +95,16 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
   // Logs in once with the password and adds the phone's public key to authorized_keys.
   const installOnServer = async () => {
     if (!publicKey || !host.trim()) return;
-    const password = await prompt({ title: 'Key auf dem Server eintragen', label: `Passwort von ${user.trim() || 'root'}@${host.trim()}`, value: '', confirmLabel: 'Eintragen', secret: true });
+    const password = await prompt({ title: tr("Key auf dem Server eintragen"), label: tr("Passwort von {user}", { user: `${user.trim() || 'root'}@${host.trim()}` }), value: '', confirmLabel: tr("Eintragen"), secret: true });
     if (!password) return;
     setBusy('install');
     const passwordServer: MobileServer = { ...draft(), id: `${id}-pw`, auth: 'password', keyId: undefined };
     try {
       setSecret(passwordServer.id, password);
       await installPublicKey(passwordServer, publicKey);
-      toast('Key ist auf dem Server eingetragen. Ab jetzt ohne Passwort.', 'success');
+      toast(tr("Key ist auf dem Server eingetragen. Ab jetzt ohne Passwort."), 'success');
     } catch (error) {
-      toast(errorCode(error) === 'NEED_SECRET' ? 'Passwort falsch oder Passwort-Login auf dem Server deaktiviert.' : errorMessage(error), 'error');
+      toast(errorCode(error) === 'NEED_SECRET' ? tr("Passwort falsch oder Passwort-Login auf dem Server deaktiviert.") : errorMessage(error), 'error');
     } finally {
       setSecret(passwordServer.id, '');
       void Native.disconnect({ id: passwordServer.id }).catch(() => {});
@@ -124,14 +125,14 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
     const ok = await connect(next);
     setBusy(null);
     if (ok) {
-      toast(`Verbunden mit ${next.name}.`, 'success');
+      toast(tr("Verbunden mit {name}.", { name: next.name }), 'success');
       onClose();
     }
   };
 
   const remove = async () => {
     if (!server) return;
-    const ok = await confirm({ title: 'V-Server entfernen?', message: `${server.name} und sein Key werden von diesem Handy gelöscht. Auf dem Server selbst ändert sich nichts.`, confirmLabel: 'Entfernen', danger: true });
+    const ok = await confirm({ title: tr("V-Server entfernen?"), message: tr("{name} und sein Key werden von diesem Handy gelöscht. Auf dem Server selbst ändert sich nichts.", { name: server.name }), confirmLabel: tr("Entfernen"), danger: true });
     if (!ok) return;
     await removeServer(server.id);
     onClose();
@@ -139,46 +140,46 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
 
   return (
     <Sheet
-      title={server ? 'V-Server bearbeiten' : 'V-Server hinzufügen'}
+      title={server ? tr("V-Server bearbeiten") : tr("V-Server hinzufügen")}
       onClose={onClose}
       full
       footer={
         <>
-          <Button className="flex-1" disabled={!valid || Boolean(busy)} onClick={() => { saveServer(draft()); onClose(); }}>Speichern</Button>
+          <Button className="flex-1" disabled={!valid || Boolean(busy)} onClick={() => { saveServer(draft()); onClose(); }}>{tr("Speichern")}</Button>
           <Button className="flex-[1.4]" variant="primary" disabled={!valid} busy={busy === 'test'} onClick={() => void testAndSave()}>
-            Testen & speichern
+            {tr("Testen & speichern")}
           </Button>
         </>
       }
     >
       <Field label="Name">
-        <input className="cf-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="z.B. Crazy Mind V-Server" />
+        <input className="cf-input" value={name} onChange={(event) => setName(event.target.value)} placeholder={tr("z.B. Crazy Mind V-Server")} />
       </Field>
       <div className="flex gap-2">
         <div className="flex-[3]">
-          <Field label="Adresse (IP oder Domain)">
+          <Field label={tr("Adresse (IP oder Domain)")}>
             <input className="cf-input" value={host} onChange={(event) => setHost(event.target.value)} placeholder="203.0.113.10" autoCapitalize="off" autoCorrect="off" spellCheck={false} inputMode="url" />
           </Field>
         </div>
         <div className="flex-1">
-          <Field label="Port">
+          <Field label={tr("Port")}>
             <input className="cf-input" value={port} onChange={(event) => setPort(event.target.value.replace(/\D/g, ''))} inputMode="numeric" />
           </Field>
         </div>
       </div>
-      <Field label="Benutzer">
+      <Field label={tr("Benutzer")}>
         <input className="cf-input" value={user} onChange={(event) => setUser(event.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
       </Field>
-      <Field label="Startordner (optional)" hint="Neue Terminals und der Dateibrowser starten hier, z.B. /root/projekte.">
-        <input className="cf-input" value={defaultPath} onChange={(event) => setDefaultPath(event.target.value)} placeholder="Home-Verzeichnis" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+      <Field label={tr("Startordner (optional)")} hint={tr("Neue Terminals und der Dateibrowser starten hier, z.B. /root/projekte.")}>
+        <input className="cf-input" value={defaultPath} onChange={(event) => setDefaultPath(event.target.value)} placeholder={tr("Home-Verzeichnis")} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
       </Field>
 
-      <div className="mb-2 mt-1 px-0.5 text-[0.8rem] font-medium cf-muted">Anmeldung</div>
-      <Segmented<MobileServer['auth']> value={auth} onChange={setAuth} options={[{ value: 'key', label: 'SSH-Key' }, { value: 'password', label: 'Passwort' }]} />
+      <div className="mb-2 mt-1 px-0.5 text-[0.8rem] font-medium cf-muted">{tr("Anmeldung")}</div>
+      <Segmented<MobileServer['auth']> value={auth} onChange={setAuth} options={[{ value: 'key', label: tr("SSH-Key") }, { value: 'password', label: tr("Passwort") }]} />
 
       {auth === 'password' && (
         <p className="cf-muted mt-3 text-[0.82rem] leading-relaxed">
-          Das Passwort wird beim Verbinden abgefragt und nur bis zum Schließen der App im Speicher gehalten. Sicherer und bequemer ist ein SSH-Key.
+          {tr("Das Passwort wird beim Verbinden abgefragt und nur bis zum Schließen der App im Speicher gehalten. Sicherer und bequemer ist ein SSH-Key.")}
         </p>
       )}
 
@@ -188,16 +189,16 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
             <div className="mb-3 flex items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-3">
               <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[0.9rem] font-medium">{keyName || 'SSH-Key gespeichert'}</div>
-                <div className="cf-muted text-[0.75rem]">{keyEncrypted ? 'Mit Passphrase geschützt' : 'Liegt nur in der App auf diesem Handy'}</div>
+                <div className="truncate text-[0.9rem] font-medium">{keyName || tr("SSH-Key gespeichert")}</div>
+                <div className="cf-muted text-[0.75rem]">{keyEncrypted ? tr("Mit Passphrase geschützt") : tr("Liegt nur in der App auf diesem Handy")}</div>
               </div>
             </div>
           )}
           <div className="mb-3 grid grid-cols-3 gap-2">
             {([
-              { value: 'generate', label: 'Neu erzeugen', icon: Wand2 },
-              { value: 'file', label: 'Key-Datei', icon: FileKey2 },
-              { value: 'paste', label: 'Einfügen', icon: KeyRound },
+              { value: 'generate', label: tr("Neu erzeugen"), icon: Wand2 },
+              { value: 'file', label: tr("Key-Datei"), icon: FileKey2 },
+              { value: 'paste', label: tr("Einfügen"), icon: KeyRound },
             ] as const).map((option) => (
               <button
                 key={option.value}
@@ -213,10 +214,10 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
           {keySource === 'generate' && (
             <div className="rounded-2xl border border-cf-line bg-cf-hover p-3.5">
               <p className="cf-muted mb-3 text-[0.82rem] leading-relaxed">
-                Erzeugt einen eigenen Ed25519-Key für dieses Handy. Der private Teil verlässt das Gerät nie. Den öffentlichen Teil trägst du einmal auf dem Server ein, per Passwort direkt aus der App oder per Hand in <code>~/.ssh/authorized_keys</code>.
+                {tr("Erzeugt einen eigenen Ed25519-Key für dieses Handy. Der private Teil verlässt das Gerät nie. Den öffentlichen Teil trägst du einmal auf dem Server ein, per Passwort direkt aus der App oder per Hand in")} <code>~/.ssh/authorized_keys</code>.
               </p>
               <Button className="w-full" icon={<Sparkles className="h-4 w-4" />} busy={busy === 'generate'} onClick={() => void generate()}>
-                {publicKey ? 'Neuen Key erzeugen' : 'Key erzeugen'}
+                {publicKey ? tr("Neuen Key erzeugen") : tr("Key erzeugen")}
               </Button>
             </div>
           )}
@@ -224,11 +225,11 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
           {keySource === 'file' && (
             <div className="rounded-2xl border border-cf-line bg-cf-hover p-3.5">
               <p className="cf-muted mb-3 text-[0.82rem] leading-relaxed">
-                Wähle die private Key-Datei, die auch FancyCode am PC nutzt (z.B. <code>id_ed25519</code>, nicht die .pub-Datei). Kopiere sie dafür vorher aufs Handy.
+                {tr("Wähle die private Key-Datei, die auch FancyCode Desktop am PC nutzt (z.B.")} <code>id_ed25519</code>{tr(", nicht die .pub-Datei). Kopiere sie dafür vorher aufs Handy.")}
               </p>
               <input ref={fileInput} type="file" className="hidden" onChange={(event) => void pickFile(event.target.files?.[0])} />
               <Button className="w-full" icon={<FileKey2 className="h-4 w-4" />} busy={busy === 'key'} onClick={() => fileInput.current?.click()}>
-                Datei auswählen
+                {tr("Datei auswählen")}
               </Button>
             </div>
           )}
@@ -244,22 +245,22 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
                 autoCorrect="off"
                 spellCheck={false}
               />
-              <Button className="w-full" variant="primary" disabled={!keyText.trim()} busy={busy === 'key'} onClick={() => void storeKey(keyText, 'Eingefügter Key')}>
-                Key übernehmen
+              <Button className="w-full" variant="primary" disabled={!keyText.trim()} busy={busy === 'key'} onClick={() => void storeKey(keyText, tr("Eingefügter Key"))}>
+                {tr("Key übernehmen")}
               </Button>
             </div>
           )}
 
           {publicKey && (
             <div className="mt-3 rounded-2xl border border-cf-line p-3.5">
-              <div className="mb-2 text-[0.8rem] font-semibold">Öffentlicher Key</div>
+              <div className="mb-2 text-[0.8rem] font-semibold">{tr("Öffentlicher Key")}</div>
               <div className="cf-selectable mb-3 max-h-24 overflow-auto break-all rounded-xl bg-black/30 p-2.5 font-mono text-[0.7rem] leading-relaxed">{publicKey}</div>
               <div className="flex gap-2">
                 <Button className="flex-1" icon={copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} onClick={() => void copyPublicKey()}>
-                  {copied ? 'Kopiert' : 'Kopieren'}
+                  {copied ? tr("Kopiert") : tr("Kopieren")}
                 </Button>
                 <Button className="flex-[1.6]" variant="primary" disabled={!host.trim() || !user.trim()} busy={busy === 'install'} onClick={() => void installOnServer()}>
-                  Per Passwort eintragen
+                  {tr("Per Passwort eintragen")}
                 </Button>
               </div>
             </div>
@@ -267,8 +268,8 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
         </div>
       )}
 
-      {server?.fingerprint && server.fingerprint !== 'SHA256:' && (
-        <div className="cf-muted mt-4 break-all px-0.5 text-[0.72rem]">Server-Fingerprint: {server.fingerprint}</div>
+      {server?.fingerprint && server.fingerprint !== tr("SHA256:") && (
+        <div className="cf-muted mt-4 break-all px-0.5 text-[0.72rem]">{tr("Server-Fingerprint:")} {server.fingerprint}</div>
       )}
 
       {server && (
@@ -276,18 +277,18 @@ export default function ServerEditor({ server, onClose }: { server?: MobileServe
           {server.fingerprint && (
             <Button
               onClick={async () => {
-                const ok = await confirm({ title: 'Server-Schlüssel vergessen?', message: 'Nur nötig, wenn der Server neu installiert wurde. Beim nächsten Verbinden wird der neue Schlüssel gespeichert.', confirmLabel: 'Vergessen' });
+                const ok = await confirm({ title: tr("Server-Schlüssel vergessen?"), message: tr("Nur nötig, wenn der Server neu installiert wurde. Beim nächsten Verbinden wird der neue Schlüssel gespeichert."), confirmLabel: 'Vergessen' });
                 if (!ok) return;
                 await Native.forgetHost({ host: server.host, port: server.port });
                 saveServer({ ...server, fingerprint: undefined });
-                toast('Server-Schlüssel vergessen.', 'success');
+                toast(tr("Server-Schlüssel vergessen."), 'success');
               }}
             >
-              Server-Schlüssel zurücksetzen
+              {tr("Server-Schlüssel zurücksetzen")}
             </Button>
           )}
           <Button variant="danger" icon={<Trash2 className="h-4 w-4" />} onClick={() => void remove()}>
-            V-Server entfernen
+            {tr("V-Server entfernen")}
           </Button>
         </div>
       )}

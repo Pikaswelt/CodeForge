@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { mt } = require('./i18n.cjs');
 let Client = null;
 try {
   ({ Client } = require('ssh2'));
@@ -55,26 +56,26 @@ function validateServer(server = {}) {
   const user = String(server.user || '').trim();
   const port = Number(server.port || 22);
   if (!host || !/^[a-z0-9._:\[\]-]+$/i.test(host) || host.startsWith('-')) throw new Error('V-Server: Adresse ist ungueltig.');
-  if (!user || !/^[a-z0-9._~@-]+$/i.test(user) || user.startsWith('-')) throw new Error('SFTP: Benutzername fehlt oder ist ungueltig.');
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('V-Server: Port ist ungueltig.');
+  if (!user || !/^[a-z0-9._~@-]+$/i.test(user) || user.startsWith('-')) throw new Error(mt('SFTP: Benutzername fehlt oder ist ungueltig.'));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(mt('V-Server: Port ist ungueltig.'));
   const keyPath = String(server.keyPath || '').trim();
-  if (keyPath && !fs.existsSync(keyPath)) throw new Error('V-Server: Key-Datei fehlt. Bitte Key neu hochladen.');
+  if (keyPath && !fs.existsSync(keyPath)) throw new Error(mt('V-Server: Key-Datei fehlt. Bitte Key neu hochladen.'));
   return { host, user, port, keyPath, id: String(server.id || `${user}@${host}:${port}`) };
 }
 
 function friendlyError(error, hasKey) {
   const message = String(error?.message || error);
   if (/Encrypted private (OpenSSH )?key detected|passphrase/i.test(message)) {
-    return Object.assign(new Error('Der Key ist mit einer Passphrase geschuetzt. Bitte Passphrase eingeben.'), { code: 'NEED_SECRET' });
+    return Object.assign(new Error(mt('Der Key ist mit einer Passphrase geschuetzt. Bitte Passphrase eingeben.')), { code: 'NEED_SECRET' });
   }
   if (/All configured authentication methods failed|Authentication failed/i.test(message)) {
     return Object.assign(
-      new Error(hasKey ? 'Anmeldung fehlgeschlagen. Key oder Passphrase stimmt nicht.' : 'Anmeldung fehlgeschlagen. Bitte Passwort eingeben.'),
+      new Error(hasKey ? mt('Anmeldung fehlgeschlagen. Key oder Passphrase stimmt nicht.') : mt('Anmeldung fehlgeschlagen. Bitte Passwort eingeben.')),
       { code: 'NEED_SECRET' },
     );
   }
-  if (/ENOTFOUND|EAI_AGAIN/i.test(message)) return new Error('Server nicht gefunden. Adresse pruefen.');
-  if (/ECONNREFUSED/i.test(message)) return new Error('Verbindung abgelehnt. Laeuft SSH auf diesem Port?');
+  if (/ENOTFOUND|EAI_AGAIN/i.test(message)) return new Error(mt('Server nicht gefunden. Adresse pruefen.'));
+  if (/ECONNREFUSED/i.test(message)) return new Error(mt('Verbindung abgelehnt. Laeuft SSH auf diesem Port?'));
   if (/Timed out|ETIMEDOUT/i.test(message)) return new Error('Zeitueberschreitung beim Verbinden.');
   return error instanceof Error ? error : new Error(message);
 }
@@ -99,7 +100,7 @@ function openConnection(server, secret) {
   const config = validateServer(server);
   return new Promise((resolve, reject) => {
     if (!Client) {
-      return reject(new Error('Das SFTP-Modul (ssh2) ist nicht verfuegbar.'));
+      return reject(new Error(mt('Das SFTP-Modul (ssh2) ist nicht verfuegbar.')));
     }
     const client = new Client();
     let hostKeyChanged = false;
@@ -125,7 +126,7 @@ function openConnection(server, secret) {
       options.password = secret;
       options.tryKeyboard = true;
     } else {
-      return reject(Object.assign(new Error('Kein Key hinterlegt. Bitte Passwort eingeben.'), { code: 'NEED_SECRET' }));
+      return reject(Object.assign(new Error(mt('Kein Key hinterlegt. Bitte Passwort eingeben.')), { code: 'NEED_SECRET' }));
     }
     client.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => finish(prompts.map(() => secret || '')));
     client.once('ready', () => {
@@ -148,7 +149,7 @@ function openConnection(server, secret) {
     });
     client.once('error', (err) => {
       if (hostKeyChanged) {
-        return reject(new Error('Der Server-Schluessel hat sich geaendert. Verbindung aus Sicherheitsgruenden abgebrochen (moeglicher Angriff oder Server neu installiert).'));
+        return reject(new Error(mt('Der Server-Schluessel hat sich geaendert. Verbindung aus Sicherheitsgruenden abgebrochen (moeglicher Angriff oder Server neu installiert).')));
       }
       reject(friendlyError(err, Boolean(config.keyPath)));
     });
@@ -260,7 +261,7 @@ async function remove(server, remotePath) {
   const target = String(remotePath || '').trim();
   // Refuse to wipe the root or a top-level system folder by accident.
   if (!target || target === '/' || target === '.' || target === '~' || /^\/[^/]+\/?$/.test(target)) {
-    throw new Error('Dieser Pfad kann aus Sicherheitsgruenden nicht geloescht werden.');
+    throw new Error(mt('Dieser Pfad kann aus Sicherheitsgruenden nicht geloescht werden.'));
   }
   const entry = await getEntry(server);
   await removeRecursive(entry.sftp, target);

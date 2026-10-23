@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useState } from 'react';
 import {
   ArrowDown,
@@ -40,7 +41,7 @@ export function MultiLaunchPanel({
   // Local state for editing until saved
   const [config, setConfig] = useState<MultiLaunchConfig>(() => ({
     mode: multiLaunchConfig.mode || 'default',
-    buttonLabel: multiLaunchConfig.buttonLabel || 'Antigravity starten',
+    buttonLabel: multiLaunchConfig.buttonLabel || tr("Antigravity starten"),
     layout: multiLaunchConfig.layout || 'grid',
     slots: multiLaunchConfig.slots && multiLaunchConfig.slots.length > 0
       ? JSON.parse(JSON.stringify(multiLaunchConfig.slots))
@@ -74,7 +75,7 @@ export function MultiLaunchPanel({
   const handleResetToDefault = () => {
     const next: MultiLaunchConfig = {
       mode: 'default',
-      buttonLabel: 'Antigravity starten',
+      buttonLabel: '',
       layout: 'grid',
       slots: JSON.parse(JSON.stringify(DEFAULT_MULTI_LAUNCH_CONFIG.slots)),
     };
@@ -107,7 +108,7 @@ export function MultiLaunchPanel({
       { id: newSlotId(), name: 'Antigravity PC 2', tool: 'agy', command: 'agy', targetType: 'local' },
       {
         id: newSlotId(),
-        name: defaultServer ? `Antigravity (${defaultServer.name}) 1` : 'Antigravity V-Server 1',
+        name: defaultServer ? `Antigravity (${defaultServer.name}) 1` : tr("Antigravity V-Server 1"),
         tool: 'agy',
         command: 'agy',
         targetType: defaultServer ? 'vserver' : 'local',
@@ -115,7 +116,7 @@ export function MultiLaunchPanel({
       },
       {
         id: newSlotId(),
-        name: defaultServer ? `Antigravity (${defaultServer.name}) 2` : 'Antigravity V-Server 2',
+        name: defaultServer ? `Antigravity (${defaultServer.name}) 2` : tr("Antigravity V-Server 2"),
         tool: 'agy',
         command: 'agy',
         targetType: defaultServer ? 'vserver' : 'local',
@@ -137,7 +138,7 @@ export function MultiLaunchPanel({
       { id: newSlotId(), name: 'Antigravity 2', tool: 'agy', command: 'agy', targetType: 'local' },
       {
         id: newSlotId(),
-        name: defaultServer ? `Claude (${defaultServer.name})` : 'Claude V-Server',
+        name: defaultServer ? `Claude (${defaultServer.name})` : tr("Claude V-Server"),
         tool: 'claude',
         command: 'claude',
         targetType: defaultServer ? 'vserver' : 'local',
@@ -147,7 +148,7 @@ export function MultiLaunchPanel({
     setConfig((prev) => ({
       ...prev,
       mode: 'custom',
-      buttonLabel: 'Agy (PC) + Claude (Server)',
+      buttonLabel: tr("Agy (PC) + Claude (Server)"),
       slots,
     }));
   };
@@ -201,16 +202,16 @@ export function MultiLaunchPanel({
             <SlidersHorizontal className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-white">Start-Button anpassen (Multi-Launch)</h2>
+            <h2 className="text-lg font-semibold text-white">{tr("Start-Button anpassen (Multi-Launch)")}</h2>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Belege den Button frei mit Terminals auf diesem PC und deinen V-Servern.
+              {tr("Belege den Button frei mit Terminals auf diesem PC und deinen V-Servern.")}
             </p>
           </div>
         </div>
         <button
           onClick={onCancel}
           className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-          title="Schließen"
+          title={tr("Schließen")}
         >
           <X className="w-4 h-4" />
         </button>
@@ -221,22 +222,22 @@ export function MultiLaunchPanel({
         <div className="flex items-center justify-between gap-4">
           <div className="flex-1">
             <label className="text-xs font-semibold text-zinc-300 block mb-1">
-              Button-Beschriftung auf Home
+              {tr("Button-Beschriftung auf Home")}
             </label>
             <input
               type="text"
               value={config.buttonLabel}
               onChange={(e) => setConfig((prev) => ({ ...prev, buttonLabel: e.target.value }))}
-              placeholder="z. B. Antigravity starten oder Antigravity x5"
+              placeholder={tr("z. B. Antigravity starten oder Antigravity x5")}
               className="w-full rounded-lg bg-black/40 border border-white/10 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-orange-500/60 focus:outline-none"
             />
           </div>
           <div className="text-right shrink-0">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Vorschau</span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">{tr("Vorschau")}</span>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-200 text-xs font-medium">
               <Rocket className="w-3.5 h-3.5 text-orange-300" />
               <span>
-                {config.buttonLabel || 'Antigravity starten'}
+                {config.buttonLabel || tr("Antigravity starten")}
                 {config.mode === 'custom'
                   ? ` (${config.slots.length})`
                   : agyAccounts.length ? ` (${agyAccounts.length})` : ''}
@@ -247,7 +248,7 @@ export function MultiLaunchPanel({
 
         {/* Layout toggle */}
         <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
-          <span className="text-zinc-400">Terminal-Layout</span>
+          <span className="text-zinc-400">{tr("Terminal-Layout")}</span>
           <div className="inline-flex rounded-lg border border-white/10 bg-black/30 p-0.5">
             <button
               type="button"
@@ -259,7 +260,7 @@ export function MultiLaunchPanel({
               }`}
             >
               <LayoutGrid className="w-3 h-3" />
-              <span>Grid (Kacheln)</span>
+              <span>{tr("Grid (Kacheln)")}</span>
             </button>
             <button
               type="button"
@@ -271,7 +272,7 @@ export function MultiLaunchPanel({
               }`}
             >
               <Layers className="w-3 h-3" />
-              <span>Tabs</span>
+              <span>{tr("Tabs")}</span>
             </button>
           </div>
         </div>
@@ -279,7 +280,7 @@ export function MultiLaunchPanel({
 
       {/* Modus Wahl */}
       <div>
-        <label className="text-xs font-semibold text-zinc-300 block mb-2">Ausführungs-Modus</label>
+        <label className="text-xs font-semibold text-zinc-300 block mb-2">{tr("Ausführungs-Modus")}</label>
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -293,12 +294,12 @@ export function MultiLaunchPanel({
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-white flex items-center gap-1.5">
                 <Rocket className="w-4 h-4 text-orange-400" />
-                Standard
+                {tr("Standard")}
               </span>
               {config.mode === 'default' && <Check className="w-4 h-4 text-orange-400" />}
             </div>
             <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
-              Startet automatisch alle hinterlegten Antigravity-Accounts auf diesem PC nebeneinander ({agyAccounts.length} Account(s)).
+              {tr("Startet automatisch alle hinterlegten Antigravity-Accounts auf diesem PC nebeneinander (")}{agyAccounts.length} {tr("Account(s)).")}
             </p>
           </button>
 
@@ -314,12 +315,12 @@ export function MultiLaunchPanel({
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-white flex items-center gap-1.5">
                 <SlidersHorizontal className="w-4 h-4 text-orange-400" />
-                Individuell
+                {tr("Individuell")}
               </span>
               {config.mode === 'custom' && <Check className="w-4 h-4 text-orange-400" />}
             </div>
             <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
-              Frei konfigurierbar: 5x Agy + Claude Code, Aufteilung auf PC und V-Server, eigene Befehle ({config.slots.length} Terminal(s)).
+              {tr("Frei konfigurierbar: 5x Agy + Claude Code, Aufteilung auf PC und V-Server, eigene Befehle (")}{config.slots.length} {tr("Terminal(s)).")}
             </p>
           </button>
         </div>
@@ -327,7 +328,7 @@ export function MultiLaunchPanel({
 
       {/* Schnell-Presets */}
       <div className="space-y-2">
-        <span className="text-xs font-semibold text-zinc-400 block">Schnell-Vorlagen:</span>
+        <span className="text-xs font-semibold text-zinc-400 block">{tr("Schnell-Vorlagen:")}</span>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -343,7 +344,7 @@ export function MultiLaunchPanel({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-xs text-zinc-300 hover:bg-white/[0.08] hover:text-white transition-colors"
           >
             <Server className="w-3.5 h-3.5 text-sky-400" />
-            <span>2x PC + 2x V-Server</span>
+            <span>{tr("2x PC + 2x V-Server")}</span>
           </button>
           <button
             type="button"
@@ -351,7 +352,7 @@ export function MultiLaunchPanel({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-xs text-zinc-300 hover:bg-white/[0.08] hover:text-white transition-colors"
           >
             <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Agy (PC) + Claude (Server)</span>
+            <span>{tr("Agy (PC) + Claude (Server)")}</span>
           </button>
         </div>
       </div>
@@ -361,8 +362,8 @@ export function MultiLaunchPanel({
         <div className="space-y-4 pt-2 border-t border-white/10">
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-sm font-semibold text-white">Terminal-Slots ({config.slots.length} von {MAX_SLOTS})</span>
-              <p className="text-[11px] text-zinc-400">Jeder Slot öffnet ein eigenes Terminal im Grid-Layout.</p>
+              <span className="text-sm font-semibold text-white">{tr("Terminal-Slots (")}{config.slots.length} {tr("von")} {MAX_SLOTS})</span>
+              <p className="text-[11px] text-zinc-400">{tr("Jeder Slot öffnet ein eigenes Terminal im Grid-Layout.")}</p>
             </div>
             {config.slots.length < MAX_SLOTS && (
               <button
@@ -371,7 +372,7 @@ export function MultiLaunchPanel({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 text-xs font-medium transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Slot hinzufügen</span>
+                <span>{tr("Slot hinzufügen")}</span>
               </button>
             )}
           </div>
@@ -407,7 +408,7 @@ export function MultiLaunchPanel({
                         onClick={() => moveSlot(index, 'up')}
                         disabled={isFirst}
                         className="p-1 rounded text-zinc-400 hover:text-white disabled:opacity-20 transition-colors"
-                        title="Nach oben verschieben"
+                        title={tr("Nach oben verschieben")}
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
@@ -416,7 +417,7 @@ export function MultiLaunchPanel({
                         onClick={() => moveSlot(index, 'down')}
                         disabled={isLast}
                         className="p-1 rounded text-zinc-400 hover:text-white disabled:opacity-20 transition-colors"
-                        title="Nach unten verschieben"
+                        title={tr("Nach unten verschieben")}
                       >
                         <ArrowDown className="w-3.5 h-3.5" />
                       </button>
@@ -425,7 +426,7 @@ export function MultiLaunchPanel({
                           type="button"
                           onClick={() => removeSlot(slot.id)}
                           className="p-1 rounded text-red-400 hover:bg-red-500/10 transition-colors ml-1"
-                          title="Slot entfernen"
+                          title={tr("Slot entfernen")}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -437,7 +438,7 @@ export function MultiLaunchPanel({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     {/* Tool / Programm */}
                     <div className="space-y-1.5">
-                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">Tool / Befehl</span>
+                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">{tr("Tool / Befehl")}</span>
                       <div className="flex rounded-lg border border-white/10 bg-black/50 p-0.5">
                         <button
                           type="button"
@@ -470,7 +471,7 @@ export function MultiLaunchPanel({
                               : 'text-zinc-400 hover:text-white'
                           }`}
                         >
-                          Eigener
+                          {tr("Eigener")}
                         </button>
                       </div>
 
@@ -480,7 +481,7 @@ export function MultiLaunchPanel({
                           type="text"
                           value={slot.command || ''}
                           onChange={(e) => updateSlot(slot.id, { command: e.target.value })}
-                          placeholder="Befehl, z. B. agy, claude, bash"
+                          placeholder={tr("Befehl, z. B. agy, claude, bash")}
                           className="w-full mt-1.5 rounded-lg bg-black/60 border border-white/10 px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 font-mono focus:border-orange-500/60 focus:outline-none"
                         />
                       )}
@@ -492,10 +493,10 @@ export function MultiLaunchPanel({
                           onChange={(e) => updateSlot(slot.id, { agyAccountId: e.target.value || undefined })}
                           className="w-full mt-1 rounded-lg bg-black/60 border border-white/10 px-2 py-1 text-[11px] text-zinc-300 focus:outline-none"
                         >
-                          <option value="">Auto (nach Slot-Reihenfolge)</option>
+                          <option value="">{tr("Auto (nach Slot-Reihenfolge)")}</option>
                           {agyAccounts.map((account) => (
                             <option key={account.id} value={account.id}>
-                              Account: {account.name}
+                              {tr("Account:")} {account.name}
                             </option>
                           ))}
                         </select>
@@ -504,7 +505,7 @@ export function MultiLaunchPanel({
 
                     {/* Ausführungsort (PC vs V-Server) */}
                     <div className="space-y-1.5">
-                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">Ausführungsort</span>
+                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">{tr("Ausführungsort")}</span>
                       <div className="flex rounded-lg border border-white/10 bg-black/50 p-0.5">
                         <button
                           type="button"
@@ -516,7 +517,7 @@ export function MultiLaunchPanel({
                           }`}
                         >
                           <Monitor className="w-3 h-3" />
-                          <span>Dieser PC</span>
+                          <span>{tr("Dieser PC")}</span>
                         </button>
                         <button
                           type="button"
@@ -528,7 +529,7 @@ export function MultiLaunchPanel({
                           }`}
                         >
                           <Server className="w-3 h-3" />
-                          <span>V-Server</span>
+                          <span>{tr("V-Server")}</span>
                         </button>
                       </div>
 
@@ -537,7 +538,7 @@ export function MultiLaunchPanel({
                         <div className="mt-1.5">
                           {savedServers.length === 0 ? (
                             <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg">
-                              Noch kein V-Server hinterlegt. Lege zuerst einen unter Home &gt; V-Server an.
+                              {tr("Noch kein V-Server hinterlegt. Lege zuerst einen unter Home &gt; V-Server an.")}
                             </div>
                           ) : (
                             <select
@@ -571,13 +572,13 @@ export function MultiLaunchPanel({
           className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          <span>Auf Standard zurücksetzen</span>
+          <span>{tr("Auf Standard zurücksetzen")}</span>
         </button>
 
         <div className="flex items-center gap-2">
           {savedFeedback && (
             <span className="text-xs text-emerald-400 flex items-center gap-1 mr-2 animate-fade-in">
-              <Check className="w-3.5 h-3.5" /> Gespeichert!
+              <Check className="w-3.5 h-3.5" /> {tr("Gespeichert!")}
             </span>
           )}
           <button
@@ -585,14 +586,14 @@ export function MultiLaunchPanel({
             onClick={onCancel}
             className="px-4 py-2 rounded-lg border border-white/10 text-xs text-zinc-300 hover:bg-white/[0.05] transition-colors"
           >
-            Schließen
+            {tr("Schließen")}
           </button>
           <button
             type="button"
             onClick={() => handleSave()}
             className="px-4 py-2 rounded-lg border border-orange-500/40 bg-orange-500/20 text-xs text-orange-200 hover:bg-orange-500/30 transition-colors font-medium"
           >
-            Speichern
+            {tr("Speichern")}
           </button>
           <button
             type="button"
@@ -601,7 +602,7 @@ export function MultiLaunchPanel({
             className="primary-button !py-2 !px-4 flex items-center gap-1.5 text-xs font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform duration-150 disabled:opacity-50"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{starting ? 'Startet...' : 'Jetzt starten'}</span>
+            <span>{starting ? tr("Startet...") : tr("Jetzt starten")}</span>
           </button>
         </div>
       </div>

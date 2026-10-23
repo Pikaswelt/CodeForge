@@ -1,3 +1,4 @@
+import { tr, locale } from '../../i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
@@ -132,7 +133,7 @@ export default function FilesScreen() {
 
   const mkdir = async () => {
     if (!server) return;
-    const name = await prompt({ title: 'Neuer Ordner', label: 'Name', value: '', confirmLabel: 'Anlegen' });
+    const name = await prompt({ title: tr("Neuer Ordner"), label: 'Name', value: '', confirmLabel: 'Anlegen' });
     if (!name?.trim()) return;
     try {
       await withServer(server, () => Native.sftpMkdir({ server: nativeServer(server), path: join(path, name.trim()) }));
@@ -149,31 +150,31 @@ export default function FilesScreen() {
     const native = nativeServer(server);
     try {
       if (action === 'open') {
-        await runTransfer((id) => withServer(server, () => Native.sftpOpen({ server: native, path: target, transferId: id })), 'Geöffnet.');
+        await runTransfer((id) => withServer(server, () => Native.sftpOpen({ server: native, path: target, transferId: id })), tr("Geöffnet."));
       } else if (action === 'download') {
-        await runTransfer((id) => withServer(server, () => Native.sftpDownload({ server: native, path: target, transferId: id })), `${entry.name} gespeichert.`);
+        await runTransfer((id) => withServer(server, () => Native.sftpDownload({ server: native, path: target, transferId: id })), tr("{name} gespeichert.", { name: entry.name }));
       } else if (action === 'edit') {
         const { content } = await withServer(server, () => Native.sftpReadText({ server: native, path: target, maxBytes: 1_500_000 }));
         setEditing({ path: target, content });
       } else if (action === 'rename') {
-        const name = await prompt({ title: 'Umbenennen', label: 'Neuer Name', value: entry.name, confirmLabel: 'Umbenennen' });
+        const name = await prompt({ title: tr("Umbenennen"), label: tr("Neuer Name"), value: entry.name, confirmLabel: tr("Umbenennen") });
         if (!name?.trim() || name.trim() === entry.name) return;
         await withServer(server, () => Native.sftpRename({ server: native, from: target, to: join(path, name.trim()) }));
         await load(server, path);
       } else if (action === 'delete') {
         const ok = await confirm({
-          title: `${entry.type === 'dir' ? 'Ordner' : 'Datei'} löschen?`,
-          message: `${target}${entry.type === 'dir' ? '\nund alles darin' : ''} wird auf dem Server endgültig gelöscht.`,
-          confirmLabel: 'Löschen',
+          title: tr("{kind} löschen?", { kind: entry.type === 'dir' ? tr("Ordner") : tr("Datei") }),
+          message: tr("{target} wird auf dem Server endgültig gelöscht.", { target: `${target}${entry.type === 'dir' ? ' ' + tr("und alles darin") : ''}` }),
+          confirmLabel: tr("Löschen"),
           danger: true,
         });
         if (!ok) return;
         await withServer(server, () => Native.sftpDelete({ server: native, path: target }));
         await load(server, path);
-        toast('Gelöscht.', 'success');
+        toast(tr("Gelöscht."), 'success');
       } else if (action === 'copy') {
         await Native.copyText({ text: target });
-        toast('Pfad kopiert.', 'success');
+        toast(tr("Pfad kopiert."), 'success');
       } else if (action === 'terminal') {
         setTerminalAt(entry.type === 'dir' ? target : path);
       }
@@ -185,7 +186,7 @@ export default function FilesScreen() {
   if (!servers.length) {
     return (
       <div className="cf-safe-top flex h-full items-center justify-center">
-        <EmptyState icon={<FolderOpen className="h-8 w-8" />} title="Kein V-Server" text="Füge auf dem Home-Tab deinen V-Server hinzu, um seine Dateien zu sehen." />
+        <EmptyState icon={<FolderOpen className="h-8 w-8" />} title={tr("Kein V-Server")} text={tr("Füge auf dem Home-Tab deinen V-Server hinzu, um seine Dateien zu sehen.")} />
       </div>
     );
   }
@@ -197,7 +198,7 @@ export default function FilesScreen() {
     <div className="flex h-full flex-col">
       <div className="cf-glass cf-safe-top shrink-0 border-x-0 border-t-0 pb-2">
         <div className="flex items-center gap-1 px-2">
-          <IconButton label="Zurück" disabled={path === '/' || !path} onClick={() => open(parentOf(path))}>
+          <IconButton label={tr("Zurück")} disabled={path === '/' || !path} onClick={() => open(parentOf(path))}>
             <ChevronLeft className="h-5 w-5" />
           </IconButton>
           <button onClick={() => servers.length > 1 && setPickServer(true)} className="min-w-0 flex-1 text-left">
@@ -207,10 +208,10 @@ export default function FilesScreen() {
             </div>
             <div className="cf-muted truncate font-mono text-[0.72rem]">{path || '…'}</div>
           </button>
-          <IconButton label={showHidden ? 'Versteckte ausblenden' : 'Versteckte zeigen'} onClick={() => setShowHidden((value) => !value)}>
+          <IconButton label={showHidden ? tr("Versteckte ausblenden") : tr("Versteckte zeigen")} onClick={() => setShowHidden((value) => !value)}>
             {showHidden ? <Eye className="h-[1.1rem] w-[1.1rem]" /> : <EyeOff className="h-[1.1rem] w-[1.1rem]" />}
           </IconButton>
-          <IconButton label="Aktualisieren" onClick={() => server && void load(server, path)}>
+          <IconButton label={tr("Aktualisieren")} onClick={() => server && void load(server, path)}>
             {loading ? <Spinner className="h-[1.1rem] w-[1.1rem]" /> : <RefreshCw className="h-[1.1rem] w-[1.1rem]" />}
           </IconButton>
         </div>
@@ -231,7 +232,7 @@ export default function FilesScreen() {
         <div className="shrink-0 px-4 pt-2">
           <div className="cf-glass cf-card px-3.5 py-2.5">
             <div className="mb-1.5 flex justify-between text-[0.78rem]">
-              <span className="truncate">{transfer.name || 'Übertragung …'}</span>
+              <span className="truncate">{transfer.name || tr("Übertragung …")}</span>
               <span className="cf-muted tabular-nums">{transfer.total > 0 ? `${Math.round((transfer.done / transfer.total) * 100)}%` : formatBytes(transfer.done)}</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-cf-hover">
@@ -245,10 +246,10 @@ export default function FilesScreen() {
         {error && (
           <div className="cf-glass cf-card mx-1 mt-2 p-4">
             <p className="mb-3 text-[0.88rem] text-red-400">{error}</p>
-            <Button className="w-full" onClick={() => server && (online ? void load(server, path) : void connect(server).then((ok) => ok && load(server, path)))}>Erneut versuchen</Button>
+            <Button className="w-full" onClick={() => server && (online ? void load(server, path) : void connect(server).then((ok) => ok && load(server, path)))}>{tr("Erneut versuchen")}</Button>
           </div>
         )}
-        {!error && entries && visible.length === 0 && <p className="cf-muted py-10 text-center text-[0.88rem]">Dieser Ordner ist leer.</p>}
+        {!error && entries && visible.length === 0 && <p className="cf-muted py-10 text-center text-[0.88rem]">{tr("Dieser Ordner ist leer.")}</p>}
         {!error && !entries && loading && <div className="flex justify-center py-10"><Spinner /></div>}
         {visible.length > 0 && (
           <div className="cf-glass cf-card overflow-hidden">
@@ -262,12 +263,12 @@ export default function FilesScreen() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[0.92rem]">{entry.name}</span>
                     <span className="cf-muted block text-[0.72rem]">
-                      {entry.type === 'dir' ? 'Ordner' : formatBytes(entry.size)}
-                      {entry.modifiedAt ? ` · ${new Date(entry.modifiedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })}` : ''}
+                      {entry.type === 'dir' ? tr("Ordner") : formatBytes(entry.size)}
+                      {entry.modifiedAt ? ` · ${new Date(entry.modifiedAt).toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: '2-digit' })}` : ''}
                     </span>
                   </span>
                 </button>
-                <IconButton label="Aktionen" className="mr-1" onClick={() => setSelected(entry)}>
+                <IconButton label={tr("Aktionen")} className="mr-1" onClick={() => setSelected(entry)}>
                   <MoreVertical className="cf-muted h-4 w-4" />
                 </IconButton>
               </div>
@@ -277,14 +278,14 @@ export default function FilesScreen() {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-end gap-2 px-4">
-        <button onClick={() => void mkdir()} className="cf-glass cf-press pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-xl" aria-label="Neuer Ordner">
+        <button onClick={() => void mkdir()} className="cf-glass cf-press pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-xl" aria-label={tr("Neuer Ordner")}>
           <FolderPlus className="h-5 w-5" />
         </button>
-        <button onClick={() => setTerminalAt(path)} className="cf-glass cf-press pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-xl" aria-label="Terminal hier">
+        <button onClick={() => setTerminalAt(path)} className="cf-glass cf-press pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-xl" aria-label={tr("Terminal hier")}>
           <SquareTerminal className="h-5 w-5" />
         </button>
-        <button onClick={() => void upload()} className="cf-accent-bg cf-press pointer-events-auto flex h-12 items-center gap-2 rounded-full px-5 font-semibold shadow-xl" aria-label="Hochladen">
-          <Upload className="h-5 w-5" /> Hochladen
+        <button onClick={() => void upload()} className="cf-accent-bg cf-press pointer-events-auto flex h-12 items-center gap-2 rounded-full px-5 font-semibold shadow-xl" aria-label={tr("Hochladen")}>
+          <Upload className="h-5 w-5" /> {tr("Hochladen")}
         </button>
       </div>
 
@@ -293,19 +294,19 @@ export default function FilesScreen() {
           <div className="cf-glass cf-card overflow-hidden">
             {selected.type === 'dir' ? (
               <>
-                <Row icon={<FolderOpen className="h-4 w-4" />} title="Öffnen" onClick={() => { setSelected(null); open(join(path, selected.name)); }} />
-                <Row icon={<SquareTerminal className="h-4 w-4" />} title="Terminal hier öffnen" onClick={() => void act('terminal', selected)} />
+                <Row icon={<FolderOpen className="h-4 w-4" />} title={tr("Öffnen")} onClick={() => { setSelected(null); open(join(path, selected.name)); }} />
+                <Row icon={<SquareTerminal className="h-4 w-4" />} title={tr("Terminal hier öffnen")} onClick={() => void act('terminal', selected)} />
               </>
             ) : (
               <>
-                {isText(selected.name) && <Row icon={<Pencil className="h-4 w-4" />} title="Bearbeiten" subtitle="Im Texteditor der App" onClick={() => void act('edit', selected)} />}
-                <Row icon={<FileImage className="h-4 w-4" />} title="Auf dem Handy öffnen" subtitle="Mit einer passenden App" onClick={() => void act('open', selected)} />
-                <Row icon={<Download className="h-4 w-4" />} title="Aufs Handy speichern" subtitle={formatBytes(selected.size)} onClick={() => void act('download', selected)} />
+                {isText(selected.name) && <Row icon={<Pencil className="h-4 w-4" />} title={tr("Bearbeiten")} subtitle={tr("Im Texteditor der App")} onClick={() => void act('edit', selected)} />}
+                <Row icon={<FileImage className="h-4 w-4" />} title={tr("Auf dem Handy öffnen")} subtitle={tr("Mit einer passenden App")} onClick={() => void act('open', selected)} />
+                <Row icon={<Download className="h-4 w-4" />} title={tr("Aufs Handy speichern")} subtitle={formatBytes(selected.size)} onClick={() => void act('download', selected)} />
               </>
             )}
-            <Row icon={<Pencil className="h-4 w-4" />} title="Umbenennen" onClick={() => void act('rename', selected)} />
-            <Row icon={<Copy className="h-4 w-4" />} title="Pfad kopieren" onClick={() => void act('copy', selected)} />
-            <Row icon={<Trash2 className="h-4 w-4" />} title="Löschen" danger onClick={() => void act('delete', selected)} />
+            <Row icon={<Pencil className="h-4 w-4" />} title={tr("Umbenennen")} onClick={() => void act('rename', selected)} />
+            <Row icon={<Copy className="h-4 w-4" />} title={tr("Pfad kopieren")} onClick={() => void act('copy', selected)} />
+            <Row icon={<Trash2 className="h-4 w-4" />} title={tr("Löschen")} danger onClick={() => void act('delete', selected)} />
           </div>
         </Sheet>
       )}
@@ -313,7 +314,7 @@ export default function FilesScreen() {
       {editing && server && <Editor server={server} file={editing} onClose={() => setEditing(null)} />}
       {terminalAt !== null && server && <NewTerminalSheet serverId={server.id} cwd={terminalAt} onClose={() => setTerminalAt(null)} />}
       {pickServer && (
-        <Sheet title="V-Server wählen" onClose={() => setPickServer(false)}>
+        <Sheet title={tr("V-Server wählen")} onClose={() => setPickServer(false)}>
           <div className="cf-glass cf-card overflow-hidden">
             {servers.map((item) => (
               <Row
@@ -356,7 +357,7 @@ function Editor({ server, file, onClose }: { server: MobileServer; file: { path:
     try {
       await withServer(server, () => Native.sftpWriteText({ server: nativeServer(server), path: file.path, content }));
       file.content = content;
-      toast('Gespeichert.', 'success');
+      toast(tr("Gespeichert."), 'success');
       onClose();
     } catch (failure) {
       toast(errorMessage(failure), 'error');
@@ -366,7 +367,7 @@ function Editor({ server, file, onClose }: { server: MobileServer; file: { path:
   };
 
   const close = async () => {
-    if (dirty && !(await confirm({ title: 'Änderungen verwerfen?', message: 'Die Datei wurde geändert und noch nicht gespeichert.', confirmLabel: 'Verwerfen', danger: true }))) return;
+    if (dirty && !(await confirm({ title: tr("Änderungen verwerfen?"), message: tr("Die Datei wurde geändert und noch nicht gespeichert."), confirmLabel: 'Verwerfen', danger: true }))) return;
     onClose();
   };
 
@@ -375,7 +376,7 @@ function Editor({ server, file, onClose }: { server: MobileServer; file: { path:
       title={file.path.split('/').pop() || file.path}
       full
       onClose={() => void close()}
-      footer={<Button variant="primary" className="flex-1" icon={<Save className="h-4 w-4" />} disabled={!dirty} busy={saving} onClick={() => void save()}>Speichern</Button>}
+      footer={<Button variant="primary" className="flex-1" icon={<Save className="h-4 w-4" />} disabled={!dirty} busy={saving} onClick={() => void save()}>{tr("Speichern")}</Button>}
     >
       <div className="cf-muted mb-2 truncate font-mono text-[0.7rem]">{file.path}</div>
       <textarea

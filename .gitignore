@@ -19,3 +19,4 @@ graphify-out/
 # Signierschluessel nie einchecken (liegen als CI-Secrets bzw. ausserhalb des Repos).
 *.keystore
 *.jks
+scripts/welcome-raw/

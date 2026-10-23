@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, EyeOff, KeyRound, Loader2, X } from 'lucide-react';
@@ -183,7 +184,7 @@ export function Sheet({ title, onClose, children, footer, full }: { title: strin
         <div className="flex shrink-0 items-center gap-2 px-4 pb-2 pt-3">
           <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-cf-line" />
           <h2 className="flex-1 truncate pt-2 text-[1.1rem] font-semibold">{title}</h2>
-          <IconButton label="Schliessen" onClick={onClose} className="mt-1">
+          <IconButton label={tr("Schliessen")} onClick={onClose} className="mt-1">
             <X className="h-5 w-5" />
           </IconButton>
         </div>
@@ -229,7 +230,7 @@ export function Dialogs() {
           <h3 className="mb-2 text-lg font-semibold">{confirmRequest.title}</h3>
           <p className="cf-muted mb-5 whitespace-pre-line text-[0.92rem] leading-relaxed">{confirmRequest.message}</p>
           <div className="flex gap-2">
-            <Button className="flex-1" onClick={() => { confirmRequest.resolve(false); closeDialogs(); }}>Abbrechen</Button>
+            <Button className="flex-1" onClick={() => { confirmRequest.resolve(false); closeDialogs(); }}>{tr("Abbrechen")}</Button>
             <Button className="flex-1" variant={confirmRequest.danger ? 'danger' : 'primary'} onClick={() => { confirmRequest.resolve(true); closeDialogs(); }}>
               {confirmRequest.confirmLabel}
             </Button>
@@ -269,7 +270,7 @@ function SecretDialog() {
       <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-cf-hover cf-accent-text">
         <KeyRound className="h-5 w-5" />
       </div>
-      <h3 className="mb-1 text-lg font-semibold">{isKey ? 'Passphrase' : 'Passwort'} für {secretRequest.server.name}</h3>
+      <h3 className="mb-1 text-lg font-semibold">{isKey ? tr("Passphrase") : tr("Passwort")} {tr("für")} {secretRequest.server.name}</h3>
       <p className="cf-muted mb-4 text-[0.88rem] leading-relaxed">{secretRequest.message}</p>
       <form
         onSubmit={(event) => {
@@ -285,16 +286,16 @@ function SecretDialog() {
             value={value}
             autoComplete="off"
             onChange={(event) => setValue(event.target.value)}
-            placeholder={isKey ? 'Passphrase des Keys' : `Passwort von ${secretRequest.server.user}`}
+            placeholder={isKey ? tr("Passphrase des Keys") : tr("Passwort von {user}", { user: secretRequest.server.user })}
           />
-          <button type="button" onClick={() => setVisible((v) => !v)} className="cf-muted absolute right-2 top-1/2 -translate-y-1/2 p-2" aria-label="Anzeigen">
+          <button type="button" onClick={() => setVisible((v) => !v)} className="cf-muted absolute right-2 top-1/2 -translate-y-1/2 p-2" aria-label={tr("Anzeigen")}>
             {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
-        <p className="cf-muted mb-4 text-[0.75rem]">Wird nur im Arbeitsspeicher gehalten, bis die App geschlossen wird.</p>
+        <p className="cf-muted mb-4 text-[0.75rem]">{tr("Wird nur im Arbeitsspeicher gehalten, bis die App geschlossen wird.")}</p>
         <div className="flex gap-2">
-          <Button type="button" className="flex-1" onClick={cancel}>Abbrechen</Button>
-          <Button type="submit" variant="primary" className="flex-1" disabled={!value}>Verbinden</Button>
+          <Button type="button" className="flex-1" onClick={cancel}>{tr("Abbrechen")}</Button>
+          <Button type="submit" variant="primary" className="flex-1" disabled={!value}>{tr("Verbinden")}</Button>
         </div>
       </form>
     </CenterDialog>
@@ -323,7 +324,7 @@ function PromptDialog() {
           <input autoFocus className="cf-input" type={promptRequest.secret ? 'password' : 'text'} value={value} onChange={(event) => setValue(event.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="off" />
         </Field>
         <div className="flex gap-2">
-          <Button type="button" className="flex-1" onClick={cancel}>Abbrechen</Button>
+          <Button type="button" className="flex-1" onClick={cancel}>{tr("Abbrechen")}</Button>
           <Button type="submit" variant="primary" className="flex-1" disabled={!value.trim()}>{promptRequest.confirmLabel}</Button>
         </div>
       </form>
@@ -371,9 +372,9 @@ export function timeAgo(timestamp?: number) {
   const seconds = Math.round((Date.now() - timestamp) / 1000);
   if (seconds < 60) return 'gerade eben';
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `vor ${minutes} Min.`;
+  if (minutes < 60) return tr("vor {n} Min.", { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `vor ${hours} Std.`;
+  if (hours < 24) return tr("vor {n} Std.", { n: hours });
   const days = Math.round(hours / 24);
-  return days === 1 ? 'gestern' : `vor ${days} Tagen`;
+  return days === 1 ? tr("gestern") : tr("vor {n} Tagen", { n: days });
 }

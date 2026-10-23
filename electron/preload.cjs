@@ -46,9 +46,9 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   getBranches: (projectPath) => ipcRenderer.invoke('git:branches', projectPath),
   switchBranch: (projectPath, branch) => ipcRenderer.invoke('git:switch', projectPath, branch),
   installPlugin: (projectPath, packageName) =>
-    ipcRenderer.invoke('plugins:install', projectPath, packageName),
+    ipcRenderer.invoke('project-plugins:install', projectPath, packageName),
   removePlugin: (projectPath, packageName) =>
-    ipcRenderer.invoke('plugins:remove', projectPath, packageName),
+    ipcRenderer.invoke('project-plugins:remove', projectPath, packageName),
   listCodexPlugins: (projectPath) => ipcRenderer.invoke('codex-plugins:list', projectPath),
   installCodexPluginFromFolder: (input) => ipcRenderer.invoke('codex-plugins:install-folder', input),
   removeCodexPlugin: (pluginPath, projectPath) =>
@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),
+  setLanguage: (language) => ipcRenderer.send('app:set-language', language),
   startSyncServer: () => ipcRenderer.invoke('sync:start-server'),
   getSyncServerStatus: () => ipcRenderer.invoke('sync:get-server-status'),
   runTerminalCommand: (request) => ipcRenderer.invoke('terminal:run', request),
@@ -92,7 +93,22 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     guest: (invite) => ipcRenderer.invoke('fancy:guest', invite),
     checkInvite: (invite) => ipcRenderer.invoke('fancy:check-invite', invite),
     cancel: () => ipcRenderer.invoke('fancy:cancel'),
+    usage: () => ipcRenderer.invoke('fancy:usage'),
+    resetUsage: () => ipcRenderer.invoke('fancy:usage-reset'),
     logout: () => ipcRenderer.invoke('fancy:logout'),
+  },
+  plugins: {
+    catalog: () => ipcRenderer.invoke('plugins:catalog'),
+    list: () => ipcRenderer.invoke('plugins:list'),
+    install: (id) => ipcRenderer.invoke('plugins:install', id),
+    remove: (id) => ipcRenderer.invoke('plugins:remove', id),
+    source: (id) => ipcRenderer.invoke('plugins:source', id),
+  },
+  skills: {
+    state: () => ipcRenderer.invoke('skills:state'),
+    setSkill: (id, enabled) => ipcRenderer.invoke('skills:set-skill', id, enabled),
+    setTarget: (id, enabled) => ipcRenderer.invoke('skills:set-target', id, enabled),
+    installRemote: (vserver) => ipcRenderer.invoke('skills:install-remote', vserver),
   },
   apiChatModels: (input) => ipcRenderer.invoke('apichat:models', input),
   apiChatProjectFiles: (root) => ipcRenderer.invoke('apichat:project-files', root),
@@ -154,4 +170,16 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   sftpDelete: (input) => ipcRenderer.invoke('sftp:delete', input),
   sftpDownload: (input) => ipcRenderer.invoke('sftp:download', input),
   sftpUpload: (input) => ipcRenderer.invoke('sftp:upload', input),
+});
+
+// FancyCode-Ansicht: Harness im Protokoll-Modus (siehe resources/fancycode/fancycode-host.cjs).
+contextBridge.exposeInMainWorld('fancycode', {
+  start: (opts) => ipcRenderer.invoke('fancycode:start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined }),
+  send: (id, msg) => ipcRenderer.send('fancycode:send', String(id), msg),
+  stop: (id) => ipcRenderer.send('fancycode:stop', String(id)),
+  onEvent: (cb) => {
+    const fn = (_e, id, ev) => cb(id, ev);
+    ipcRenderer.on('fancycode:event', fn);
+    return () => ipcRenderer.removeListener('fancycode:event', fn);
+  },
 });

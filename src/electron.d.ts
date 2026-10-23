@@ -1,12 +1,50 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
 import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
 
+export type FancyPlan = 'free' | 'pro' | 'max';
+
 export type FancyAccount = {
   id: string;
   name: string;
   avatar: string;
   provider: 'discord' | 'github' | 'guest';
   quota: { used: number; limit: number };
+  plan?: FancyPlan;
+};
+
+export type FancyUsageWindow = { used: number; limit: number; resetAt: number };
+export type FancyUsage = { fiveHour: FancyUsageWindow; weekly: FancyUsageWindow; resets: number; plan?: FancyPlan };
+
+export type FancyPluginManifest = {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  minAppVersion?: string;
+  main?: string;
+};
+
+export type FancyPluginCatalogEntry = FancyPluginManifest & {
+  manifest: string;
+  main: string;
+  sha256: string;
+};
+
+export type FancyPluginCatalog = { base: string; updated: string; plugins: FancyPluginCatalogEntry[] };
+
+export type BundledSkill = { id: string; title: string; description: string; plugin: boolean; defaultOn: boolean; enabled: boolean };
+export type SkillTarget = { id: string; label: string; detected: boolean; enabled: boolean };
+export type SkillsState = { skills: BundledSkill[]; targets: SkillTarget[]; conflicts: string[] };
+
+export type FancyPluginInstalled = {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  minAppVersion: string;
+  installedAt: number;
 };
 
 type NativeTabBounds = {
@@ -151,6 +189,7 @@ declare global {
       minimizeWindow(): void;
       maximizeWindow(): void;
       closeWindow(): void;
+      setLanguage(language: 'de' | 'en'): void;
       startSyncServer(): Promise<{ url: string; ip: string; port: number }>;
       getPathForFile?(file: File): string;
       apiChatSend(input: {
@@ -170,7 +209,22 @@ declare global {
         guest(invite: string): Promise<FancyAccount>;
         checkInvite(invite: string): Promise<boolean>;
         cancel(): Promise<void>;
+        usage(): Promise<FancyUsage>;
+        resetUsage(): Promise<FancyUsage & { ok: true }>;
         logout(): Promise<boolean>;
+      };
+      plugins?: {
+        catalog(): Promise<FancyPluginCatalog>;
+        list(): Promise<FancyPluginInstalled[]>;
+        install(id: string): Promise<FancyPluginInstalled | null>;
+        remove(id: string): Promise<boolean>;
+        source(id: string): Promise<string>;
+      };
+      skills?: {
+        state(): Promise<SkillsState>;
+        setSkill(id: string, enabled: boolean): Promise<SkillsState>;
+        setTarget(id: string, enabled: boolean): Promise<SkillsState>;
+        installRemote(vserver: VServerConnection): Promise<{ ok: boolean; failed: string[] }>;
       };
       apiChatProjectFiles(root: string): Promise<string[]>;
       getSyncServerStatus(): Promise<{ running: boolean; url?: string; ip?: string; port?: number }>;
@@ -187,7 +241,7 @@ declare global {
       onControlRequest?(handler: (request: { op: string; args: any }) => Promise<unknown>): () => void;
       publishControlState?(state: unknown): Promise<boolean>;
       getMcpInfo?(): Promise<{ command: string; args: string[]; env: Record<string, string> }>;
-      registerMcp?(request: { target: 'claude' | 'agy'; accountIds?: string[] }): Promise<{ ok: boolean; output: string }>;
+      registerMcp?(request: { target: 'claude' | 'agy' | 'fancycode' | 'opencode'; accountIds?: string[] }): Promise<{ ok: boolean; output: string }>;
       getOwnMcpServer?(): Promise<McpServerInfo>;
       getMcpSessions?(): Promise<McpSessionInfo[]>;
       startMcpServer?(request: { id: string }): Promise<McpStartResult>;

@@ -335,6 +335,34 @@ function safeCwd(cwd) {
   return WORK_DIR;
 }
 
+// tmux runs the command through a shell, so every value from a saved V-Server is quoted and
+// validated instead of being pasted into the command line.
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function sshCommand(vserver) {
+  const port = Number(vserver.port || 22);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Ungueltiger SSH-Port.');
+  const user = String(vserver.user || '').trim();
+  if (user && !/^[A-Za-z0-9._-]+$/.test(user)) throw new Error('Ungueltiger SSH-Benutzer.');
+  const host = String(vserver.host || '').trim();
+  if (!host || !/^[A-Za-z0-9._:-]+$/.test(host)) throw new Error('Ungueltiger SSH-Host.');
+  const keyPath = String(vserver.keyPath || '').trim();
+  if (keyPath && !/^\/[A-Za-z0-9._\/ -]+$/.test(keyPath)) throw new Error('Ungueltiger SSH-Key-Pfad.');
+
+  const parts = [
+    'exec ssh',
+    '-p', String(port),
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'ServerAliveInterval=30',
+    '-t',
+  ];
+  if (keyPath) parts.push('-i', shellQuote(keyPath), '-o', 'IdentitiesOnly=yes');
+  parts.push(shellQuote(user ? `${user}@${host}` : host));
+  return parts.join(' ');
+}
+
 // One tmux client (PTY) per browser connection and tab.
 const clients = new Map(); // `${connId}:${chatId}` -> { pty, ws }
 
@@ -354,12 +382,10 @@ async function createShell(conn, { chatId, cwd, agyAccountId, cols, rows, reatta
     let command;
     let label = 'Web-Terminal';
     if (vserver) {
-      const port = Number(vserver.port || 22);
       const user = String(vserver.user || '').trim();
       const host = String(vserver.host || '').trim();
       label = vserver.name || (user ? `${user}@${host}` : host);
-      const keyOpt = vserver.keyPath ? `-i ${vserver.keyPath} -o IdentitiesOnly=yes` : '';
-      command = `exec ssh -p ${port} -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -t ${keyOpt} ${user ? `${user}@` : ''}${host}`;
+      command = sshCommand(vserver);
     } else if (agyAccountId) {
       accountHome(agyAccountId);
       label = accountName(agyAccountId);

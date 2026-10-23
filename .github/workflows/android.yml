@@ -81,7 +81,10 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk "out/FancyCode-Android-$VERSION.apk"
           echo "file=out/FancyCode-Android-$VERSION.apk" >> "$GITHUB_OUTPUT"
 
+      # Only a convenience copy for the run page: a full artifact quota must not keep the
+      # release (and therefore the in-app update) from getting the APK.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: FancyCode-Android
           path: ${{ steps.apk.outputs.file }}

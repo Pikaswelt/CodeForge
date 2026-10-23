@@ -1,3 +1,4 @@
+import { tr, locale } from '../i18n';
 import { useState, useRef, useEffect } from 'react';
 import { useDictation } from '../useDictation';
 import { appendSpoken, useVoiceSettings } from '../voice';
@@ -23,25 +24,26 @@ import {
 import { PROVIDER_MODELS, useAppContext } from '../AppContext';
 import type { AccessMode, ProviderId, ReasoningEffort } from '../types';
 
-const ACCESS_OPTIONS: { id: AccessMode; label: string; description: string }[] = [
-  { id: 'read-only', label: 'Nur lesen', description: 'Keine Dateiaenderungen erlauben' },
-  { id: 'workspace-write', label: 'Projektzugriff', description: 'Im Projekt lesen und schreiben' },
-  { id: 'full', label: 'Voller Zugriff', description: 'Auch Befehle ohne Sandbox erlauben' },
+const accessOptions = (): { id: AccessMode; label: string; description: string }[] => [
+  { id: 'read-only', label: tr("Nur lesen"), description: tr("Keine Dateiaenderungen erlauben") },
+  { id: 'workspace-write', label: tr("Projektzugriff"), description: tr("Im Projekt lesen und schreiben") },
+  { id: 'full', label: tr("Voller Zugriff"), description: tr("Auch Befehle ohne Sandbox erlauben") },
 ];
 
-const INTELLIGENCE_OPTIONS: { id: ReasoningEffort; label: string; description: string }[] = [
-  { id: 'low', label: 'Niedrig', description: 'Schneller, weniger Ausfuehrlichkeit' },
-  { id: 'medium', label: 'Standard', description: 'Ausgewogene Logik' },
-  { id: 'high', label: 'Hoch', description: 'Tiefere Analyse fuer komplexe Aufgaben' },
+const intelligenceChoices = (): { id: ReasoningEffort; label: string; description: string }[] => [
+  { id: 'low', label: tr("Niedrig"), description: tr("Schneller, weniger Ausfuehrlichkeit") },
+  { id: 'medium', label: tr("Standard"), description: tr("Ausgewogene Logik") },
+  { id: 'high', label: tr("Hoch"), description: tr("Tiefere Analyse fuer komplexe Aufgaben") },
 ];
 
-const PROVIDER_OPTIONS: { id: ProviderId; label: string; description: string }[] = [
+const providerOptions = (): { id: ProviderId; label: string; description: string }[] => [
   { id: 'antigravity', label: 'Antigravity', description: 'agy CLI' },
-  { id: 'openai', label: 'Codex', description: 'OpenAI Codex CLI' },
+  { id: 'openai', label: 'Codex', description: tr("OpenAI Codex CLI") },
   { id: 'anthropic', label: 'Claude', description: 'Claude Code CLI' },
+  { id: 'hermes', label: 'Hermes', description: 'Hermes Agent CLI' },
   { id: 'cursor', label: 'Cursor', description: 'Cursor Agent CLI' },
-  { id: 'opencode', label: 'OpenCode', description: 'OpenCode CLI' },
-  { id: 'freebuff', label: 'FreeBuff', description: 'FreeBuff CLI' },
+  { id: 'opencode', label: 'OpenCode', description: tr("OpenCode CLI") },
+  { id: 'freebuff', label: 'FreeBuff', description: tr("FreeBuff CLI") },
 ];
 
 export default function InputArea() {
@@ -103,7 +105,7 @@ export default function InputArea() {
       }
     } catch (sendError) {
       setText(prompt);
-      setError(sendError instanceof Error ? sendError.message : 'Nachricht konnte nicht gesendet werden.');
+      setError(sendError instanceof Error ? sendError.message : tr("Nachricht konnte nicht gesendet werden."));
     }
   };
 
@@ -119,7 +121,7 @@ export default function InputArea() {
   const startDictation = dictation.toggle;
   sendRef.current = () => void send();
 
-  const access = ACCESS_OPTIONS.find((option) => option.id === accessMode)!;
+  const access = accessOptions().find((option) => option.id === accessMode)!;
   const models = PROVIDER_MODELS[provider];
   const selectedModel = models.find((model) => model.id === aiModel) || models[0];
   const intelligence = getModelIntelligence(provider, selectedModel.id, reasoningEffort);
@@ -127,7 +129,7 @@ export default function InputArea() {
   const intelligenceOptions = getAvailableIntelligenceOptions(provider, selectedModel.id);
   const runtime = cliStatus[provider];
   const remainingTokens = usage.tokenLimit > 0 ? Math.max(0, usage.tokenLimit - usage.totalTokens) : null;
-  const selectedProvider = PROVIDER_OPTIONS.find((option) => option.id === provider)!;
+  const selectedProvider = providerOptions().find((option) => option.id === provider)!;
 
   return (
     <div className="w-full max-w-[760px] mt-4">
@@ -163,12 +165,12 @@ export default function InputArea() {
             className="w-full bg-transparent text-white placeholder-zinc-600 text-[15px] outline-none resize-none min-h-[48px]"
             placeholder={
               isSending && originalPluginEnabled
-                ? 'Terminal-Eingabe: Passwort, Prompt oder y/n tippen...'
+                ? tr("Terminal-Eingabe: Passwort, Prompt oder y/n tippen...")
                 : originalPluginEnabled
-                  ? 'Nachricht sendet startet den Agent im Terminal-Modus...'
+                  ? tr("Nachricht sendet startet den Agent im Terminal-Modus...")
                   : selectedProject
-                    ? 'Beschreibe, was im Projekt erledigt werden soll...'
-                    : 'Nachricht schreiben - startet ohne Projekt im FancyCode-Arbeitsordner...'
+                    ? tr("Beschreibe, was im Projekt erledigt werden soll...")
+                    : tr("Nachricht schreiben - startet ohne Projekt im FancyCode Desktop-Arbeitsordner...")
             }
             rows={2}
           />
@@ -179,7 +181,7 @@ export default function InputArea() {
             <button
               onClick={addAttachments}
               className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-white/5"
-              title="Dateien anhaengen"
+              title={tr("Dateien anhaengen")}
             >
               <Paperclip className="w-4.5 h-4.5" />
             </button>
@@ -194,7 +196,7 @@ export default function InputArea() {
             <AnimatePresence>
               {dropdown === 'access' && (
                 <Dropdown className="left-8 w-64">
-                  {ACCESS_OPTIONS.map((option) => (
+                  {accessOptions().map((option) => (
                     <DropdownButton
                       key={option.id}
                       checked={accessMode === option.id}
@@ -231,10 +233,10 @@ export default function InputArea() {
                   <div className="px-3 pb-2 pt-1">
                     <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                       <Sparkles className="w-3 h-3" />
-                      Intelligenz
+                      {tr("Intelligenz")}
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {INTELLIGENCE_OPTIONS.map((option) => {
+                      {intelligenceChoices().map((option) => {
                         const targetModel = intelligenceOptions[option.id];
                         const available = Boolean(targetModel);
                         const active = intelligence === option.id;
@@ -257,7 +259,7 @@ export default function InputArea() {
                           >
                             <div className="text-[11px] font-medium">{option.label}</div>
                             <div className="text-[9px] text-zinc-600">
-                              {available ? option.description : 'Nicht verfuegbar'}
+                              {available ? option.description : tr("Nicht verfuegbar")}
                             </div>
                           </button>
                         );
@@ -283,7 +285,7 @@ export default function InputArea() {
               <button
                 onClick={startDictation}
                 className={`p-1.5 rounded-md ${listening ? 'text-red-400 bg-red-500/10 animate-pulse' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
-                title={listening ? 'Spracheingabe stoppen' : 'Spracheingabe'}
+                title={listening ? tr("Spracheingabe stoppen") : tr("Spracheingabe")}
               >
                 <Mic className="w-4 h-4" />
               </button>
@@ -292,7 +294,7 @@ export default function InputArea() {
               <button
                 onClick={sendEscKey}
                 className="px-2 py-1 text-[11px] font-semibold tracking-wider bg-zinc-800/80 border border-zinc-700 hover:bg-zinc-700 text-zinc-300 rounded-md transition-all active:scale-95"
-                title="ESC-Taste an Prozess senden"
+                title={tr("ESC-Taste an Prozess senden")}
               >
                 ESC
               </button>
@@ -304,14 +306,14 @@ export default function InputArea() {
                     onClick={send}
                     disabled={!text.trim()}
                     className="p-2 rounded-full bg-emerald-500 text-white hover:bg-emerald-400 disabled:bg-white/10 disabled:text-zinc-600"
-                    title="Terminal-Eingabe senden"
+                    title={tr("Terminal-Eingabe senden")}
                   >
                     <ArrowUp className="w-4 h-4" />
                   </button>
                   <button
                     onClick={cancelRun}
                     className="p-2 rounded-full bg-red-500 text-white hover:bg-red-400"
-                    title="Agent stoppen"
+                    title={tr("Agent stoppen")}
                   >
                     <Square className="w-3.5 h-3.5 fill-current" />
                   </button>
@@ -320,7 +322,7 @@ export default function InputArea() {
                 <button
                   onClick={cancelRun}
                   className="p-2 rounded-full bg-red-500 text-white hover:bg-red-400"
-                  title="Agent stoppen"
+                  title={tr("Agent stoppen")}
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
                 </button>
@@ -330,7 +332,7 @@ export default function InputArea() {
                 onClick={send}
                 disabled={!text.trim()}
                 className="p-2 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-white/10 disabled:text-zinc-600"
-                title="Senden"
+                title={tr("Senden")}
               >
                 <ArrowUp className="w-4 h-4" />
               </button>
@@ -352,7 +354,7 @@ export default function InputArea() {
               <AnimatePresence>
                 {dropdown === 'provider' && (
                   <Dropdown className="left-3 w-64">
-                    {PROVIDER_OPTIONS.map((option) => {
+                    {providerOptions().map((option) => {
                       const status = cliStatus[option.id];
                       return (
                         <DropdownButton
@@ -363,7 +365,7 @@ export default function InputArea() {
                             setDropdown(null);
                           }}
                           title={option.label}
-                          subtitle={`${option.description}${status?.installed ? ' - bereit' : ' - fehlt'}`}
+                          subtitle={`${option.description}${status?.installed ? tr("- bereit") : tr("- fehlt")}`}
                         />
                       );
                     })}
@@ -376,7 +378,7 @@ export default function InputArea() {
           {lyzDevPluginEnabled && (
             <span className="context-button border-emerald-300/15 bg-emerald-300/10 text-emerald-200">
               <Gamepad2 className="w-3.5 h-3.5" />
-              Lyz Dev
+              {tr("Lyz Dev")}
             </span>
           )}
 
@@ -385,7 +387,7 @@ export default function InputArea() {
             className="context-button"
           >
             <Box className="w-3.5 h-3.5" />
-            <span className="max-w-40 truncate">{selectedProject?.title || 'Projekt waehlen'}</span>
+            <span className="max-w-40 truncate">{selectedProject?.title || tr("Projekt waehlen")}</span>
             <ChevronDown className="w-3 h-3" />
           </button>
           <AnimatePresence>
@@ -404,10 +406,10 @@ export default function InputArea() {
                   />
                 ))}
                 <button onClick={createNewProject} className="w-full text-left px-3 py-2 text-xs text-emerald-300 hover:bg-white/10 cursor-pointer">
-                  + Neues Projekt erstellen
+                  {tr("+ Neues Projekt erstellen")}
                 </button>
                 <button onClick={addProject} className="w-full text-left px-3 py-2 text-xs text-amber-300 hover:bg-white/10 cursor-pointer">
-                  + Projektordner oeffnen
+                  {tr("+ Projektordner oeffnen")}
                 </button>
               </Dropdown>
             )}
@@ -420,16 +422,16 @@ export default function InputArea() {
                 className="context-button"
               >
                 <Monitor className="w-3.5 h-3.5" />
-                {runtime.installed ? 'CLI bereit' : 'CLI fehlt'}
+                {runtime.installed ? tr("CLI bereit") : tr("CLI fehlt")}
                 <span className={`w-1.5 h-1.5 rounded-full ${runtime.installed ? 'bg-emerald-400' : 'bg-red-400'}`} />
               </button>
               <AnimatePresence>
                 {dropdown === 'runtime' && (
                   <Dropdown className="left-52 w-80">
                     <div className="px-3 py-2">
-                      <div className="text-xs text-white">{runtime.installed ? runtime.version : 'Nicht installiert'}</div>
+                      <div className="text-xs text-white">{runtime.installed ? runtime.version : tr("Nicht installiert")}</div>
                       <div className="text-[10px] text-zinc-600 mt-1 break-all">
-                        {runtime.executable || 'Die gewaehlte CLI ist nicht im PATH verfuegbar.'}
+                        {runtime.executable || tr("Die gewaehlte CLI ist nicht im PATH verfuegbar.")}
                       </div>
                       <button
                         onClick={async () => {
@@ -437,11 +439,11 @@ export default function InputArea() {
                           try {
                             if (runtime.installed) {
                               const info = await refreshProviderUsage(provider);
-                              window.alert(info?.raw || info?.error || info?.label || 'Keine Terminalausgabe erhalten.');
+                              window.alert(info?.raw || info?.error || info?.label || tr("Keine Terminalausgabe erhalten."));
                             }
                             else setError(await installCli(provider));
                           } catch (runtimeError) {
-                            setError(runtimeError instanceof Error ? runtimeError.message : 'Aktion fehlgeschlagen.');
+                            setError(runtimeError instanceof Error ? runtimeError.message : tr("Aktion fehlgeschlagen."));
                           } finally {
                             setRuntimeBusy(false);
                             setDropdown(null);
@@ -450,11 +452,11 @@ export default function InputArea() {
                         className="mt-3 inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/5 cursor-pointer"
                       >
                         {runtimeBusy && <span className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />}
-                        {runtime.installed ? 'Provider-Limit abrufen' : 'Installation starten'}
+                        {runtime.installed ? tr("Provider-Limit abrufen") : tr("Installation starten")}
                       </button>
                       {usage.providerLimits?.[provider] && (
                         <div className="mt-2 text-[10px] text-zinc-600">
-                          Provider: {usage.providerLimits[provider]?.label}
+                          {tr("Provider:")} {usage.providerLimits[provider]?.label}
                         </div>
                       )}
                     </div>
@@ -469,21 +471,21 @@ export default function InputArea() {
             className="context-button"
           >
             <Gauge className="w-3.5 h-3.5" />
-            {remainingTokens === null ? `${usage.totalTokens.toLocaleString('de-DE')} Tokens` : `${remainingTokens.toLocaleString('de-DE')} uebrig`}
+            {remainingTokens === null ? tr('{count} Tokens', { count: usage.totalTokens.toLocaleString(locale()) }) : tr('{count} uebrig', { count: remainingTokens.toLocaleString(locale()) })}
           </button>
           <AnimatePresence>
             {dropdown === 'usage' && (
               <Dropdown className="left-80 w-72">
                 <div className="px-3 py-2">
-                  <div className="text-xs text-white">Token-Nutzung</div>
+                  <div className="text-xs text-white">{tr("Token-Nutzung")}</div>
                   {usage.providerLimits?.[provider] && (
                     <div className="mb-2 text-[10px] text-zinc-600">
-                      Provider: {usage.providerLimits[provider]?.label}
+                      {tr("Provider:")} {usage.providerLimits[provider]?.label}
                     </div>
                   )}
                   <div className="text-[10px] text-zinc-600 mt-1">
-                    Verbraucht: {usage.totalTokens.toLocaleString('de-DE')}
-                    {usage.tokenLimit ? ` von ${usage.tokenLimit.toLocaleString('de-DE')}` : ' - kein Limit gesetzt'}
+                    {tr("Verbraucht:")} {usage.totalTokens.toLocaleString(locale())}
+                    {usage.tokenLimit ? tr(" von {limit}", { limit: usage.tokenLimit.toLocaleString() }) : tr("- kein Limit gesetzt")}
                   </div>
                 </div>
               </Dropdown>
@@ -496,7 +498,7 @@ export default function InputArea() {
             className="context-button disabled:opacity-35"
           >
             <GitBranch className="w-3.5 h-3.5" />
-            {gitInfo.isRepository ? gitInfo.branch || 'detached' : 'Kein Git'}
+            {gitInfo.isRepository ? gitInfo.branch || 'detached' : tr("Kein Git")}
             {gitInfo.isRepository && <ChevronDown className="w-3 h-3" />}
           </button>
           <AnimatePresence>
@@ -511,7 +513,7 @@ export default function InputArea() {
                         await switchBranch(branch);
                         setDropdown(null);
                       } catch (branchError) {
-                        setError(branchError instanceof Error ? branchError.message : 'Branchwechsel fehlgeschlagen.');
+                        setError(branchError instanceof Error ? branchError.message : tr("Branchwechsel fehlgeschlagen."));
                       }
                     }}
                     title={branch}

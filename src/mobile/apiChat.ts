@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { CapacitorHttp } from '@capacitor/core';
 import { isNativeApp } from './native';
 import type { ApiProviderConfig } from './types';
@@ -46,7 +47,7 @@ function apiError(status: number, data: any) {
 }
 
 export async function sendChat(provider: ApiProviderConfig, model: string, system: string, messages: { role: 'user' | 'assistant'; content: string }[]) {
-  if (!model) throw new Error('Kein Modell angegeben.');
+  if (!model) throw new Error(tr('Kein Modell angegeben.'));
   const history = messages.filter((item) => item.content).map((item) => ({ role: item.role, content: item.content }));
   const base = baseUrl(provider);
   if (provider.provider === 'anthropic') {

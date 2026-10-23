@@ -1,5 +1,6 @@
+import { tr } from './i18n';
 // Generic UI control for agents (via the codeforge MCP server): a text snapshot of every visible
-// control with a short ref, plus click / type / key on those refs. Covers every FancyCode feature
+// control with a short ref, plus click / type / key on those refs. Covers every FancyCode Desktop feature
 // without a dedicated tool per feature. Terminal contents are left out; the terminal tools read those.
 
 const INTERACTIVE =
@@ -23,7 +24,7 @@ function iconName(element: HTMLElement) {
   const svg = element.querySelector('svg');
   if (!svg) return '';
   const name = [...svg.classList].find((item) => item.startsWith('lucide-'))?.slice(7);
-  return name ? `(Symbol: ${name})` : '(Symbol)';
+  return name ? `(Symbol: ${name})` : tr("(Symbol)");
 }
 
 function describe(element: HTMLElement) {
@@ -61,7 +62,7 @@ export function uiSnapshot() {
     .map((element) => clean(element.innerText, 60))
     .filter(Boolean);
   const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"], .fixed.inset-0')].find(isVisible);
-  if (dialog) lines.push('Hinweis: Ein Dialog/Overlay ist offen (Escape schliesst ihn meist).');
+  if (dialog) lines.push(tr('Hinweis: Ein Dialog/Overlay ist offen (Escape schliesst ihn meist).'));
   if (headings.length) lines.push(`Ueberschriften: ${[...new Set(headings)].slice(0, 25).join(' | ')}`);
   let index = 0;
   const seen = new Set<HTMLElement>();
@@ -86,14 +87,14 @@ export function uiSnapshot() {
   }
   const terminals = [...document.querySelectorAll<HTMLElement>('[data-terminal-tab-id]')].filter(isVisible);
   if (terminals.length) {
-    lines.push(`Sichtbare Terminals (Inhalt mit codeforge_read): ${terminals.map((element) => element.dataset.terminalTabId).join(', ')}`);
+    lines.push(`Sichtbare Terminals (Inhalt mit fancycode_read): ${terminals.map((element) => element.dataset.terminalTabId).join(', ')}`);
   }
   return lines.join('\n');
 }
 
 function resolve(ref: string) {
   const element = refs.get(ref);
-  if (!element || !element.isConnected) throw new Error(`Element ${ref} gibt es nicht mehr. Zuerst codeforge_ui_snapshot aufrufen.`);
+  if (!element || !element.isConnected) throw new Error(`Element ${ref} gibt es nicht mehr. Zuerst fancycode_ui_snapshot aufrufen.`);
   return element;
 }
 

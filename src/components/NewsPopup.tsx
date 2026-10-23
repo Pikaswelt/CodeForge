@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ExternalLink, History, Loader2, Sparkles, X, Zap } from 'lucide-react';
@@ -41,17 +42,17 @@ export default function NewsPopup({ onClose, version }: { onClose: () => void; v
             <div>
               <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-sky-300/80">
                 <Sparkles className="h-3.5 w-3.5" />
-                Was ist neu
+                {tr("Was ist neu")}
               </div>
               <h2 className="mt-0.5 text-lg font-semibold text-white">
-                {head ? `FancyCode v${head.version}` : 'FancyCode Changelog'}
+                {head ? `FancyCode Desktop v${head.version}` : tr("FancyCode Desktop Changelog")}
               </h2>
             </div>
           </div>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
-            aria-label="News-Popup schliessen"
+            aria-label={tr("News-Popup schliessen")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -61,7 +62,7 @@ export default function NewsPopup({ onClose, version }: { onClose: () => void; v
           {loading && (
             <div className="flex items-center gap-2 py-8 text-xs text-zinc-500">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Aenderungen werden geladen ...
+              {tr("Aenderungen werden geladen ...")}
             </div>
           )}
 
@@ -84,8 +85,8 @@ export default function NewsPopup({ onClose, version }: { onClose: () => void; v
                   <h3 className="text-sm font-medium text-white">{head.title}</h3>
                   {head.publishedAt && (
                     <p className="mt-1 text-[10px] text-zinc-600">
-                      Veroeffentlicht am {formatReleaseDate(head.publishedAt)}
-                      {head.prerelease ? ' · Vorabversion' : ''}
+                      {tr("Veroeffentlicht am")} {formatReleaseDate(head.publishedAt)}
+                      {head.prerelease ? tr("· Vorabversion") : ''}
                     </p>
                   )}
                   <div className="mt-3">
@@ -99,7 +100,7 @@ export default function NewsPopup({ onClose, version }: { onClose: () => void; v
                       className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-sky-300 hover:underline"
                     >
                       <ExternalLink className="h-3 w-3" />
-                      Auf GitHub ansehen
+                      {tr("Auf GitHub ansehen")}
                     </a>
                   )}
                 </div>
@@ -114,7 +115,7 @@ export default function NewsPopup({ onClose, version }: { onClose: () => void; v
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[11px] text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-200"
               >
                 <History className="h-3.5 w-3.5" />
-                {showOlder ? 'Fruehere Versionen ausblenden' : `Fruehere Versionen anzeigen (${older.length})`}
+                {showOlder ? tr("Fruehere Versionen ausblenden") : `Fruehere Versionen anzeigen (${older.length})`}
               </button>
               <AnimatePresence initial={false}>
                 {showOlder && (
@@ -154,7 +155,7 @@ export default function NewsPopup({ onClose, version }: { onClose: () => void; v
           className="primary-button mt-5 w-full !py-2.5 flex items-center justify-center gap-2 shrink-0"
         >
           <Zap className="h-4 w-4" />
-          Verstanden, los geht's!
+          {tr("Verstanden, los geht's!")}
         </motion.button>
       </motion.div>
     </motion.div>

@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -32,7 +33,7 @@ async function tryDiscover(ip: string, port: number, signal: AbortSignal): Promi
       return {
         ip,
         port,
-        name: data.name || 'FancyCode Server',
+        name: data.name || tr("FancyCode Server"),
         tokenRequired: data.tokenRequired !== false,
         providers: data.providers || [],
         pairingActive: data.pairingActive,
@@ -79,11 +80,11 @@ async function verifyPairingCode(serverUrl: string, code: string): Promise<{ ok:
     try {
       data = JSON.parse(text);
     } catch {
-      return { ok: false, error: 'Ungültige Server-Antwort.' };
+      return { ok: false, error: tr("Ungültige Server-Antwort.") };
     }
     return data;
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Verbindung fehlgeschlagen.' };
+    return { ok: false, error: err instanceof Error ? err.message : tr("Verbindung fehlgeschlagen.") };
   }
 }
 
@@ -98,6 +99,9 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
   const [status, setStatus] = useState<'idle' | 'scanning' | 'verifying' | 'connected' | 'error'>('idle');
   const [copied, setCopied] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  // A server with a public address never exposes its pairing code; the user reads it in the
+  // server terminal and connects manually.
+  const [needsCode, setNeedsCode] = useState(false);
 
   // Manual fallback input fields
   const [vpsUrl, setVpsUrl] = useState(mobileConnectionConfig?.vpsUrl || '');
@@ -140,6 +144,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
         setStatus('scanning');
         try {
           const server = await quickScan();
+          if (server?.pairingActive && !server.pairingCode) setNeedsCode(true);
           if (server && server.pairingActive && server.pairingCode) {
             setStatus('verifying');
             const serverUrl = `http://${server.ip}:${server.port}`;
@@ -185,6 +190,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
           const server = await tryDiscover(host, port, ctrl.signal);
           clearTimeout(timeout);
 
+          if (server?.pairingActive && !server.pairingCode) setNeedsCode(true);
           if (server && server.pairingActive && server.pairingCode) {
             setStatus('verifying');
             const res = await verifyPairingCode(serverUrl, server.pairingCode);
@@ -290,8 +296,8 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               <Wifi className="w-5 h-5 text-amber-300" />
             </div>
             <div>
-              <h2 className="text-base text-white font-semibold">Remote Verbindung</h2>
-              <p className="text-xs text-zinc-600 mt-0.5">PC / Server fernsteuern</p>
+              <h2 className="text-base text-white font-semibold">{tr("Remote Verbindung")}</h2>
+              <p className="text-xs text-zinc-600 mt-0.5">{tr("PC / Server fernsteuern")}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white transition-colors">
@@ -305,7 +311,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-xs text-emerald-300 font-semibold flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" /> Live verbunden
+                  <CheckCircle2 className="w-4 h-4" /> {tr("Live verbunden")}
                 </div>
                 <div className="text-[11px] text-zinc-500 truncate mt-1">
                   {mobileConnectionConfig.vpsUrl}
@@ -315,7 +321,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                 onClick={disconnect}
                 className="shrink-0 text-xs text-red-400 hover:text-red-300 border border-red-400/20 px-3 py-1.5 rounded-xl hover:bg-red-400/5 transition-colors cursor-pointer"
               >
-                Trennen
+                {tr("Trennen")}
               </button>
             </div>
           </div>
@@ -326,7 +332,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
           <div className="space-y-5">
             {/* Step 1: Choose OS */}
             <div>
-              <div className="text-xs text-zinc-400 font-semibold mb-2">1. Betriebssystem wählen:</div>
+              <div className="text-xs text-zinc-400 font-semibold mb-2">{tr("1. Betriebssystem wählen:")}</div>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => { setOs('windows'); setStatus('idle'); }}
@@ -336,7 +342,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                       : 'border-white/5 bg-white/[0.02] text-zinc-400 hover:border-white/10'
                   }`}
                 >
-                  Windows PC
+                  {tr("Windows PC")}
                 </button>
                 <button
                   onClick={() => { setOs('linux'); setStatus('idle'); }}
@@ -346,7 +352,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                       : 'border-white/5 bg-white/[0.02] text-zinc-400 hover:border-white/10'
                   }`}
                 >
-                  Linux / Debian
+                  {tr("Linux / Debian")}
                 </button>
               </div>
             </div>
@@ -354,7 +360,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
             {/* Step 2: Choose Network Type */}
             {os && (
               <div>
-                <div className="text-xs text-zinc-400 font-semibold mb-2">2. Netzwerk-Szenario:</div>
+                <div className="text-xs text-zinc-400 font-semibold mb-2">{tr("2. Netzwerk-Szenario:")}</div>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => { setNetwork('same'); setStatus('idle'); }}
@@ -364,7 +370,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                         : 'border-white/5 bg-white/[0.02] text-zinc-400 hover:border-white/10'
                     }`}
                   >
-                    Gleiches WLAN / LAN
+                    {tr("Gleiches WLAN / LAN")}
                   </button>
                   <button
                     onClick={() => { setNetwork('remote'); setStatus('idle'); }}
@@ -374,7 +380,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                         : 'border-white/5 bg-white/[0.02] text-zinc-400 hover:border-white/10'
                     }`}
                   >
-                    Anderes Netz / VPS
+                    {tr("Anderes Netz / VPS")}
                   </button>
                 </div>
               </div>
@@ -383,13 +389,13 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
             {/* Step 3: Server IP for Remote VPS */}
             {os && network === 'remote' && (
               <div>
-                <div className="text-xs text-zinc-400 font-semibold mb-1.5">3. Server IP-Adresse oder Domain:</div>
+                <div className="text-xs text-zinc-400 font-semibold mb-1.5">{tr("3. Server IP-Adresse oder Domain:")}</div>
                 <input
                   type="text"
                   value={remoteIp}
                   onChange={(e) => { setRemoteIp(e.target.value); setStatus('idle'); }}
                   className="input w-full text-xs font-mono py-2.5 px-3"
-                  placeholder="z.B. 88.214.56.241 oder mein-server.de"
+                  placeholder={tr("z.B. 88.214.56.241 oder mein-server.de")}
                 />
               </div>
             )}
@@ -399,17 +405,17 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               <div className="rounded-xl border border-violet-400/15 bg-violet-400/5 p-4 mt-2">
                 <div className="text-xs text-violet-300 font-semibold flex items-center gap-1.5 mb-2">
                   <Radio className="w-4 h-4 text-violet-400" />
-                  Terminal-Befehl ausführen:
+                  {tr("Terminal-Befehl ausführen:")}
                 </div>
                 <p className="text-[11px] text-zinc-500 mb-2 leading-relaxed">
-                  Führe diesen Befehl im Terminal auf deinem {os === 'windows' ? 'PC' : 'Server'} aus:
+                  {tr("Führe diesen Befehl im Terminal auf deinem")} {os === 'windows' ? 'PC' : tr("Server")} {tr("aus:")}
                 </p>
                 <div className="flex items-center gap-2 rounded-lg bg-black/45 border border-white/5 p-2 font-mono text-[11px] text-emerald-300 overflow-x-auto break-all">
                   <span className="flex-1 select-all">{command}</span>
                   <button
                     onClick={handleCopy}
                     className="p-1 rounded text-zinc-500 hover:text-white hover:bg-white/5 transition-colors shrink-0 cursor-pointer"
-                    title="Kopieren"
+                    title={tr("Kopieren")}
                   >
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
@@ -419,20 +425,24 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                   {status === 'scanning' ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
-                      <span className="text-[11px] text-amber-300">Warte auf Server-Start... (Auto-Check läuft)</span>
+                      <span className="text-[11px] text-amber-300">{tr("Warte auf Server-Start... (Auto-Check läuft)")}</span>
                     </>
                   ) : status === 'verifying' ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-violet-300" />
-                      <span className="text-[11px] text-violet-300">Kopplung wird verifiziert...</span>
+                      <span className="text-[11px] text-violet-300">{tr("Kopplung wird verifiziert...")}</span>
                     </>
                   ) : status === 'connected' ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span className="text-[11px] text-emerald-400 font-bold">Verbunden! Starte neu...</span>
+                      <span className="text-[11px] text-emerald-400 font-bold">{tr("Verbunden! Starte neu...")}</span>
                     </>
+                  ) : needsCode ? (
+                    <span className="text-[11px] leading-relaxed text-amber-300/90">
+                      {tr("Kopplungscode und Token stehen im Terminal des Servers. Nutze „Manuelle IP und Token eingeben\".")}
+                    </span>
                   ) : (
-                    <span className="text-[11px] text-zinc-600">Erwarte Verbindung von Server...</span>
+                    <span className="text-[11px] text-zinc-600">{tr("Erwarte Verbindung von Server...")}</span>
                   )}
                 </div>
               </div>
@@ -444,7 +454,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                 onClick={() => setManualMode(true)}
                 className="text-[11px] text-zinc-600 hover:text-zinc-400 underline transition-colors cursor-pointer"
               >
-                Manuelle IP und Token eingeben
+                {tr("Manuelle IP und Token eingeben")}
               </button>
             </div>
           </div>
@@ -458,12 +468,12 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
                 onClick={() => setManualMode(false)}
                 className="text-[11px] text-zinc-500 hover:text-white cursor-pointer"
               >
-                &larr; Zurück zum Assistenten
+                {tr("&larr; Zurück zum Assistenten")}
               </button>
-              <span className="text-xs text-white font-semibold">Manuelle Verbindung</span>
+              <span className="text-xs text-white font-semibold">{tr("Manuelle Verbindung")}</span>
             </div>
             <div>
-              <label className="text-[11px] text-zinc-500 block mb-1">Server-URL *</label>
+              <label className="text-[11px] text-zinc-500 block mb-1">{tr("Server-URL *")}</label>
               <input
                 value={vpsUrl}
                 onChange={(e) => setVpsUrl(e.target.value)}
@@ -472,17 +482,17 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               />
             </div>
             <div>
-              <label className="text-[11px] text-zinc-500 block mb-1">API-Token (optional)</label>
+              <label className="text-[11px] text-zinc-500 block mb-1">{tr("API-Token (optional)")}</label>
               <input
                 type="password"
                 value={vpsToken}
                 onChange={(e) => setVpsToken(e.target.value)}
                 className="input w-full text-xs"
-                placeholder="Token"
+                placeholder={tr("Token")}
               />
             </div>
             <div>
-              <label className="text-[11px] text-zinc-500 block mb-1">Projektpfad</label>
+              <label className="text-[11px] text-zinc-500 block mb-1">{tr("Projektpfad")}</label>
               <input
                 value={vpsProjectPath}
                 onChange={(e) => setVpsProjectPath(e.target.value)}
@@ -495,7 +505,7 @@ export default function MobileConnectModal({ onClose }: { onClose: () => void })
               disabled={!vpsUrl.trim()}
               className="primary-button w-full text-xs font-semibold py-2 cursor-pointer"
             >
-              Verbinden
+              {tr("Verbinden")}
             </button>
           </div>
         )}

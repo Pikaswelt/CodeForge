@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, LogIn, Monitor, RefreshCw, Rocket, Server, Square } from 'lucide-react';
 import { useAppContext } from '../AppContext';
@@ -5,7 +6,7 @@ import type { Chat, TerminalTab, VServerConnection } from '../types';
 import { useVServers } from './VServers';
 
 // Terminals keep running in the background (session host on this PC, tmux on V-Servers)
-// while FancyCode is closed. This view lists them and re-joins the workspace they belong to.
+// while FancyCode Desktop is closed. This view lists them and re-joins the workspace they belong to.
 
 type Listing = Awaited<ReturnType<NonNullable<typeof window.agentWorkspace>['listRunningSessions']>>;
 
@@ -38,7 +39,7 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
 
   const refresh = useCallback(async () => {
     if (!window.agentWorkspace?.listRunningSessions) {
-      setError('Laufende Sessions gibt es nur in der Desktop-App.');
+      setError(tr("Laufende Sessions gibt es nur in der Desktop-App."));
       return;
     }
     setLoading(true);
@@ -46,7 +47,7 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
     try {
       setListing(await window.agentWorkspace.listRunningSessions({ vservers: servers }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sessions konnten nicht geladen werden.');
+      setError(err instanceof Error ? err.message : tr("Sessions konnten nicht geladen werden."));
     } finally {
       setLoading(false);
     }
@@ -107,7 +108,7 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
     try {
       await action();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Das hat nicht geklappt.');
+      setError(err instanceof Error ? err.message : tr("Das hat nicht geklappt."));
     } finally {
       setBusy('');
     }
@@ -120,23 +121,23 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
     <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="section-label">Laufende Sessions</div>
+          <div className="section-label">{tr("Laufende Sessions")}</div>
           <p className="text-xs text-zinc-500 mt-2">
-            Terminals laufen weiter, auch wenn FancyCode geschlossen oder aktualisiert wird. Beitreten oeffnet den Workspace genau so wie vorher.
+            {tr("Terminals laufen weiter, auch wenn FancyCode Desktop geschlossen oder aktualisiert wird. Beitreten oeffnet den Workspace genau so wie vorher.")}
           </p>
         </div>
-        <button onClick={() => void refresh()} disabled={loading} className="text-zinc-400 hover:text-zinc-200 disabled:opacity-50" title="Neu laden">
+        <button onClick={() => void refresh()} disabled={loading} className="text-zinc-400 hover:text-zinc-200 disabled:opacity-50" title={tr("Neu laden")}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
       {!listing && loading && (
         <div className="flex items-center gap-2 text-xs text-zinc-500">
-          <Loader2 className="w-4 h-4 animate-spin" /> Suche laufende Sessions...
+          <Loader2 className="w-4 h-4 animate-spin" /> {tr("Suche laufende Sessions...")}
         </div>
       )}
 
-      {empty && <p className="text-xs text-zinc-500">Gerade laeuft keine Session.</p>}
+      {empty && <p className="text-xs text-zinc-500">{tr("Gerade laeuft keine Session.")}</p>}
 
       <div className="space-y-2">
         {workspaces.map(({ chat, total, running }) => {
@@ -147,7 +148,7 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm text-zinc-200">{chat.title}</div>
                 <div className="text-[11px] text-zinc-500">
-                  {running} von {total} Terminal{total === 1 ? '' : 's'} laufen
+                  {running} {tr("von")} {total} {tr("Terminal")}{total === 1 ? '' : 's'} laufen
                 </div>
               </div>
               <button
@@ -155,11 +156,11 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
                 disabled={Boolean(busy)}
                 className={`${buttonClass} text-zinc-100 bg-white/[0.06] hover:bg-white/[0.1]`}
               >
-                <LogIn className="w-3.5 h-3.5" /> Beitreten
+                <LogIn className="w-3.5 h-3.5" /> {tr("Beitreten")}
               </button>
               <button
                 onClick={() => {
-                  if (!window.confirm(`"${chat.title}" beenden? Alle Terminals darin werden geschlossen.`)) return;
+                  if (!window.confirm(tr('"{title}" beenden? Alle Terminals darin werden geschlossen.', { title: chat.title }))) return;
                   void run(`end-${chat.id}`, async () => {
                     endTerminalWorkspace(chat.id);
                     await refresh();
@@ -168,7 +169,7 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
                 disabled={Boolean(busy)}
                 className={`${buttonClass} text-red-300 hover:bg-red-500/10`}
               >
-                <Square className="w-3.5 h-3.5" /> Beenden
+                <Square className="w-3.5 h-3.5" /> {tr("Beenden")}
               </button>
             </div>
           );
@@ -180,7 +181,7 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm text-zinc-200">Antigravity Accounts · {server.name}</div>
               <div className="truncate text-[11px] text-zinc-500">
-                {accounts.length} Account{accounts.length === 1 ? '' : 's'} laufen: {accounts.map((account) => account.name).join(', ')}
+                {accounts.length} Account{accounts.length === 1 ? '' : 's'} {tr("laufen:")} {accounts.map((account) => account.name).join(', ')}
               </div>
             </div>
             <button
@@ -190,11 +191,11 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
               disabled={Boolean(busy)}
               className={`${buttonClass} text-zinc-100 bg-white/[0.06] hover:bg-white/[0.1]`}
             >
-              <LogIn className="w-3.5 h-3.5" /> Beitreten
+              <LogIn className="w-3.5 h-3.5" /> {tr("Beitreten")}
             </button>
             <button
               onClick={() => {
-                if (!window.confirm(`Antigravity auf "${server.name}" beenden? Die laufenden agy-Sessions werden geschlossen.`)) return;
+                if (!window.confirm(tr('Antigravity auf "{server}" beenden? Die laufenden agy-Sessions werden geschlossen.', { server: server.name }))) return;
                 void run(`end-agy-${server.id}`, async () => {
                   await Promise.all(accounts.map((account) => window.agentWorkspace?.killRemoteSession({ vserver: server, tmuxName: `cf-agy-${account.id}` })));
                   await refresh();
@@ -203,20 +204,20 @@ export function RunningSessionsPanel({ onCancel }: { onCancel(): void }) {
               disabled={Boolean(busy)}
               className={`${buttonClass} text-red-300 hover:bg-red-500/10`}
             >
-              <Square className="w-3.5 h-3.5" /> Beenden
+              <Square className="w-3.5 h-3.5" /> {tr("Beenden")}
             </button>
           </div>
         ))}
       </div>
 
       {unreachable.length > 0 && (
-        <p className="text-[11px] text-amber-300/80">Nicht erreichbar (oder nur mit Passwort): {unreachable.join(', ')}</p>
+        <p className="text-[11px] text-amber-300/80">{tr("Nicht erreichbar (oder nur mit Passwort):")} {unreachable.join(', ')}</p>
       )}
       {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</div>}
 
       <div className="flex justify-end">
         <button onClick={onCancel} className="text-xs text-zinc-400 hover:text-zinc-200">
-          Zurueck
+          {tr("Zurueck")}
         </button>
       </div>
     </section>
