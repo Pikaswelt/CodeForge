@@ -1,7 +1,8 @@
 import { tr, locale } from '../i18n';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Gauge, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react';
 import type { FancyUsage, FancyUsageWindow } from '../electron';
+import type { UsagePopupSeed } from '../AppContext';
 
 const percent = (window: FancyUsageWindow) => Math.max(0, Math.min(100, Math.ceil((window.used / window.limit) * 100)));
 
@@ -19,12 +20,15 @@ function resetLabel(window: FancyUsageWindow) {
 }
 
 // Verbrauch der eingebauten KI: zwei Fenster, nur Prozent und Balken, direkt vom Server.
-export default function UsageModal({ onClose }: { onClose(): void }) {
-  const [usage, setUsage] = useState<FancyUsage | null>(null);
+// `initial` sind Werte, die die FancyCode-Ansicht schon kennt; das Popup zeigt sie sofort und
+// aktualisiert im Hintergrund.
+export default function UsageModal({ onClose, initial }: { onClose(): void; initial?: UsagePopupSeed | null }) {
+  const [usage, setUsage] = useState<FancyUsage | null>(() => (initial ? (initial as FancyUsage) : null));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resetting, setResetting] = useState(false);
   const [message, setMessage] = useState('');
+  const hasData = useRef(Boolean(initial));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,8 +37,12 @@ export default function UsageModal({ onClose }: { onClose(): void }) {
       const api = window.agentWorkspace?.fancyAccount;
       if (!api) throw new Error(tr('Die Nutzung zeigt nur die Desktop-App.'));
       setUsage(await api.usage());
+      hasData.current = true;
     } catch (err) {
-      setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("Die Nutzung konnte nicht geladen werden."));
+      // Mit Werten aus der FancyCode-Ansicht bleibt das Popup gefuellt, statt einen Fehler zu zeigen.
+      if (!hasData.current) {
+        setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("Die Nutzung konnte nicht geladen werden."));
+      }
     } finally {
       setLoading(false);
     }
@@ -92,13 +100,13 @@ export default function UsageModal({ onClose }: { onClose(): void }) {
           </button>
         </div>
 
-        {loading && (
+        {loading && !usage && (
           <div className="flex items-center gap-2 py-10 text-sm text-zinc-400">
             <Loader2 className="h-4 w-4 animate-spin" /> {tr("Limit wird geladen …")}
           </div>
         )}
 
-        {!loading && error && (
+        {!usage && error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {error}
             <button onClick={() => void load()} className="mt-3 flex items-center gap-2 text-xs text-zinc-300 hover:text-zinc-100">
@@ -107,7 +115,7 @@ export default function UsageModal({ onClose }: { onClose(): void }) {
           </div>
         )}
 
-        {!loading && usage && (
+        {usage && (
           <div className="space-y-5">
             <UsageBar label={tr("5-Stunden-Limit")} window={usage.fiveHour} />
             <UsageBar label={tr("Wochenlimit (7 Tage)")} window={usage.weekly} />

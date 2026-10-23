@@ -297,11 +297,14 @@ export function FancyCodePanel({
   cwd,
   onPickFolder,
   emptyHint,
+  onOpenUsage,
 }: {
   bridge: FancyCodeBridge;
   cwd: string;
   onPickFolder?: () => void;
   emptyHint?: ReactNode;
+  // Wenn die App ein eigenes Usage-Popup hat (FancyCode Desktop), oeffnet dieser Aufruf es.
+  onOpenUsage?: (usage: Usage | null) => void;
 }) {
   const [ready, setReady] = useState(false);
   const [account, setAccount] = useState<Account>(null);
@@ -515,6 +518,10 @@ export function FancyCodePanel({
   };
 
   const showUsageCard = () => {
+    if (onOpenUsage) {
+      if (!usage) send({ type: 'command', name: 'usage' });
+      return onOpenUsage(usage);
+    }
     if (!usage) return send({ type: 'command', name: 'usage' });
     push({
       k: 'card',
@@ -548,8 +555,7 @@ export function FancyCodePanel({
       case '/effort':
         return send({ type: 'set', effort: arg });
       case '/usage':
-        send({ type: 'command', name: 'usage' });
-        return setTimeout(showUsageCard, 400);
+        return showUsageCard();
       case '/status':
         return send({ type: 'command', name: 'status' });
       case '/resume':

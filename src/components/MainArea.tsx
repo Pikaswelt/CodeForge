@@ -139,12 +139,18 @@ export default function MainArea() {
 
 // FancyCode-Agent im ausgewählten Projekt (grafisch, wie Claude Code in Claude Desktop).
 function FancyCodeHost({ visible }: { visible: boolean }) {
-  const { selectedProject, addProject } = useAppContext();
+  const { selectedProject, addProject, openUsagePopup } = useAppContext();
   const bridge = useMemo(() => fancycodeBridge(), []);
   if (!bridge) return null;
   return (
     <div className="flex-1 min-w-0 h-full flex-col relative overflow-hidden" style={{ display: visible ? 'flex' : 'none' }}>
-      <FancyCodePanel bridge={bridge} cwd={selectedProject?.path || ''} onPickFolder={addProject} emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode arbeitet dann direkt darin.")} />
+      <FancyCodePanel
+        bridge={bridge}
+        cwd={selectedProject?.path || ''}
+        onPickFolder={addProject}
+        emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode arbeitet dann direkt darin.")}
+        onOpenUsage={openUsagePopup}
+      />
     </div>
   );
 }

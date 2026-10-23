@@ -15,6 +15,7 @@ import MainArea from './components/MainArea';
 import { AppProvider, useAppContext } from './AppContext';
 import { isVideoPath, toFileUrl } from './media';
 import UpdateModal from './components/UpdateModal';
+import UsageModal from './components/UsageModal';
 import { VoiceIndicator, VoiceInstallModal } from './components/VoiceSettings';
 import { syncWakeMode } from './voice';
 import { useLanguage } from './i18n';
@@ -56,6 +57,9 @@ function AppLayout() {
     mainView,
     selectedChatId,
     selectedProject,
+    usagePopupOpen,
+    usagePopupSeed,
+    closeUsagePopup,
   } = useAppContext();
   const [showSettings, setShowSettings] = useState(false);
   const compact = useCompactLayout() || mobileMode;
@@ -261,6 +265,10 @@ function AppLayout() {
         <AnimatePresence>
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
         </AnimatePresence>
+        {/* Dasselbe Usage-Popup fuer Einstellungen-Menue und FancyCode: mittig, ueber allem. */}
+        <AnimatePresence>
+          {usagePopupOpen && <UsageModal initial={usagePopupSeed} onClose={closeUsagePopup} />}
+        </AnimatePresence>
         <UpdateModal />
         <ThemeCreator />
         <VoiceInstallModal />
@@ -299,6 +307,9 @@ function AppLayout() {
           </button>
         )}
       </div>
+      {/* Overlays wie das Einstellungen-Menue haengen hier statt in der Seitenleiste: ueber dem
+          z-10-Inhalt (FancyCode), aber innerhalb von data-theme, damit die Theme-Farben greifen. */}
+      <div id="overlay-root" className="relative z-20" />
     </div>
   );
 }

@@ -199,6 +199,15 @@ const LYZ_DEV_CHAT_TITLE = 'Lyz Dev Chat';
 const LYZ_DEV_SYSTEM_PROMPT =
   tr('Lyz Dev ist aktiv. Arbeite als Gaming-Development-Agent fuer Unity-Projekte. Pruefe vor Unity-bezogenen Aktionen die verfuegbare Unity-MCP-Verbindung und nutze sie fuer Szenen-, GameObject-, Asset- und Editor-Kontext. Wenn keine Unity-MCP-Verbindung verfuegbar ist, stoppe und erklaere knapp, welche Unity-MCP-Verbindung fehlt.');
 
+// Verbrauch, den die FancyCode-Ansicht schon vom Harness kennt. Damit zeigt das Popup auch dann Werte,
+// wenn die Desktop-API fehlt (Web-Build).
+export type UsagePopupSeed = {
+  fiveHour: { used: number; limit: number; resetAt: number };
+  weekly: { used: number; limit: number; resetAt: number };
+  plan?: string;
+  resets: number;
+};
+
 interface AppContextType {
   folders: ProjectFolder[];
   libraryProjects: ProjectFolder[];
@@ -217,6 +226,10 @@ interface AppContextType {
   codexPlugins: CodexPluginInfo[];
   lyzDevPluginEnabled: boolean;
   usage: UsageState;
+  usagePopupOpen: boolean;
+  usagePopupSeed: UsagePopupSeed | null;
+  openUsagePopup(seed?: UsagePopupSeed | null): void;
+  closeUsagePopup(): void;
   selectedChatId: string | null;
   selectedFolderId: string | null;
   selectedProject: ProjectFolder | null;
@@ -788,6 +801,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [usage, setUsage] = useState<UsageState>(() =>
     readStorage<UsageState>('usage', EMPTY_USAGE),
   );
+  // Ein Popup fuer alle: Einstellungen-Menue und FancyCode-Ansicht oeffnen dasselbe, mittige Fenster.
+  const [usagePopupOpen, setUsagePopupOpen] = useState(false);
+  const [usagePopupSeed, setUsagePopupSeed] = useState<UsagePopupSeed | null>(null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() =>
     readStorage<string | null>('selectedFolder', null),
@@ -1594,6 +1610,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetUsage = () => {
     setUsage((current) => ({ ...current, totalTokens: 0, records: [], providerLimits: current.providerLimits || {} }));
   };
+
+  const openUsagePopup = useCallback((seed?: UsagePopupSeed | null) => {
+    setUsagePopupSeed(seed ?? null);
+    setUsagePopupOpen(true);
+  }, []);
+
+  const closeUsagePopup = useCallback(() => setUsagePopupOpen(false), []);
 
   const setApiKey = (keyProvider: ProviderId, key: string) => {
     setApiKeys((current) => {
@@ -3578,6 +3601,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lyzDevPluginEnabled,
       originalPluginEnabled,
       usage,
+      usagePopupOpen,
+      usagePopupSeed,
+      openUsagePopup,
+      closeUsagePopup,
       selectedChatId,
       selectedFolderId,
       selectedProject,
@@ -3791,6 +3818,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lyzDevPluginEnabled,
       originalPluginEnabled,
       usage,
+      usagePopupOpen,
+      usagePopupSeed,
+      openUsagePopup,
+      closeUsagePopup,
       selectedChatId,
       selectedFolderId,
       selectedProject,

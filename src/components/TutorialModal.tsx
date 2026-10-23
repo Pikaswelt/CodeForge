@@ -127,7 +127,7 @@ export default function TutorialModal({ onClose }: { onClose: () => void }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[130] flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[150] flex items-center justify-center p-4"
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 24 }}

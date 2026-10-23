@@ -1,5 +1,6 @@
 import { tr } from '../i18n';
 import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { BookOpen, CircleUserRound, Gauge, LogOut, Megaphone, MessageSquare, Puzzle, Settings } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { PLAN_INFO } from '../plans';
@@ -7,7 +8,6 @@ import type { FancyAccount } from '../electron';
 import { usePlugins } from '../plugins/PluginProvider';
 import TutorialModal from './TutorialModal';
 import NewsPopup from './NewsPopup';
-import UsageModal from './UsageModal';
 
 export default function AccountMenu({
   onSettingsClick,
@@ -25,13 +25,13 @@ export default function AccountMenu({
     mobileMode,
     discordRpcEnabled,
     setDiscordRpcEnabled,
+    openUsagePopup,
   } = useAppContext();
   const { items: pluginItems, run: runPlugin } = usePlugins();
   const [account, setAccount] = useState<FancyAccount | null>(null);
   const [openPlugin, setOpenPlugin] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showNews, setShowNews] = useState(false);
-  const [showUsage, setShowUsage] = useState(false);
   const providerInfo = PROVIDER_INFO[provider];
 
   useEffect(() => {
@@ -61,10 +61,12 @@ export default function AccountMenu({
     onClose();
   };
 
-  return (
+  // Portal in den Overlay-Root: Das Menue liegt damit ueber der FancyCode-Ansicht und wird nicht von
+  // der Seitenleiste beschnitten; Theme-Farben und Popups bleiben trotzdem intakt.
+  return createPortal(
     <>
       <div
-        className={`theme-popover absolute z-[140] w-72 overflow-hidden rounded-xl border border-white/10 bg-[#242124]/95 py-1.5 text-sm text-zinc-200 shadow-2xl backdrop-blur-xl ${className}`}
+        className={`theme-popover fixed z-[140] w-72 overflow-hidden rounded-xl border border-white/10 bg-[#242124]/95 py-1.5 text-sm text-zinc-200 shadow-2xl backdrop-blur-xl ${className}`}
       >
         <div className="px-3 pb-2 pt-1">
           <div className="flex items-center gap-2 rounded-lg px-1 py-1.5">
@@ -122,7 +124,10 @@ export default function AccountMenu({
           <AccountMenuButton
             icon={<Gauge className="h-4 w-4" />}
             label={tr("Nutzung")}
-            onClick={() => setShowUsage(true)}
+            onClick={() => {
+              openUsagePopup();
+              onClose();
+            }}
           />
           <div className="flex items-center justify-between px-3 py-2 text-[13px] text-zinc-200 hover:bg-white/5 transition-colors">
             <div className="flex items-center gap-3">
@@ -210,8 +215,8 @@ export default function AccountMenu({
       </div>
       {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
       {showNews && <NewsPopup onClose={() => setShowNews(false)} />}
-      {showUsage && <UsageModal onClose={() => setShowUsage(false)} />}
-    </>
+    </>,
+    document.getElementById('overlay-root') ?? document.body,
   );
 }
 
