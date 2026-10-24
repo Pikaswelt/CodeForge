@@ -29,10 +29,9 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import './fancycode.css';
-import type { VServerConnection } from '../types';
 
 export interface FancyCodeBridge {
-  start(opts: { cwd: string; resume?: string; server?: VServerConnection }): Promise<string>;
+  start(opts: { cwd: string; resume?: string; server?: unknown }): Promise<string>;
   send(id: string, msg: unknown): void;
   stop(id: string): void;
   onEvent(cb: (id: string, ev: FcEvent) => void): () => void;
@@ -358,8 +357,8 @@ export function FancyCodePanel({
 }: {
   bridge: FancyCodeBridge;
   cwd: string;
-  // Run the agent on this V-Server instead of this PC.
-  server?: VServerConnection;
+  // FancyCode Desktop kann den Agenten auf einem V-Server starten; die CLI ignoriert den Wert.
+  server?: unknown;
   onPickFolder?: () => void;
   emptyHint?: ReactNode;
   // Wenn die App ein eigenes Usage-Popup hat (FancyCode Desktop), oeffnet dieser Aufruf es.
@@ -372,6 +371,7 @@ export function FancyCodePanel({
   const [account, setAccount] = useState<Account>(null);
   const [model, setModel] = useState('');
   const [models, setModels] = useState<Model[]>([]);
+  const [hoverModel, setHoverModel] = useState('');
   const [mode, setMode] = useState('default');
   const [profile, setProfile] = useState('');
   const [items, setItems] = useState<Item[]>([]);
@@ -402,10 +402,9 @@ export function FancyCodePanel({
     setReady(false);
     setItems([]);
     setTodos([]);
-    setStartError('');
-    bridge
-      .start({ cwd, ...(server ? { server } : {}) })
-      .then((id) => {
+    setStartError('');      bridge
+        .start({ cwd, ...(server ? { server } : {}) })
+        .then((id) => {
         if (!alive) return bridge.stop(id);
         current = id;
         sidRef.current = id;
@@ -736,6 +735,9 @@ export function FancyCodePanel({
   }, [input]);
 
   const modelLabel = models.find((m) => m.id === (model || 'fancy'))?.label || 'FancyCode';
+  // Beim Hovern das gehoverte Modell, sonst das aktive – so springt das Panel nicht.
+  const hoverInfo = menu === 'model' ? models.find((m) => m.id === (hoverModel || model || 'fancy')) || models[0] : undefined;
+  const plan = (usage?.plan || account?.plan || 'free').toUpperCase();
   const modeInfo = MODES.find((m) => m.id === mode) || MODES[0];
   const folderName = cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : '';
 
@@ -915,19 +917,64 @@ export function FancyCodePanel({
                   <X size={13} />
                 </button>
               </div>
-              {(menu === 'model' ? models.map((m) => ({ id: m.id, label: m.label, hint: '' })) : MODES).map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  className={(menu === 'model' ? (model || 'fancy') === o.id : mode === o.id) ? 'active' : ''}
-                  onClick={() => {
-                    send(menu === 'model' ? { type: 'set', model: o.id } : { type: 'set', mode: o.id });
-                    setMenu('');
-                  }}
-                >
-                  <b>{o.label}</b> <span>{o.hint}</span>
-                </button>
-              ))}
+              <div className="fc-pop-list">
+                {menu === 'model'
+                  ? models.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={(model || 'fancy') === m.id ? 'active' : ''}
+                        onMouseEnter={() => setHoverModel(m.id)}
+                        onMouseLeave={() => setHoverModel('')}
+                        onFocus={() => setHoverModel(m.id)}
+                        onBlur={() => setHoverModel('')}
+                        onClick={() => {
+                          send({ type: 'set', model: m.id });
+                          setMenu('');
+                        }}
+                      >
+                        <b>{m.label}</b> <span>{m.note}</span>
+                      </button>
+                    ))
+                  : MODES.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        className={mode === o.id ? 'active' : ''}
+                        onClick={() => {
+                          send({ type: 'set', mode: o.id });
+                          setMenu('');
+                        }}
+                      >
+                        <b>{o.label}</b> <span>{o.hint}</span>
+                      </button>
+                    ))}
+              </div>
+              {menu === 'model' && hoverInfo && (
+                <div className="fc-model-info">
+                  <div className="fc-mi-title">Rate-Limits</div>
+                  <div className="fc-mi-row">
+                    <span>Modell</span>
+                    <b>{hoverInfo.label}</b>
+                  </div>
+                  <div className="fc-mi-row">
+                    <span>Anbieter</span>
+                    <b>{hoverInfo.note || '–'}</b>
+                  </div>
+                  <div className="fc-mi-row">
+                    <span>Plan</span>
+                    <b>{plan}</b>
+                  </div>
+                  <div className="fc-mi-row">
+                    <span>5 Stunden</span>
+                    <b>{usage ? `${fmtTokens(usage.fiveHour.used)} / ${fmtTokens(usage.fiveHour.limit)}` : '–'}</b>
+                  </div>
+                  <div className="fc-mi-row">
+                    <span>7 Tage</span>
+                    <b>{usage ? `${fmtTokens(usage.weekly.used)} / ${fmtTokens(usage.weekly.limit)}` : '–'}</b>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <textarea
