@@ -476,6 +476,18 @@
   @apply bg-zinc-600 rounded-full;
 }
 
+/* Linux: Chromium zeichnet dicke, immer sichtbare Scrollbalken. Bei Fragen und Antworten von
+   Agenten ausblenden – Mausrad, Touchpad und Tastatur scrollen weiterhin. */
+[data-platform='linux'] .no-scrollbar {
+  scrollbar-width: none;
+}
+
+[data-platform='linux'] .no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .library-shell {
   background: var(--lib-bg, linear-gradient(180deg, #ffffff 0%, #f7f8fb 44%, #f3f6fb 100%));
   color: var(--lib-text, #18181b);

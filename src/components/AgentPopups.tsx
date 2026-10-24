@@ -278,7 +278,7 @@ function FormCard({ popup }: { popup: Extract<AgentPopup, { type: "form" }> }) {
           {popup.message}
         </p>
       )}
-      <div className="mt-3 max-h-[50vh] space-y-3 overflow-y-auto pl-6 pr-1">
+      <div className="mt-3 max-h-[50vh] space-y-3 overflow-y-auto pl-6 pr-1 no-scrollbar">
         {popup.fields.map((field) => (
           <label key={field.name} className="block">
             {field.type !== "checkbox" && (

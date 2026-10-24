@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleStop,
+  Copy,
   FileEdit,
   FolderOpen,
   Gauge,
@@ -16,6 +17,7 @@ import {
   LogIn,
   LogOut,
   Plus,
+  RotateCcw,
   Search,
   Shield,
   Sparkles,
@@ -174,6 +176,54 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
   );
 }
 
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Ohne Clipboard-Berechtigung (z. B. file://) klassisch über eine unsichtbare Textfläche.
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand('copy');
+      area.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Kleine Symbole unter einer Nachricht: kopieren, bei der letzten Antwort auch neu erzeugen. */
+function MessageActions({ text, onRegenerate }: { text: string; onRegenerate?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="fc-msg-actions">
+      <button
+        type="button"
+        className="fc-act"
+        title="Nachricht kopieren"
+        onClick={async () => {
+          if (!(await copyToClipboard(text))) return;
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+      >
+        {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Kopiert' : 'Kopieren'}
+      </button>
+      {onRegenerate && (
+        <button type="button" className="fc-act" title="Antwort neu erzeugen (verbraucht Guthaben)" onClick={onRegenerate}>
+          <RotateCcw size={12} /> Neu
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Diff({ text }: { text: string }) {
   if (!text) return null;
   return (
@@ -318,6 +368,7 @@ export function FancyCodePanel({
   const [thinking, setThinking] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [input, setInput] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
   const [menu, setMenu] = useState<'' | 'model' | 'mode'>('');
   const [invite, setInvite] = useState('');
@@ -421,8 +472,6 @@ export function FancyCodePanel({
             setThinking(false);
             push({ k: 'note', id: uid(), level: 'error', text: ev.status === 401 ? 'Nicht angemeldet. Melde dich mit deinem FancyServers-Konto an.' : ev.message });
             if (ev.status === 401) setAccount(null);
-            // Nach einem Limit-Fehler den Balken sofort auf den echten Stand bringen.
-            else bridge.send(id, { type: 'command', name: 'usage' });
             break;
           case 'done':
             setRunning(false);
@@ -444,9 +493,13 @@ export function FancyCodePanel({
           case 'login_url':
             push({ k: 'note', id: uid(), level: 'info', text: 'Anmeldung im Browser geöffnet …' });
             break;
+          case 'suggestions':
+            setSuggestions(Array.isArray(ev.items) ? ev.items.filter((s: unknown): s is string => typeof s === 'string').slice(0, 3) : []);
+            break;
           case 'session':
             setItems([]);
             setTodos([]);
+            setSuggestions([]);
             break;
           case 'history':
             setItems(
@@ -594,17 +647,46 @@ export function FancyCodePanel({
     }
   };
 
-  const submit = () => {
-    const text = input.trim();
-    if (!text || !ready) return;
+  // Abschicken eines Vorschlags oder der Eingabe (Slash-Befehle laufen getrennt).
+  const sendText = (raw: string) => {
+    const text = raw.trim();
+    if (!text || !ready || running) return;
+    setSuggestions([]);
     setInput('');
-    if (text.startsWith('/') && !text.includes('\n')) return runSlash(text);
-    if (running) return;
     stick.current = true;
     push({ k: 'user', id: uid(), text });
     setRunning(true);
     setThinking(true);
     send({ type: 'prompt', text });
+  };
+
+  const submit = () => {
+    const text = input.trim();
+    if (!text || !ready) return;
+    if (text.startsWith('/') && !text.includes('\n')) {
+      setInput('');
+      return runSlash(text);
+    }
+    sendText(text);
+  };
+
+  // Antwort der letzten Runde verwerfen und dieselbe Anfrage neu beantworten lassen.
+  const regenerate = () => {
+    if (running) return;
+    // Alles ab der letzten Nutzernachricht wegwerfen – dort antwortet der Agent neu.
+    let cut = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].k === 'user') {
+        cut = i + 1;
+        break;
+      }
+    }
+    if (cut < 0) return;
+    setItems(items.slice(0, cut));
+    setSuggestions([]);
+    setRunning(true);
+    setThinking(true);
+    send({ type: 'command', name: 'regenerate' });
   };
 
   // Exakte Treffer zuerst, damit „/mode“ nicht bei „/model“ landet.
@@ -713,8 +795,23 @@ export function FancyCodePanel({
             </div>
           )}
           {items.map((item) => {
-            if (item.k === 'user') return <div key={item.id} className="fc-user">{item.text}</div>;
-            if (item.k === 'assistant') return <div key={item.id} className="fc-assistant"><Markdown text={item.text} /></div>;
+            if (item.k === 'user')
+              return (
+                <div key={item.id} className="fc-user-wrap">
+                  <div className="fc-user">{item.text}</div>
+                  <MessageActions text={item.text} />
+                </div>
+              );
+            if (item.k === 'assistant') {
+              // „Neu“ nur unter der letzten Antwort – der Agent wiederholt immer die letzte Anfrage.
+              const lastAssistant = [...items].reverse().find((x) => x.k === 'assistant')?.id === item.id;
+              return (
+                <div key={item.id} className="fc-assistant">
+                  <Markdown text={item.text} />
+                  <MessageActions text={item.text} onRegenerate={lastAssistant && !running ? regenerate : undefined} />
+                </div>
+              );
+            }
             if (item.k === 'tool') return <ToolCard key={item.id} item={item} />;
             if (item.k === 'ask') return <AskCard key={item.id} item={item} onAnswer={(a) => answer(item.id, a)} />;
             if (item.k === 'card')
@@ -740,6 +837,16 @@ export function FancyCodePanel({
 
       <div className="fc-bottom">
         <Todos todos={todos} />
+        {suggestions.length > 0 && (!input.trim() || suggestions.includes(input)) && (
+          <div className="fc-suggests">
+            {suggestions.map((s) => (
+              <button key={s} type="button" title="Sofort senden" onClick={() => sendText(s)}>
+                {s}
+              </button>
+            ))}
+            <span className="fc-suggests-hint">Tab übernimmt · Enter sendet</span>
+          </div>
+        )}
         <div className="fc-composer">
           {slashHits.length > 0 && (
             <div className="fc-popover">
@@ -795,6 +902,13 @@ export function FancyCodePanel({
             placeholder={account ? 'Beschreibe, was FancyCode tun soll … (/ für Befehle)' : 'Bitte zuerst anmelden'}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === 'Tab' && !slashHits.length && suggestions.length) {
+                // Leeres Feld: ersten Vorschlag übernehmen. Passt der Text schon, weiterblättern.
+                e.preventDefault();
+                const i = suggestions.indexOf(input);
+                setInput(i < 0 ? suggestions[0] : suggestions[(i + 1) % suggestions.length]);
+                return;
+              }
               if (slashHits.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
                 e.preventDefault();
                 setSlashIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : slashHits.length - 1)) % slashHits.length);

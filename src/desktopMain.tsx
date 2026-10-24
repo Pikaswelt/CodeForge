@@ -227,6 +227,10 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+// Plattform für CSS-Regeln: unter Linux zeichnet Chromium dicke, dauerhaft sichtbare Scrollbalken.
+const ua = navigator.userAgent;
+document.documentElement.dataset.platform = /Linux/i.test(ua) ? 'linux' : /Mac/i.test(ua) ? 'mac' : 'win';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

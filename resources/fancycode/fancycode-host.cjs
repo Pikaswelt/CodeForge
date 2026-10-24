@@ -36,11 +36,14 @@ function install({ bundle, binDir, runtime }) {
   } catch {}
   if (!same) fs.writeFileSync(target, src);
   const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+  // Wird der Befehl über einen Symlink gestartet (z. B. ~/.local/bin/fancycode), zeigt $0 in den
+  // Symlink-Ordner – dort liegt kein fancycode.mjs. Deshalb erst den echten Pfad auflösen.
+  const self = `self="$0"\ncase "$self" in /*) ;; *) self="$PWD/$self" ;; esac\nwhile [ -L "$self" ]; do\n  t=$(readlink "$self") || break\n  case "$t" in /*) ;; *) t="$(dirname "$self")/$t" ;; esac\n  self="$t"\ndone\n`;
   if (runtime.electron) {
-    writeIfChanged(path.join(binDir, 'fancycode'), `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec ${q(runtime.electron)} "$(dirname "$0")/fancycode.mjs" "$@"\n`, 0o755);
+    writeIfChanged(path.join(binDir, 'fancycode'), `#!/bin/sh\n${self}ELECTRON_RUN_AS_NODE=1 exec ${q(runtime.electron)} "$(dirname "$self")/fancycode.mjs" "$@"\n`, 0o755);
     writeIfChanged(path.join(binDir, 'fancycode.cmd'), `@ECHO off\r\nSET dp0=%~dp0\r\nSET ELECTRON_RUN_AS_NODE=1\r\n${q(runtime.electron)} "%dp0%\\fancycode.mjs" %*\r\n`, 0o644);
   } else {
-    writeIfChanged(path.join(binDir, 'fancycode'), `#!/bin/sh\nexec node "$(dirname "$0")/fancycode.mjs" "$@"\n`, 0o755);
+    writeIfChanged(path.join(binDir, 'fancycode'), `#!/bin/sh\n${self}exec node "$(dirname "$self")/fancycode.mjs" "$@"\n`, 0o755);
     // Gleicher Aufbau wie npm-Shims, damit Apps sie ohne cmd.exe direkt mit node starten können.
     writeIfChanged(path.join(binDir, 'fancycode.cmd'), `@ECHO off\r\nSET dp0=%~dp0\r\nnode "%dp0%\\fancycode.mjs" %*\r\n`, 0o644);
   }
