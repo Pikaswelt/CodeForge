@@ -100,6 +100,36 @@ export function pushAsk(args: any) {
   }));
 }
 
+// Rückfrage des eingebauten FancyCode-Agenten (Erlauben/Ablehnen). Sie erscheint wie die
+// MCP-Popups unten rechts; die Antwort geht über die Bridge zurück an die Harness.
+export const PERMISSION_ANSWERS: Record<string, 'yes' | 'always' | 'no'> = {
+  Erlauben: 'yes',
+  'Immer erlauben': 'always',
+  Ablehnen: 'no',
+};
+
+export function askPermission(args: { question: string; message?: string; preview?: string; sessionId?: string }) {
+  const question = String(args.question || '');
+  // Vorschau auf wenige Zeilen kürzen, damit das Popup nicht aus dem Fenster läuft.
+  const preview = String(args.preview || '')
+    .split('\n')
+    .slice(0, 10)
+    .join('\n');
+  return waitFor(
+    { question, sessionId: args.sessionId, source: 'FancyCode', kind: 'warning', timeoutMs: 600_000 },
+    (resolve, expiresAt) => ({
+      ...base({ title: question, message: args.message || preview, source: 'FancyCode', sessionId: args.sessionId, kind: 'warning' }),
+      id: ++seq,
+      type: 'ask',
+      question,
+      options: Object.keys(PERMISSION_ANSWERS),
+      allowText: false,
+      expiresAt,
+      resolve,
+    }),
+  );
+}
+
 export function pushForm(args: any) {
   return waitFor(args, (resolve, expiresAt) => ({
     ...base(args),

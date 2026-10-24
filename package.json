@@ -2,7 +2,7 @@
   "name": "codeforge-desktop",
   "desktopName": "codeforge-desktop.desktop",
   "private": true,
-  "version": "2.14.0",
+  "version": "2.15.0",
   "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
   "author": "Pikaswelt <125045294+Pikaswelt@users.noreply.github.com>",
   "type": "module",

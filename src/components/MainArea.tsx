@@ -3,6 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'reac
 import { motion, AnimatePresence } from 'motion/react';
 import { fancycodeBridge } from '../fancycode/bridge';
 import { FancyCodePanel } from '../fancycode/FancyCodePanel';
+import { askPermission as askPermissionPopup, PERMISSION_ANSWERS } from '../agentPopups';
 import {
   AppWindow,
   Blocks,
@@ -150,6 +151,11 @@ function FancyCodeHost({ visible }: { visible: boolean }) {
         onPickFolder={addProject}
         emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode arbeitet dann direkt darin.")}
         onOpenUsage={openUsagePopup}
+        askPermission={async ({ question, summary, preview, sessionId }) => {
+          // Rückfragen des eingebauten Agenten erscheinen als Popup unten rechts (wie die MCP-Popups).
+          const value = await askPermissionPopup({ question: `${question} ${summary}`, preview, sessionId });
+          return typeof value === 'string' ? PERMISSION_ANSWERS[value] || null : null;
+        }}
       />
     </div>
   );

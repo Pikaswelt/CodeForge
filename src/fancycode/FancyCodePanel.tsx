@@ -271,8 +271,12 @@ function ToolCard({ item }: { item: Extract<Item, { k: 'tool' }> }) {
   );
 }
 
+function permissionTitle(kind: string) {
+  return kind === 'edit' ? 'Datei ändern?' : kind === 'exec' ? 'Befehl ausführen?' : kind === 'trust' ? 'Projekt vertrauen?' : 'Werkzeug ausführen?';
+}
+
 function AskCard({ item, onAnswer }: { item: Extract<Item, { k: 'ask' }>; onAnswer: (a: string) => void }) {
-  const title = item.kind === 'edit' ? 'Datei ändern?' : item.kind === 'exec' ? 'Befehl ausführen?' : item.kind === 'trust' ? 'Projekt vertrauen?' : 'Werkzeug ausführen?';
+  const title = permissionTitle(item.kind);
   return (
     <div className={`fc-ask ${item.answer ? 'done' : ''}`}>
       <div className="fc-ask-head">
@@ -348,6 +352,7 @@ export function FancyCodePanel({
   onPickFolder,
   emptyHint,
   onOpenUsage,
+  askPermission,
 }: {
   bridge: FancyCodeBridge;
   cwd: string;
@@ -355,6 +360,9 @@ export function FancyCodePanel({
   emptyHint?: ReactNode;
   // Wenn die App ein eigenes Usage-Popup hat (FancyCode Desktop), oeffnet dieser Aufruf es.
   onOpenUsage?: (usage: Usage | null) => void;
+  // App-eigene Darstellung für Rückfragen (FancyCode Desktop zeigt sie als Popup unten rechts).
+  // Fehlt der Aufruf, erscheint die Frage wie bisher als Karte im Verlauf.
+  askPermission?: (req: { question: string; summary: string; preview: string; sessionId: string }) => Promise<'yes' | 'always' | 'no' | null>;
 }) {
   const [ready, setReady] = useState(false);
   const [account, setAccount] = useState<Account>(null);
@@ -369,7 +377,8 @@ export function FancyCodePanel({
   const [usage, setUsage] = useState<Usage | null>(null);
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [slashIndex, setSlashIndex] = useState(0);
+  const [acIndex, setAcIndex] = useState(0);
+  const [acClosed, setAcClosed] = useState(false);
   const [menu, setMenu] = useState<'' | 'model' | 'mode'>('');
   const [invite, setInvite] = useState('');
   const [startError, setStartError] = useState('');
@@ -458,7 +467,15 @@ export function FancyCodePanel({
             break;
           case 'permission_request':
             setThinking(false);
-            push({ k: 'ask', id: ev.id, kind: ev.kind, summary: ev.summary, preview: ev.preview || '' });
+            if (askPermission) {
+              const question = permissionTitle(ev.kind);
+              push({ k: 'note', id: uid(), level: 'info', text: `${question} ${ev.summary}` });
+              void askPermission({ question, summary: ev.summary, preview: ev.preview || '', sessionId: id })
+                .then((answer) => send({ type: 'permission', id: ev.id, answer: answer || 'no' }))
+                .catch(() => send({ type: 'permission', id: ev.id, answer: 'no' }));
+            } else {
+              push({ k: 'ask', id: ev.id, kind: ev.kind, summary: ev.summary, preview: ev.preview || '' });
+            }
             break;
           case 'todos':
             setTodos(ev.todos || []);
@@ -689,13 +706,24 @@ export function FancyCodePanel({
     send({ type: 'command', name: 'regenerate' });
   };
 
+  // Vervollständigung beim Tippen: Befehle ab „/“, sonst die zuletzt vorgeschlagenen Fragen.
   // Exakte Treffer zuerst, damit „/mode“ nicht bei „/model“ landet.
-  const slashHits = useMemo(() => {
-    if (!input.startsWith('/') || input.includes(' ')) return [];
-    const q = input.toLowerCase();
-    return SLASH.filter((s) => s.cmd.startsWith(q)).sort((a, b) => Number(b.cmd === q) - Number(a.cmd === q));
-  }, [input]);
-  useEffect(() => setSlashIndex(0), [input]);
+  type Completion = { value: string; hint: string; kind: 'cmd' | 'idea' };
+  const hits = useMemo<Completion[]>(() => {
+    if (acClosed) return [];
+    const q = input.trim().toLowerCase();
+    if (input.startsWith('/')) {
+      if (input.includes(' ')) return [];
+      const typed = input.toLowerCase();
+      return SLASH.filter((s) => s.cmd.startsWith(typed))
+        .sort((a, b) => Number(b.cmd === typed) - Number(a.cmd === typed))
+        .map((s) => ({ value: s.cmd, hint: s.hint, kind: 'cmd' as const }));
+    }
+    if (!q) return [];
+    return suggestions
+      .filter((s) => s.toLowerCase().includes(q))
+      .map((s) => ({ value: s, hint: 'Vorschlag', kind: 'idea' as const }));
+  }, [input, suggestions, acClosed]);
   useEffect(() => {
     const ta = textarea.current;
     if (!ta) return;
@@ -848,20 +876,24 @@ export function FancyCodePanel({
           </div>
         )}
         <div className="fc-composer">
-          {slashHits.length > 0 && (
+          {hits.length > 0 && (
             <div className="fc-popover">
-              {slashHits.map((s, i) => (
+              {hits.map((s, i) => (
                 <button
-                  key={s.cmd}
+                  key={s.value}
                   type="button"
-                  className={i === slashIndex ? 'active' : ''}
+                  className={i === acIndex ? 'active' : ''}
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    setInput('');
-                    runSlash(s.cmd);
+                    if (s.kind === 'cmd') {
+                      setInput('');
+                      runSlash(s.value);
+                    } else {
+                      setInput(s.value);
+                    }
                   }}
                 >
-                  <code>{s.cmd}</code> <span>{s.hint}</span>
+                  {s.kind === 'cmd' ? <code>{s.value}</code> : <b>{s.value}</b>} <span>{s.hint}</span>
                 </button>
               ))}
             </div>
@@ -879,7 +911,7 @@ export function FancyCodePanel({
                   <X size={13} />
                 </button>
               </div>
-              {(menu === 'model' ? models.map((m) => ({ id: m.id, label: m.label, hint: m.note })) : MODES).map((o) => (
+              {(menu === 'model' ? models.map((m) => ({ id: m.id, label: m.label, hint: '' })) : MODES).map((o) => (
                 <button
                   key={o.id}
                   type="button"
@@ -900,25 +932,30 @@ export function FancyCodePanel({
             value={input}
             disabled={!ready}
             placeholder={account ? 'Beschreibe, was FancyCode tun soll … (/ für Befehle)' : 'Bitte zuerst anmelden'}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setAcClosed(false);
+              setAcIndex(0);
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'Tab' && !slashHits.length && suggestions.length) {
-                // Leeres Feld: ersten Vorschlag übernehmen. Passt der Text schon, weiterblättern.
+              if (hits.length && e.key === 'Escape') {
                 e.preventDefault();
-                const i = suggestions.indexOf(input);
-                setInput(i < 0 ? suggestions[0] : suggestions[(i + 1) % suggestions.length]);
+                setAcClosed(true);
                 return;
               }
-              if (slashHits.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+              if (hits.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
                 e.preventDefault();
-                setSlashIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : slashHits.length - 1)) % slashHits.length);
+                const step = e.key === 'ArrowDown' ? 1 : -1;
+                setAcIndex((i) => (i + step + hits.length) % hits.length);
                 return;
               }
-              if (slashHits.length && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && input !== slashHits[slashIndex].cmd))) {
+              if (hits.length && e.key === 'Tab') {
+                // Tab übernimmt den markierten Treffer, Shift+Tab den vorherigen.
                 e.preventDefault();
-                const cmd = slashHits[slashIndex].cmd;
-                setInput('');
-                runSlash(cmd);
+                const pick = e.shiftKey ? (acIndex - 1 + hits.length) % hits.length : acIndex;
+                setAcIndex(pick);
+                setInput(hits[pick].value);
+                setAcClosed(true);
                 return;
               }
               if (e.key === 'Enter' && !e.shiftKey) {
