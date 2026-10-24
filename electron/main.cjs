@@ -51,6 +51,7 @@ const DiscordRPC = require('discord-rpc');
 const { setupUpdater, fetchReleaseNotes } = require('./updater.cjs');
 const { setupWhisper } = require('./whisper.cjs');
 const sftp = require('./sftp.cjs');
+const fancycodeRemote = require('./fancycode-remote.cjs');
 const { createSessionClient, unixSocketPath } = require('./session-client.cjs');
 let updater = null;
 const whisper = setupWhisper({ app, getWindow: () => mainWindow });
@@ -3198,7 +3199,7 @@ const activeShells = new Map();
 
 // Interactive SSH login to a saved V-Server: a plain `ssh` inside the PTY, so
 // prompts (host key, password, passphrase) behave like in a normal terminal.
-async function buildVServerSshArgs(vserver) {
+async function buildVServerSshArgs(vserver, { tty = true } = {}) {
   const host = String(vserver.host || '').trim();
   const user = String(vserver.user || '').trim();
   const port = Number(vserver.port || 22);
@@ -3219,7 +3220,7 @@ async function buildVServerSshArgs(vserver) {
   }
   const args = ['-p', String(port), '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30', '-o', 'ConnectTimeout=15'];
   if (keyPath) args.push('-i', keyPath, '-o', 'IdentitiesOnly=yes');
-  args.push('-t', `${user ? `${user}@` : ''}${host}`);
+  args.push(tty ? '-t' : '-T', `${user ? `${user}@` : ''}${host}`);
   return { command: ssh, args };
 }
 
@@ -3434,12 +3435,19 @@ function shellQuote(value) {
 // V-Server tabs run inside tmux on the server: they survive a lost connection and a closed
 // FancyCode Desktop, and opening the tab again re-attaches. Antigravity accounts use one tmux session
 // per account (cf-agy-<id>), each with its own HOME so the agy logins stay separate.
-function buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand }) {
+function buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand, cwd }) {
   let inner = '';
   if (agyAccountId) {
     // The login profile runs first so PATH (e.g. ~/.local/bin) still finds agy; git/npm keep the real config.
     const dir = `$R/.codeforge-agy/${agyAccountId}`;
     inner += `R=$HOME; export GIT_CONFIG_GLOBAL=$R/.gitconfig NPM_CONFIG_USERCONFIG=$R/.npmrc; mkdir -p ${dir} && chmod 700 $R/.codeforge-agy; export HOME=${dir}; cd $R; `;
+  }
+  if (cwd && String(cwd).trim()) {
+    const target = String(cwd).trim();
+    // "~" means the real home, also in agy account sessions where HOME points to the profile.
+    const home = '"${R:-$HOME}"';
+    const resolved = target === '~' ? home : target.startsWith('~/') ? `${home}/${shellQuote(target.slice(2))}` : shellQuote(target);
+    inner += `cd -- ${resolved} 2>/dev/null; `;
   }
   if (startCommand) inner += `${startCommand}; `;
   inner += 'exec bash -i';
@@ -3513,11 +3521,10 @@ async function createShellSession(event, { chatId, cwd, shellType, externalServe
       const ssh = await buildVServerSshArgs(vserver);
       shell = ssh.command;
       args = ssh.args;
-      cwd = app.getPath('home');
       if (agyAccountId && !AGY_ACCOUNT_ID_PATTERN.test(String(agyAccountId))) throw new Error('Ungueltige Antigravity-Account-ID.');
       if (!SESSION_ID_PATTERN.test(String(chatId))) throw new Error('Ungueltige Session-ID.');
       const tmuxName = agyAccountId ? `cf-agy-${agyAccountId}` : `cf-t-${chatId}`;
-      args.push(buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand }));
+      args.push(buildRemoteSessionCommand({ tmuxName, agyAccountId, startCommand, cwd }));
       remoteTmuxSessions.set(chatId, { vserver, tmuxName });
     } catch (error) {
       sendShellOutput(event, chatId, { type: 'stderr', text: `\x1b[31m${error.message}\x1b[0m\r\n` });
@@ -4276,6 +4283,16 @@ app.whenReady().then(() => {
     console.warn(`[Skills] sync failed: ${error.message}`);
   }
   fancycodeHarness.registerIpc(ipcMain, (event) => !!mainWindow && event.sender === mainWindow.webContents);
+  fancycodeRemote.registerIpc({
+    ipcMain,
+    allow: (event) => !!mainWindow && event.sender === mainWindow.webContents,
+    buildSshArgs: buildVServerSshArgs,
+    runCommand: runVServerCommand,
+    getWindow: () => mainWindow,
+    openExternal: (url) => shell.openExternal(url),
+    bundlePath: path.join(app.isPackaged ? path.join(process.resourcesPath, 'fancycode') : path.join(__dirname, '..', 'resources', 'fancycode'), 'fancycode.mjs'),
+    mcpPath: path.join(app.isPackaged ? path.join(process.resourcesPath, 'fancycode') : path.join(__dirname, '..', 'resources', 'fancycode'), 'fancycode-remote-mcp.mjs'),
+  });
   // Der eigene MCP-Server ist immer an: Er startet mit der App und laesst sich in den Einstellungen
   // nicht mehr stoppen. Fremde Server startet das jeweilige Tool selbst; dort wird nur der Zustand gezeigt.
   void startMcpServer(null, { id: MCP_SELF_ID }).then((result) => {
@@ -4389,6 +4406,8 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('fancy:cancel', () => fancyAccount.cancelLogin());
   ipcMain.handle('fancy:usage', (_event, app) => fancyAccount.usage(String(app || '')));
   ipcMain.handle('fancy:usage-reset', (_event, app) => fancyAccount.resetUsage(String(app || '')));
+  ipcMain.handle('fancy:announcements', () => fancyAccount.announcements());
+  ipcMain.handle('fancy:announcements-seen', (_event, ids) => fancyAccount.seenAnnouncements(ids));
   ipcMain.handle('fancy:logout', () => fancyAccount.logout());
 
   // Plugins: Katalog, Installation mit Prüfsumme, Entfernen.
@@ -4935,6 +4954,9 @@ app.on('before-quit', () => {
   try { whisper.stopServer(); } catch (_) {}
   try { sftp.disconnectAll(); } catch (_) {}
   try { stopAllMcpSessions(); } catch (_) {}
+  // Remote agent watchers and SDK processes hold SSH children; close them with the app.
+  try { fancycodeRemote.stopWatchers(); } catch (_) {}
+  try { fancycodeRemote.stopAll(); } catch (_) {}
   for (const [runId, child] of activeProcesses) {
     try {
       if (child && !child.killed) killProcessTree(child);

@@ -95,6 +95,8 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     cancel: () => ipcRenderer.invoke('fancy:cancel'),
     usage: (app) => ipcRenderer.invoke('fancy:usage', app),
     resetUsage: (app) => ipcRenderer.invoke('fancy:usage-reset', app),
+    announcements: () => ipcRenderer.invoke('fancy:announcements'),
+    seenAnnouncements: (ids) => ipcRenderer.invoke('fancy:announcements-seen', ids),
     logout: () => ipcRenderer.invoke('fancy:logout'),
   },
   plugins: {
@@ -131,6 +133,14 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     return () => ipcRenderer.removeListener('control:request', listener);
   },
   publishControlState: (state) => ipcRenderer.invoke('control:publish-state', state),
+  // Agent questions from a remote V-Server: the app watches the server's event file over SSH.
+  startRemoteAgentWatch: (server) => ipcRenderer.invoke('fancycode:remote-watch', { server }),
+  onRemoteAgentEvent: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('fancycode:remote-event', listener);
+    return () => ipcRenderer.removeListener('fancycode:remote-event', listener);
+  },
+  answerRemoteAgent: (request) => ipcRenderer.invoke('fancycode:remote-answer', request),
   getMcpInfo: () => ipcRenderer.invoke('mcp:info'),
   registerMcp: (request) => ipcRenderer.invoke('mcp:register', request),
   getOwnMcpServer: () => ipcRenderer.invoke('mcp:own'),
@@ -174,7 +184,9 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
 
 // FancyCode-Ansicht: Harness im Protokoll-Modus (siehe resources/fancycode/fancycode-host.cjs).
 contextBridge.exposeInMainWorld('fancycode', {
-  start: (opts) => ipcRenderer.invoke('fancycode:start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined }),
+  start: (opts) => opts?.server
+    ? ipcRenderer.invoke('fancycode:remote-start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined, server: opts.server })
+    : ipcRenderer.invoke('fancycode:start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined }),
   send: (id, msg) => ipcRenderer.send('fancycode:send', String(id), msg),
   stop: (id) => ipcRenderer.send('fancycode:stop', String(id)),
   onEvent: (cb) => {

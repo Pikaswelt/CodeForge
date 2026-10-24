@@ -10,7 +10,25 @@ export type FancyAccount = {
   provider: 'discord' | 'github' | 'guest';
   quota: { used: number; limit: number };
   plan?: FancyPlan;
+  banned?: boolean;
+  banReason?: string;
+  banUntil?: number;
 };
+
+// Popup vom Server: Hinweis oder Geschenk (Plan-Zeit und/oder Reset-Guthaben).
+export type FancyAnnouncement = {
+  id: string;
+  kind: 'notice' | 'gift';
+  title: string;
+  message: string;
+  image: string;
+  createdAt: number;
+  plan: FancyPlan | null;
+  days: number;
+  resets: number;
+};
+
+export type FancyBan = { reason: string; until: number };
 
 export type FancyUsageWindow = { used: number; limit: number; resetAt: number };
 // FancyCode zählt pro App: der Agent in Tokens (fancycode-cli), der einfache Chat in Nachrichten.
@@ -220,6 +238,8 @@ declare global {
         cancel(): Promise<void>;
         usage(app?: FancyUsageApp): Promise<FancyUsage>;
         resetUsage(app?: FancyUsageApp): Promise<FancyUsage & { ok: true }>;
+        announcements(): Promise<{ items: FancyAnnouncement[]; ban: FancyBan | null; plan?: FancyPlan }>;
+        seenAnnouncements(ids: string[]): Promise<boolean>;
         logout(): Promise<boolean>;
       };
       plugins?: {
@@ -249,6 +269,9 @@ declare global {
       killRemoteSession(request: { vserver: VServerConnection; tmuxName: string }): Promise<boolean>;
       onControlRequest?(handler: (request: { op: string; args: any }) => Promise<unknown>): () => void;
       publishControlState?(state: unknown): Promise<boolean>;
+      startRemoteAgentWatch?(server: VServerConnection): Promise<boolean>;
+      onRemoteAgentEvent?(callback: (payload: { server: VServerConnection; event: any }) => void): () => void;
+      answerRemoteAgent?(request: { server: VServerConnection; id: string; answer: unknown }): Promise<boolean>;
       getMcpInfo?(): Promise<{ command: string; args: string[]; env: Record<string, string> }>;
       registerMcp?(request: { target: 'claude' | 'agy' | 'fancycode' | 'opencode'; accountIds?: string[] }): Promise<{ ok: boolean; output: string }>;
       getOwnMcpServer?(): Promise<McpServerInfo>;

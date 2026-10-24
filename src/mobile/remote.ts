@@ -13,7 +13,7 @@ export function shellQuote(value: string) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
-function base64Utf8(text: string) {
+export function base64Utf8(text: string) {
   const bytes = new TextEncoder().encode(text);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -158,4 +158,87 @@ export async function projectFiles(server: MobileServer, root: string) {
 export async function gitBranch(server: MobileServer, root: string) {
   const result = await run(server, `cd -- ${shellQuote(root)} 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null`, { timeoutMs: 10000 });
   return result.exitCode === 0 ? result.stdout.trim() : '';
+}
+
+// ── Questions from agents on the V-Server (fancycode-remote-mcp.mjs) ──
+
+export type RemoteAgentEvent = {
+  id: string;
+  type: 'notify' | 'ask' | 'form';
+  title?: string;
+  question?: string;
+  message?: string;
+  kind?: 'info' | 'success' | 'warning' | 'error';
+  options?: string[];
+  allowText?: boolean;
+  fields?: { name: string; label: string; type: string; options?: string[]; placeholder?: string; required?: boolean; help?: string }[];
+  submitLabel?: string;
+  timeoutMs?: number;
+};
+
+type Watch = {
+  channelId: string;
+  buffer: string;
+  listeners: Set<(event: RemoteAgentEvent) => void>;
+};
+
+const watches = new Map<string, Watch>();
+let listening = false;
+
+// One pair of listeners for all servers: the maps fan the shell output out to the right watch.
+function listenOnce() {
+  if (listening) return;
+  listening = true;
+  void Native.addListener('shellData', (event) => {
+    const watch = [...watches.values()].find((item) => item.channelId === event.channelId);
+    if (!watch) return;
+    watch.buffer += event.data;
+    let index;
+    while ((index = watch.buffer.indexOf('\n')) >= 0) {
+      const line = watch.buffer.slice(0, index).trim();
+      watch.buffer = watch.buffer.slice(index + 1);
+      if (!line) continue;
+      try {
+        const parsed = JSON.parse(line) as RemoteAgentEvent;
+        if (parsed && typeof parsed.type === 'string' && parsed.id) watch.listeners.forEach((handler) => handler(parsed));
+      } catch {
+        // Plain output from the shell (touch errors) is not an event.
+      }
+    }
+  }).catch(() => {});
+  void Native.addListener('shellExit', (event) => {
+    for (const [key, watch] of watches) if (watch.channelId === event.channelId) watches.delete(key);
+  }).catch(() => {});
+}
+
+// Tails the event file of a server once and fans the events out to every screen that listens.
+export function ensureAgentWatch(server: MobileServer, listener: (event: RemoteAgentEvent) => void) {
+  listenOnce();
+  const key = server.id;
+  let watch = watches.get(key);
+  if (!watch) {
+    const channelId = `agentwatch-${server.id}-${Date.now().toString(36)}`;
+    const created: Watch = { channelId, buffer: '', listeners: new Set() };
+    watches.set(key, created);
+    const command = 'mkdir -p "$HOME/.fancycode/ui/answers"; touch "$HOME/.fancycode/ui/events.jsonl"; tail -n 0 -F "$HOME/.fancycode/ui/events.jsonl"';
+    void Native.openShell({ server: nativeServer(server), channelId, command, cols: 120, rows: 20, pty: false }).catch(() => {
+      watches.delete(key);
+    });
+    watch = created;
+  }
+  watch.listeners.add(listener);
+  return () => {
+    const active = watches.get(key);
+    if (!active) return;
+    active.listeners.delete(listener);
+  };
+}
+
+export async function answerRemoteAgent(server: MobileServer, id: string, answer: unknown) {
+  const safe = String(id).replace(/[^a-f0-9]/gi, '').slice(0, 40);
+  if (!safe) return false;
+  const payload = base64Utf8(JSON.stringify(answer ?? null));
+  const command = `mkdir -p "$HOME/.fancycode/ui/answers" && printf '%s' '${payload}' | base64 -d > "$HOME/.fancycode/ui/answers/${safe}.json"`;
+  await run(server, command, { timeoutMs: 12000 });
+  return true;
 }

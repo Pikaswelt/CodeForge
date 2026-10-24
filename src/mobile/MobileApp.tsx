@@ -1,7 +1,7 @@
 import { tr, useLanguage } from '../i18n';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
-import { FolderOpen, Home, MessageSquare, Settings, SquareTerminal } from 'lucide-react';
+import { FolderOpen, Home, MessageSquare, Settings, Sparkles, SquareTerminal } from 'lucide-react';
 import { StoreProvider, useStore, type Tab } from './store';
 import { Native, isNativeApp, mediaUrl } from './native';
 import { configureTerminals, applyToAll } from './terminalController';
@@ -9,13 +9,17 @@ import { resolveTheme, terminalFontCss, terminalTheme, themeStyle, type Resolved
 import { animatedEffectsAllowed } from '../plans';
 import { Dialogs, Toasts, cx, handleBack } from './ui';
 import HomeScreen from './screens/HomeScreen';
+import AgentScreen from './screens/AgentScreen';
 import TerminalScreen from './screens/TerminalScreen';
 import FilesScreen from './screens/FilesScreen';
 import ChatScreen from './screens/ChatScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import UpdateLayer from './UpdateLayer';
+import RemoteAgentPopups from './RemoteAgentPopups';
 
 const tabsFor = (): { id: Tab; label: string; icon: typeof Home }[] => [
   { id: 'home', label: 'Home', icon: Home },
+  { id: 'agent', label: 'Agent', icon: Sparkles },
   { id: 'terminal', label: tr("Terminals"), icon: SquareTerminal },
   { id: 'files', label: tr("Dateien"), icon: FolderOpen },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -38,6 +42,12 @@ function Shell() {
   const theme = useMemo(() => resolveTheme(settings.themeId, customThemes), [settings.themeId, customThemes]);
   const storeRef = useRef(store);
   storeRef.current = store;
+  // The agent keeps running when another tab is opened, like the terminals.
+  const [agentOpened, setAgentOpened] = useState(tab === 'agent');
+
+  useEffect(() => {
+    if (tab === 'agent') setAgentOpened(true);
+  }, [tab]);
 
   useAppHeight();
 
@@ -79,6 +89,41 @@ function Shell() {
     applyToAll({ theme: terminalTheme(theme), fontFamily: terminalFontCss(settings.terminalFont) });
   }, [theme, settings.terminalFont]);
 
+  // Keep the status/navigation icons readable on light and dark themes. The bars themselves stay
+  // transparent so the theme background (including image or video) runs behind them. The native
+  // side also reports the bar sizes, which we apply as safe-area insets (WebView env() is not
+  // reliable when the app is edge-to-edge).
+  useEffect(() => {
+    if (!isNativeApp) return;
+    let frame = 0;
+    const sync = () => {
+      void Native.setBars({ color: theme.bg, light: theme.light })
+        .then((insets) => {
+          if (!insets) return;
+          const root = document.documentElement;
+          for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+            const value = insets[side];
+            if (typeof value === 'number') root.style.setProperty(`--safe-area-inset-${side}`, `${Math.round(value)}px`);
+          }
+        })
+        .catch(() => {});
+    };
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(sync);
+    };
+    sync();
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('orientationchange', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+    };
+  }, [theme.light, theme.bg]);
+
   // Android back gesture: close sheets first, then go back to Home, then leave the app.
   useEffect(() => {
     if (!isNativeApp) return;
@@ -105,6 +150,11 @@ function Shell() {
           <div className={cx('absolute inset-0 flex flex-col', tab !== 'terminal' && 'invisible pointer-events-none')}>
             <TerminalScreen visible={tab === 'terminal'} />
           </div>
+          {agentOpened && (
+            <div className={cx('absolute inset-0 flex flex-col', tab !== 'agent' && 'invisible pointer-events-none')}>
+              <AgentScreen />
+            </div>
+          )}
           {tab === 'home' && <div className="absolute inset-0 flex flex-col"><HomeScreen /></div>}
           {tab === 'files' && <div className="absolute inset-0 flex flex-col"><FilesScreen /></div>}
           {tab === 'chat' && <div className="absolute inset-0 flex flex-col"><ChatScreen /></div>}
@@ -135,6 +185,8 @@ function Shell() {
         </nav>
       </div>
       <Dialogs />
+      <UpdateLayer />
+      <RemoteAgentPopups />
       <Toasts />
     </div>
   );

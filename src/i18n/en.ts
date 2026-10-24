@@ -1481,6 +1481,21 @@ const EN: Record<string, string> = {
   "Mikrofonzugriff verweigert (Windows: Einstellungen > Datenschutz > Mikrofon).": "Microphone access denied (Windows: Settings > Privacy > Microphone).",
   "Kein Mikrofon gefunden.": "No microphone found.",
 
+  // Popups vom Server (Hinweis, Geschenk) und Ban-Screen.
+  'Nachricht von FancyCode': 'Message from FancyCode',
+  Geschenk: 'Gift',
+  Hinweis: 'Notice',
+  'Du hast {name} für {days} Tage erhalten!': 'You received {name} for {days} days!',
+  'Du hast {count} Limit-Resets erhalten!': 'You received {count} limit resets!',
+  'Dazu {count} Limit-Resets.': 'Plus {count} limit resets.',
+  'Nice, danke!': 'Nice, thanks!',
+  Verstanden: 'Got it',
+  'Konto gesperrt': 'Account suspended',
+  'Dieses Konto wurde gesperrt.': 'This account has been suspended.',
+  'Die Sperre gilt bis {date}.': 'The suspension lasts until {date}.',
+  'Die Sperre gilt dauerhaft.': 'The suspension is permanent.',
+  'Wenn du das für einen Fehler hältst, wende dich an den Support von CrazyMine.de.': 'If you think this is a mistake, contact CrazyMine.de support.',
+
 };
 
 export default EN;

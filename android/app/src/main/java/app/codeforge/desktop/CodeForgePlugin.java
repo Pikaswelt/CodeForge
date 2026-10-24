@@ -12,9 +12,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
+import android.view.View;
+import android.view.Window;
 import android.webkit.MimeTypeMap;
 
 import androidx.activity.result.ActivityResult;
@@ -23,6 +27,11 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -32,12 +41,17 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +59,9 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import app.codeforge.desktop.ssh.SshManager;
 
@@ -325,7 +342,26 @@ public class CodeForgePlugin extends Plugin {
     public void openShell(PluginCall call) {
         background(call, () -> {
             ssh.openShell(server(call), call.getString("channelId", ""), call.getString("command", "exec bash -l"),
-                    call.getInt("cols", 80), call.getInt("rows", 24));
+                    call.getInt("cols", 80), call.getInt("rows", 24), Boolean.TRUE.equals(call.getBoolean("pty", true)));
+            call.resolve();
+        });
+    }
+
+    /** Localhost forwarding for the FancyCode login callback (see SshManager.forwardLocalPort). */
+    @PluginMethod
+    public void forwardPort(PluginCall call) {
+        background(call, () -> {
+            int local = ssh.forwardLocalPort(server(call), call.getInt("port", 0));
+            JSObject result = new JSObject();
+            result.put("port", local);
+            call.resolve(result);
+        });
+    }
+
+    @PluginMethod
+    public void cancelForwardPort(PluginCall call) {
+        background(call, () -> {
+            ssh.cancelForwardLocalPort(server(call), call.getInt("port", 0));
             call.resolve();
         });
     }
@@ -686,5 +722,163 @@ public class CodeForgePlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("shown", shown);
         call.resolve(result);
+    }
+
+    // ── System bars follow the app theme ───────────────────────
+
+    @PluginMethod
+    public void setBars(PluginCall call) {
+        String color = call.getString("color", "#111111");
+        boolean light = Boolean.TRUE.equals(call.getBoolean("light", false));
+        getActivity().runOnUiThread(() -> {
+            try {
+                int parsed = Color.parseColor(color);
+                Window window = getActivity().getWindow();
+                // Transparent bars keep the web view (and the theme wallpaper) visible behind them.
+                window.setStatusBarColor(Color.TRANSPARENT);
+                window.setNavigationBarColor(Color.TRANSPARENT);
+                if (Build.VERSION.SDK_INT >= 29) window.setNavigationBarContrastEnforced(false);
+                window.getDecorView().setBackgroundColor(parsed);
+                WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
+                controller.setAppearanceLightStatusBars(light);
+                controller.setAppearanceLightNavigationBars(light);
+                // The web view is edge-to-edge (insetsHandling "disable"), so its own layout
+                // needs the system bar sizes. env(safe-area-inset-*) is not reliable in WebView.
+                JSObject result = new JSObject();
+                View webView = getBridge().getWebView();
+                WindowInsetsCompat insets = webView != null ? ViewCompat.getRootWindowInsets(webView) : null;
+                if (insets != null) {
+                    Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+                    float density = getContext().getResources().getDisplayMetrics().density;
+                    result.put("top", bars.top / density);
+                    result.put("right", bars.right / density);
+                    result.put("bottom", bars.bottom / density);
+                    result.put("left", bars.left / density);
+                }
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject(String.valueOf(error.getMessage()));
+            }
+        });
+    }
+
+    // ── In-app update (GitHub releases) ────────────────────────
+
+    private HttpURLConnection openHttp(String url) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        connection.setConnectTimeout(15000);
+        connection.setReadTimeout(30000);
+        connection.setInstanceFollowRedirects(true);
+        connection.setRequestProperty("User-Agent", "FancyCode-Android");
+        connection.setRequestProperty("Accept", "application/vnd.github+json");
+        return connection;
+    }
+
+    @PluginMethod
+    public void checkUpdate(PluginCall call) {
+        background(call, () -> {
+            String owner = call.getString("owner", "");
+            String repo = call.getString("repo", "");
+            if (!owner.matches("[A-Za-z0-9_.-]{1,80}") || !repo.matches("[A-Za-z0-9_.-]{1,80}")) {
+                throw new SshManager.SshError("INVALID", "Repository ist ungueltig.");
+            }
+            HttpURLConnection connection = openHttp("https://api.github.com/repos/" + owner + "/" + repo + "/releases/latest");
+            int status = connection.getResponseCode();
+            if (status != 200) {
+                connection.disconnect();
+                throw new SshManager.SshError("HTTP", "Update-Server antwortet mit HTTP " + status + ".");
+            }
+            StringBuilder body = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) body.append(line);
+            } finally {
+                connection.disconnect();
+            }
+            JSONObject release = new JSONObject(body.toString());
+            String tag = release.optString("tag_name", "").replaceFirst("^v", "");
+            JSONArray assets = release.optJSONArray("assets");
+            JSONObject picked = null;
+            if (assets != null) {
+                for (int i = 0; i < assets.length(); i++) {
+                    JSONObject asset = assets.optJSONObject(i);
+                    if (asset == null) continue;
+                    String name = asset.optString("name", "");
+                    if (!name.toLowerCase(Locale.US).endsWith(".apk")) continue;
+                    // Prefer the dedicated Android APK, but accept any APK asset.
+                    if (picked == null || name.toLowerCase(Locale.US).contains("android")) picked = asset;
+                }
+            }
+            JSObject result = new JSObject();
+            result.put("version", tag);
+            result.put("notes", release.optString("body", ""));
+            result.put("publishedAt", release.optString("published_at", ""));
+            if (picked != null) {
+                JSObject asset = new JSObject();
+                asset.put("name", picked.optString("name", ""));
+                asset.put("url", picked.optString("browser_download_url", ""));
+                asset.put("size", picked.optLong("size", 0));
+                String digest = picked.optString("digest", "");
+                asset.put("sha256", digest.startsWith("sha256:") ? digest.substring(7) : "");
+                result.put("asset", asset);
+            }
+            call.resolve(result);
+        });
+    }
+
+    @PluginMethod
+    public void downloadAndInstall(PluginCall call) {
+        background(call, () -> {
+            String url = call.getString("url", "");
+            String expected = call.getString("sha256", "");
+            if (!url.startsWith("https://")) throw new SshManager.SshError("INVALID", "Download-Adresse ist ungueltig.");
+            File dir = new File(getContext().getCacheDir(), "updates");
+            if (!dir.exists() && !dir.mkdirs()) throw new SshManager.SshError("IO", "Update-Ordner konnte nicht angelegt werden.");
+            File target = new File(dir, "fancycode-update.apk");
+            MessageDigest sha = MessageDigest.getInstance("SHA-256");
+            HttpURLConnection connection = openHttp(url);
+            int status = connection.getResponseCode();
+            if (status != 200) {
+                connection.disconnect();
+                throw new SshManager.SshError("HTTP", "Download antwortet mit HTTP " + status + ".");
+            }
+            try (InputStream input = connection.getInputStream(); FileOutputStream output = new FileOutputStream(target)) {
+                byte[] buffer = new byte[65536];
+                int read;
+                while ((read = input.read(buffer)) > 0) {
+                    output.write(buffer, 0, read);
+                    sha.update(buffer, 0, read);
+                }
+            } finally {
+                connection.disconnect();
+            }
+            if (!target.exists() || target.length() < 1024) {
+                target.delete();
+                throw new SshManager.SshError("DOWNLOAD", "Die Update-Datei ist unvollstaendig.");
+            }
+            if (expected != null && !expected.isEmpty()) {
+                StringBuilder hex = new StringBuilder();
+                for (byte value : sha.digest()) hex.append(String.format("%02x", value));
+                if (!hex.toString().equalsIgnoreCase(expected.trim())) {
+                    target.delete();
+                    throw new SshManager.SshError("CHECKSUM", "Die Update-Datei ist beschaedigt (Pruefsumme stimmt nicht).");
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 26 && !getContext().getPackageManager().canRequestPackageInstalls()) {
+                Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getContext().getPackageName()));
+                settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(settings);
+                throw new SshManager.SshError("NEED_PERMISSION", "Bitte erlaube FancyCode die Installation unbekannter Apps und tippe noch einmal auf Installieren.");
+            }
+            Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", target);
+            Intent install = new Intent(Intent.ACTION_VIEW);
+            install.setDataAndType(uri, "application/vnd.android.package-archive");
+            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(install);
+            JSObject result = new JSObject();
+            result.put("started", true);
+            result.put("path", target.getAbsolutePath());
+            call.resolve(result);
+        });
     }
 }

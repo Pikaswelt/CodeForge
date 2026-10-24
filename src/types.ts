@@ -111,6 +111,8 @@ export type TerminalTab = {
   id: string;
   title: string;
   shellType?: 'powershell' | 'cmd';
+  // Start folder for this tab. On a remote workspace it is the path on the V-Server.
+  cwd?: string;
   // Command typed into the tab after it starts (harness picked for this tab).
   command?: string;
   // Tab without start command even if the chat has a harness.
@@ -194,6 +196,8 @@ export type ProjectFolder = {
   path: string;
   icon?: string;
   isScratch?: boolean;
+  // Project lives on this V-Server: path is the remote folder and every tool runs there.
+  vserver?: VServerConnection;
 };
 
 export type Automation = {

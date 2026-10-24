@@ -37,7 +37,10 @@ export interface CodeForgeNativePlugin {
     stdout: string;
     stderr: string;
   }>;
-  openShell(input: { server: NativeServer; channelId: string; command: string; cols: number; rows: number }): Promise<void>;
+  openShell(input: { server: NativeServer; channelId: string; command: string; cols: number; rows: number; pty?: boolean }): Promise<void>;
+  // Forwards localhost:<port> on the phone to localhost:<port> on the server (OAuth callback).
+  forwardPort(input: { server: NativeServer; port: number }): Promise<{ port: number }>;
+  cancelForwardPort(input: { server: NativeServer; port: number }): Promise<void>;
   write(input: { channelId: string; data: string }): Promise<{ ok: boolean }>;
   resize(input: { channelId: string; cols: number; rows: number }): Promise<{ ok: boolean }>;
   closeShell(input: { channelId: string }): Promise<void>;
@@ -60,6 +63,19 @@ export interface CodeForgeNativePlugin {
   readClipboard(): Promise<{ text: string }>;
   requestNotifications(): Promise<{ granted: boolean }>;
   notify(input: { title: string; body: string }): Promise<{ shown: boolean }>;
+  // Bars stay visible; their background stays transparent so the theme shows through.
+  // Returns the system bar sizes in CSS pixels for the edge-to-edge layout.
+  setBars(input: { color: string; light: boolean }): Promise<{ top?: number; right?: number; bottom?: number; left?: number }>;
+
+  // In-app updates from GitHub releases. The native side downloads and verifies the APK,
+  // then opens Android's installer (one-time permission for unknown sources).
+  checkUpdate(input: { owner: string; repo: string }): Promise<{
+    version: string;
+    notes: string;
+    publishedAt?: string;
+    asset?: { name: string; url: string; size: number; sha256: string };
+  }>;
+  downloadAndInstall(input: { url: string; sha256?: string }): Promise<{ started: boolean; path?: string }>;
 
   addListener(event: 'shellData', handler: (event: { channelId: string; data: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'shellExit', handler: (event: { channelId: string; code: number; lost: boolean }) => void): Promise<PluginListenerHandle>;

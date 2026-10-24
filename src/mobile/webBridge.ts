@@ -95,6 +95,42 @@ export class WebBridge extends WebPlugin {
   sftpDelete(args: any) { return this.call('sftpDelete', args); }
   sftpReadText(args: any) { return this.call('sftpReadText', args); }
   sftpWriteText(args: any) { return this.call('sftpWriteText', args); }
+  async setBars(_args: any) {
+    // In a browser env(safe-area-inset-*) already comes from the OS; nothing to inject.
+    return {};
+  }
+
+  forwardPort(args: any) { return this.call('forwardPort', args); }
+  cancelForwardPort(args: any) { return this.call('cancelForwardPort', args); }
+
+  async checkUpdate(args: { owner: string; repo: string }) {
+    const response = await fetch(`https://api.github.com/repos/${args.owner}/${args.repo}/releases/latest`, {
+      headers: { accept: 'application/vnd.github+json' },
+    });
+    if (!response.ok) throw new Error(`Update-Server antwortet mit HTTP ${response.status}.`);
+    const release = await response.json();
+    const asset = (release.assets || []).find((item: any) => String(item.name || '').toLowerCase().endsWith('.apk'));
+    return {
+      version: String(release.tag_name || '').replace(/^v/, ''),
+      notes: String(release.body || ''),
+      publishedAt: release.published_at,
+      ...(asset
+        ? {
+            asset: {
+              name: asset.name,
+              url: asset.browser_download_url,
+              size: asset.size,
+              sha256: String(asset.digest || '').replace(/^sha256:/, ''),
+            },
+          }
+        : {}),
+    };
+  }
+
+  async downloadAndInstall(args: { url: string }) {
+    window.open(args.url, '_blank', 'noopener');
+    return { started: true };
+  }
 
   async sftpUpload(args: any) {
     const files = await this.pickFiles('*/*', true);

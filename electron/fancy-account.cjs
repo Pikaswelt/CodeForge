@@ -198,6 +198,30 @@ async function resetUsage(app) {
   return r.json();
 }
 
+// Popups vom Betreiber: Hinweise, Geschenke und eine Sperre (Ban-Screen). Die App fragt beim
+// Start und danach alle paar Minuten; geschlossene Popups meldet sie über seenAnnouncements.
+async function announcements() {
+  if (!apiBase() || !getSession()) return { items: [], ban: null };
+  const r = await fetch(`${apiBase()}/v1/announcements`, {
+    headers: { authorization: `Bearer ${getSession()}`, 'x-fg-app': APP_ID },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (r.status === 401) {
+    setSession('');
+    setGranted(false);
+    return { items: [], ban: null };
+  }
+  if (!r.ok) throw new Error(await readError(r));
+  return r.json();
+}
+
+async function seenAnnouncements(ids) {
+  const list = (Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string').slice(0, 50);
+  if (!apiBase() || !getSession() || !list.length) return true;
+  const r = await post('/v1/announcements/seen', { ids: list }, { auth: true });
+  return r.ok;
+}
+
 async function logout() {
   if (getSession()) await post('/auth/logout', {}, { auth: true }).catch(() => {});
   setSession('');
@@ -229,4 +253,4 @@ async function chat(system, messages) {
   return { text, tokens: 0 };
 }
 
-module.exports = { apiBase, login, guest, checkInvite, me, usage, resetUsage, logout, chat, wasGranted, sessionToken: getSession, cancelLogin: () => pendingLogin?.cancel() };
+module.exports = { apiBase, login, guest, checkInvite, me, usage, resetUsage, announcements, seenAnnouncements, logout, chat, wasGranted, sessionToken: getSession, cancelLogin: () => pendingLogin?.cancel() };

@@ -454,14 +454,14 @@ public class SshManager {
      * Starts a command with a PTY (the terminal tab). Output arrives through the listener;
      * the command itself decides about tmux, so closing the channel keeps the tmux session.
      */
-    public void openShell(ServerConfig config, String channelId, String command, int cols, int rows) throws SshError {
+    public void openShell(ServerConfig config, String channelId, String command, int cols, int rows, boolean pty) throws SshError {
         closeShell(channelId);
         Session session = session(config);
         try {
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
             channel.setCommand(command);
-            channel.setPty(true);
-            channel.setPtyType("xterm-256color", Math.max(cols, 20), Math.max(rows, 5), 0, 0);
+            channel.setPty(pty);
+            if (pty) channel.setPtyType("xterm-256color", Math.max(cols, 20), Math.max(rows, 5), 0, 0);
             InputStream out = channel.getInputStream();
             OutputStream in = channel.getOutputStream();
             channel.connect(CONNECT_TIMEOUT_MS);
@@ -514,6 +514,28 @@ public class SshManager {
         shell.channel.disconnect();
         if (lost) dropIfDead(shell.serverId);
         listener.onShellExit(shell.channelId, code, lost);
+    }
+
+    /**
+     * Forwards a localhost port on the phone to the same port on the server. The FancyCode login
+     * starts its OAuth callback server on the server's 127.0.0.1; the phone browser needs that
+     * callback to reach it without opening a port on the internet.
+     */
+    public int forwardLocalPort(ServerConfig config, int port) throws SshError {
+        if (port < 1 || port > 65535) throw new SshError("INVALID", "Port ist ungueltig.");
+        try {
+            return session(config).setPortForwardingL("127.0.0.1", port, "127.0.0.1", port);
+        } catch (Exception error) {
+            throw new SshError("FORWARD", "Port " + port + " konnte auf dem Handy nicht geoeffnet werden: " + error.getMessage());
+        }
+    }
+
+    public void cancelForwardLocalPort(ServerConfig config, int port) {
+        try {
+            session(config).delPortForwardingL(port);
+        } catch (Exception ignored) {
+            // Session already gone; the forward is gone with it.
+        }
     }
 
     public boolean write(String channelId, String data) {

@@ -7,6 +7,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { createServer } from 'node:net';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
 import ssh2 from 'ssh2';
@@ -20,6 +21,7 @@ mkdirSync(KEY_DIR, { recursive: true, mode: 0o700 });
 
 const sessions = new Map(); // server id -> { client, signature, sftp }
 const shells = new Map(); // channelId -> { stream, serverId, closedByUser }
+const forwards = new Map(); // local port -> net.Server (FancyCode login callback)
 
 class BridgeError extends Error {
   constructor(code, message) {
@@ -243,12 +245,12 @@ const methods = {
       });
     });
   },
-  async openShell({ server, channelId, command, cols, rows }) {
+  async openShell({ server, channelId, command, cols, rows, pty = true }) {
     await methods.closeShell({ channelId });
     const entry = await session(server);
     const serverId = config(server).id;
     await new Promise((resolve, reject) => {
-      entry.client.exec(command, { pty: { term: 'xterm-256color', cols: Math.max(cols, 20), rows: Math.max(rows, 5) } }, (error, stream) => {
+      entry.client.exec(command, pty ? { pty: { term: 'xterm-256color', cols: Math.max(cols, 20), rows: Math.max(rows, 5) } } : {}, (error, stream) => {
         if (error) return reject(friendly(error));
         const shell = { stream, serverId, closedByUser: false };
         shells.set(channelId, shell);
@@ -334,6 +336,38 @@ const methods = {
   async sftpDownloadData({ server, path: remotePath }) {
     const buffer = await call(await sftp(server), 'readFile', remotePath);
     return { name: remotePath.split('/').pop(), data: buffer.toString('base64') };
+  },
+  async forwardPort({ server, port }) {
+    const local = Number(port);
+    if (!Number.isInteger(local) || local < 1 || local > 65535) throw new BridgeError('INVALID', 'Port ist ungueltig.');
+    if (forwards.has(local)) return { port: local };
+    const entry = await session(server);
+    const listener = createServer((socket) => {
+      entry.client.forwardOut('127.0.0.1', local, '127.0.0.1', local, (error, stream) => {
+        if (error) {
+          socket.destroy();
+          return;
+        }
+        socket.pipe(stream).pipe(socket);
+        stream.on('close', () => socket.destroy());
+        socket.on('error', () => stream.destroy());
+      });
+    });
+    await new Promise((resolve, reject) => {
+      listener.once('error', (error) => reject(new BridgeError('FORWARD', `Port ${local} konnte nicht geöffnet werden: ${error.message}`)));
+      listener.listen(local, '127.0.0.1', resolve);
+    });
+    forwards.set(local, listener);
+    return { port: local };
+  },
+  async cancelForwardPort({ port }) {
+    const local = Number(port);
+    const listener = forwards.get(local);
+    if (listener) {
+      listener.close();
+      forwards.delete(local);
+    }
+    return null;
   },
 };
 

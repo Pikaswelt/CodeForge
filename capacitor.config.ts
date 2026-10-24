@@ -14,10 +14,12 @@ const config: CapacitorConfig = {
     hostname: 'localhost',
   },
   plugins: {
-    // Light status bar icons for the dark default themes; insets are exposed as CSS variables.
+    // Edge-to-edge behind the status and navigation bars: the theme wallpaper stays visible
+    // under them, while the app pads its own buttons with env(safe-area-inset-*).
+    // 'css' would shrink the web view on older Android WebViews and cut the wallpaper off.
     SystemBars: {
       style: 'DARK',
-      insetsHandling: 'css',
+      insetsHandling: 'disable',
     },
     SplashScreen: {
       launchShowDuration: 1500,

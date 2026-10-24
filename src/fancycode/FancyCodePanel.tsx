@@ -29,9 +29,10 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import './fancycode.css';
+import type { VServerConnection } from '../types';
 
 export interface FancyCodeBridge {
-  start(opts: { cwd: string; resume?: string }): Promise<string>;
+  start(opts: { cwd: string; resume?: string; server?: VServerConnection }): Promise<string>;
   send(id: string, msg: unknown): void;
   stop(id: string): void;
   onEvent(cb: (id: string, ev: FcEvent) => void): () => void;
@@ -349,6 +350,7 @@ function Todos({ todos }: { todos: Todo[] }) {
 export function FancyCodePanel({
   bridge,
   cwd,
+  server,
   onPickFolder,
   emptyHint,
   onOpenUsage,
@@ -356,6 +358,8 @@ export function FancyCodePanel({
 }: {
   bridge: FancyCodeBridge;
   cwd: string;
+  // Run the agent on this V-Server instead of this PC.
+  server?: VServerConnection;
   onPickFolder?: () => void;
   emptyHint?: ReactNode;
   // Wenn die App ein eigenes Usage-Popup hat (FancyCode Desktop), oeffnet dieser Aufruf es.
@@ -400,7 +404,7 @@ export function FancyCodePanel({
     setTodos([]);
     setStartError('');
     bridge
-      .start({ cwd })
+      .start({ cwd, ...(server ? { server } : {}) })
       .then((id) => {
         if (!alive) return bridge.stop(id);
         current = id;
@@ -412,7 +416,7 @@ export function FancyCodePanel({
       if (current) bridge.stop(current);
       sidRef.current = '';
     };
-  }, [bridge, cwd]);
+  }, [bridge, cwd, server]);
 
   useEffect(
     () =>

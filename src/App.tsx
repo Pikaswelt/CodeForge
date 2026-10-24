@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Wifi } from 'lucide-react';
 import AppLogo from './components/AppLogo';
 import NewsPopup from './components/NewsPopup';
+import AnnouncementGate from './components/AnnouncementGate';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import MainArea from './components/MainArea';
@@ -495,6 +496,7 @@ export default function App() {
                 <AppLayout />
               </PluginProvider>
               <Onboarding />
+              <AnnouncementGate />
             </FancyAccessGate>
           )}
         </AnimatePresence>

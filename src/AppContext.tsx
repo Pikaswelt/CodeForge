@@ -394,7 +394,14 @@ interface AppContextType {
   setLyzDevPluginEnabled(value: boolean): void;
   startLyzDevChat(): Promise<void>;
   startTerminalChat(): Promise<void>;
-  startWorkspace(input: { harnessId: string; grid: boolean; count: number }): Promise<void>;
+  startWorkspace(input: {
+    harnessId: string;
+    grid: boolean;
+    count: number;
+    // Complete remote workspace: project folder and every terminal live on this V-Server.
+    server?: VServerConnection;
+    remotePath?: string;
+  }): Promise<void>;
   startHarnessChat(harness: CliHarness): Promise<void>;
   agyAccounts: AgyAccount[];
   setAgyAccounts: React.Dispatch<React.SetStateAction<AgyAccount[]>>;
@@ -1495,6 +1502,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBranches([]);
       return;
     }
+    // Local git commands cannot inspect a folder that only exists on the V-Server.
+    if (selectedProject.vserver) {
+      setGitInfo({ isRepository: false, branch: '', root: selectedProject.path });
+      setBranches([]);
+      return;
+    }
     const [info, branchList] = await Promise.all([
       window.agentWorkspace.getGitInfo(selectedProject.path),
       window.agentWorkspace.getBranches(selectedProject.path),
@@ -1504,7 +1517,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [selectedProject?.path]);
 
   const refreshCodexPlugins = useCallback(async () => {
-    if (!window.agentWorkspace) {
+    // Plugin folders are read on this PC; a remote project has none here.
+    if (!window.agentWorkspace || selectedProject?.vserver) {
       setCodexPlugins([]);
       return;
     }
@@ -2417,8 +2431,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const startVServerSession = (server: VServerConnection) => startVServerSessions([server]);
 
-  const startWorkspace = async ({ harnessId, grid, count }: { harnessId: string; grid: boolean; count: number }) => {
-    const projectForRun = await ensureRunnableProject();
+  // A project that lives on a V-Server: the path is remote and every tool runs there.
+  const ensureRemoteProject = (server: VServerConnection, remotePath: string): ProjectFolder => {
+    const targetPath = remotePath.trim() || '~';
+    const existing = folders.find((folder) => folder.vserver?.id === server.id && folder.path === targetPath);
+    if (existing) {
+      setSelectedFolderId(existing.id);
+      setSelectedChatId(null);
+      return existing;
+    }
+    const folder: ProjectFolder = { id: newId(), title: projectName(targetPath), path: targetPath, vserver: server };
+    setFolders((current) => [...current, folder]);
+    setSelectedFolderId(folder.id);
+    setSelectedChatId(null);
+    return folder;
+  };
+
+  const startWorkspace = async ({ harnessId, grid, count, server, remotePath }: { harnessId: string; grid: boolean; count: number; server?: VServerConnection; remotePath?: string }) => {
+    // "Complete remote": the project folder is chosen on the server and the terminals start there.
+    if (server && !String(remotePath || '').trim()) throw new Error(tr('Bitte einen Projektordner auf dem V-Server angeben.'));
+    const projectForRun = server ? ensureRemoteProject(server, String(remotePath || '')) : await ensureRunnableProject();
     const harness = cliHarnesses.find((item) => item.id === harnessId) || cliHarnesses[0];
     const maxTerminals = planInfo().terminals;
     const requested = Math.max(1, Math.min(8, Math.round(count) || 1));
@@ -2435,10 +2467,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       folderId: projectForRun.id,
       mode: 'terminal',
       harness: harness ? { name: harness.name, command: harness.command, icon: harness.icon } : undefined,
+      vserver: server,
       terminalTabs: Array.from({ length: size }, (_, index) => ({
         id: index === 0 ? chatId : newId(),
         title: `${label} ${index + 1}`,
         shellType: 'cmd' as const,
+        ...(server
+          ? {
+              vserver: server,
+              cwd: projectForRun.path,
+              // Remote harness commands go straight into the tmux session on the server.
+              ...(harness?.command ? { command: harness.command } : { blank: true }),
+            }
+          : {}),
       })),
       activeTerminalTabId: chatId,
       terminalLayout: grid && size > 1 ? 'grid' : 'single',
@@ -2975,17 +3016,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
             prompt,
             projectPath: isMobile && mobileConnectionConfig?.type === 'vps' ? (mobileConnectionConfig.vpsProjectPath || projectForRun.path) : projectForRun.path,
             attachments,
-            externalServer: externalServer.enabled ? externalServer : isMobile && mobileConnectionConfig?.type === 'ssh'
-              ? {
-                  enabled: true,
-                  host: mobileConnectionConfig.sshHost || '',
-                  user: mobileConnectionConfig.sshUser || 'root',
-                  port: mobileConnectionConfig.sshPort || 22,
-                  remoteProjectPath: mobileConnectionConfig.sshProjectPath || '~/codeforge-project',
-                  identityFile: mobileConnectionConfig.sshKey || undefined,
-                  acceptNewHostKey: true,
-                }
-              : undefined,
+            // A remote project always runs the agent on its V-Server, with the same SSH key as its terminals.
+            externalServer: externalServer.enabled
+              ? externalServer
+              : projectForRun.vserver
+                ? {
+                    enabled: true,
+                    host: projectForRun.vserver.host,
+                    user: projectForRun.vserver.user,
+                    port: projectForRun.vserver.port || 22,
+                    remoteProjectPath: projectForRun.path,
+                    identityFile: projectForRun.vserver.keyPath || undefined,
+                    acceptNewHostKey: true,
+                  }
+                : isMobile && mobileConnectionConfig?.type === 'ssh'
+                  ? {
+                      enabled: true,
+                      host: mobileConnectionConfig.sshHost || '',
+                      user: mobileConnectionConfig.sshUser || 'root',
+                      port: mobileConnectionConfig.sshPort || 22,
+                      remoteProjectPath: mobileConnectionConfig.sshProjectPath || '~/codeforge-project',
+                      identityFile: mobileConnectionConfig.sshKey || undefined,
+                      acceptNewHostKey: true,
+                    }
+                  : undefined,
             // A harness chat always runs headless: the "Original plugin" mode would start the
             // interactive CLI with an empty stdin and hang instead of answering the message.
             originalPluginEnabled: existingChat?.gui ? false : originalPluginEnabled,
@@ -3567,6 +3621,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
   controlHandlerRef.current = handleControlRequest;
 
   useEffect(() => window.agentWorkspace?.onControlRequest?.((request) => controlHandlerRef.current(request)), []);
+  // Questions and notifications from agents on a V-Server (fancycode-remote-mcp.mjs).
+  useEffect(() => {
+    const off = window.agentWorkspace?.onRemoteAgentEvent?.(({ server, event }) => {
+      if (!event || typeof event.type !== 'string') return;
+      const base = {
+        title: String(event.title || event.question || 'FancyCode'),
+        message: String(event.message || ''),
+        kind: ['info', 'success', 'warning', 'error'].includes(event.kind) ? event.kind : 'info',
+        source: `V-Server · ${server.name || server.host}`,
+        sessionId: '',
+      };
+      if (event.type === 'notify') {
+        pushNotify(base);
+        return;
+      }
+      if (event.type === 'ask') {
+        void pushAsk({
+          ...base,
+          question: String(event.question || ''),
+          options: Array.isArray(event.options) ? event.options : [],
+          allowText: Boolean(event.allowText),
+          timeoutMs: Number(event.timeoutMs) || 600_000,
+        }).then((answer) => window.agentWorkspace?.answerRemoteAgent?.({ server, id: String(event.id), answer: { answer } }));
+        return;
+      }
+      if (event.type === 'form') {
+        void pushForm({
+          ...base,
+          fields: Array.isArray(event.fields) ? event.fields : [],
+          submitLabel: String(event.submitLabel || ''),
+          timeoutMs: Number(event.timeoutMs) || 600_000,
+        }).then((answer) => window.agentWorkspace?.answerRemoteAgent?.({ server, id: String(event.id), answer: { answer } }));
+      }
+    });
+    return off;
+  }, []);
+  // Watch the event file of every remote project that is in use.
+  useEffect(() => {
+    const seen = new Set<string>();
+    for (const folder of folders) {
+      if (!folder.vserver || seen.has(folder.vserver.id)) continue;
+      seen.add(folder.vserver.id);
+      void window.agentWorkspace?.startRemoteAgentWatch?.(folder.vserver);
+    }
+  }, [folders]);
   useEffect(() => setPopupFocusHandler((sessionId) => void controlHandlerRef.current({ op: 'focus-session', args: { sessionId } })), []);
   useEffect(() => {
     void window.agentWorkspace?.publishControlState?.(controlState());

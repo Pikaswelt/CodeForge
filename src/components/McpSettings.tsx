@@ -1,7 +1,8 @@
 import { tr } from '../i18n';
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Check, Copy, Loader2, Plug, RefreshCw, Wrench } from 'lucide-react';
+import { Bot, Check, Copy, Loader2, Plug, RefreshCw, Server, Wrench } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import { useVServers } from './VServers';
 import type { McpServerInfo, McpSessionInfo } from '../types';
 
 // The MCP tab: FancyCode Desktop's own MCP server, the servers Claude Code / Cursor / Codex spawn from their
@@ -128,6 +129,9 @@ export function McpSettings() {
   const [copied, setCopied] = useState(false);
   const [registerBusy, setRegisterBusy] = useState<'' | 'claude' | 'agy' | 'fancycode' | 'opencode'>('');
   const [registerResult, setRegisterResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const savedServers = useVServers();
+  const [remoteBusy, setRemoteBusy] = useState('');
+  const [remoteResult, setRemoteResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const api = window.agentWorkspace;
   const canSeeState = Boolean(api?.getMcpSessions);
@@ -275,6 +279,46 @@ export function McpSettings() {
           <p className="mt-2 text-[11px] text-zinc-500">{tr("Dieser Rechner hat noch keinen FancyCode Desktop-MCP-Server.")}</p>
         )}
       </section>
+
+      {savedServers.length > 0 && api?.startRemoteAgentWatch && (
+        <section>
+          <div className="section-label">{tr("MCP auf dem V-Server")}</div>
+          <p className="mt-2 text-[11px] leading-4 text-zinc-500">
+            {tr("Installiert den MCP-Server auf dem Server. Agenten wie Claude Code können dort Fragen und Popups schicken, die hier und in der Android-App ankommen. Der Agent läuft dabei auf dem V-Server, nicht auf diesem PC.")}
+          </p>
+          <div className="mt-2 space-y-2">
+            {savedServers.map((server) => (
+              <div key={server.id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+                <Server className="h-4 w-4 shrink-0 text-sky-400" />
+                <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-300">{server.name}</span>
+                <button
+                  disabled={Boolean(remoteBusy)}
+                  onClick={async () => {
+                    setRemoteBusy(server.id);
+                    setRemoteResult(null);
+                    try {
+                      await api.startRemoteAgentWatch!(server);
+                      setRemoteResult({ ok: true, text: tr('Bereit. In der Agent-Konfiguration eintragen: node ~/.fancycode/fancycode-remote-mcp.mjs') });
+                    } catch (error) {
+                      setRemoteResult({ ok: false, text: error instanceof Error ? error.message : String(error) });
+                    } finally {
+                      setRemoteBusy('');
+                    }
+                  }}
+                  className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-zinc-300 hover:bg-white/[0.06] disabled:opacity-50"
+                >
+                  {remoteBusy === server.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : tr("Einrichten")}
+                </button>
+              </div>
+            ))}
+          </div>
+          {remoteResult && (
+            <div className={`mt-2 rounded-lg border px-3 py-2 text-[11px] ${remoteResult.ok ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-red-500/20 bg-red-500/10 text-red-300'}`}>
+              {remoteResult.text}
+            </div>
+          )}
+        </section>
+      )}
 
       <section>
         <div className="flex items-center justify-between">

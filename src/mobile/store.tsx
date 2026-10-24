@@ -42,7 +42,7 @@ export function newId() {
   return crypto.randomUUID();
 }
 
-export type Tab = 'home' | 'terminal' | 'files' | 'chat' | 'settings';
+export type Tab = 'home' | 'agent' | 'terminal' | 'files' | 'chat' | 'settings';
 export type ServerStatus = { state: 'idle' | 'connecting' | 'online' | 'error'; message?: string; home?: string };
 export type Toast = { id: string; text: string; tone: 'info' | 'error' | 'success' };
 

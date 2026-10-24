@@ -11,6 +11,7 @@ import {
   Palette,
   Pencil,
   Plus,
+  RefreshCw,
   Rocket,
   Server,
   SquareTerminal,
@@ -23,6 +24,7 @@ import { listModels } from '../apiChat';
 import { Native, errorMessage, mediaUrl } from '../native';
 import { AGY_ACCOUNT_ID_PATTERN, run, shellQuote } from '../remote';
 import { newId, useStore } from '../store';
+import { requestUpdateCheck } from '../update';
 import { BUILT_IN_THEMES, TERMINAL_FONTS, resolveTheme } from '../theme';
 import { MAX_AGY_ACCOUNTS, type ApiProviderConfig, type CliHarness, type MobileTheme } from '../types';
 import { Button, Divider, Field, IconButton, Row, ScreenHeader, Section, Segmented, Sheet, Slider, Toggle, cx } from '../ui';
@@ -491,9 +493,14 @@ function AboutPage() {
       <p className="cf-muted mb-4 text-[0.86rem] leading-relaxed">
         {tr("Die Android-App von FancyCode. Sie verbindet sich per SSH direkt mit deinem V-Server: Terminals laufen dort in tmux weiter, auch wenn das Handy die Verbindung verliert. Auf dem Handy wird nichts lokal ausgeführt.")}
       </p>
-      <Button className="w-full" icon={<Github className="h-4 w-4" />} onClick={() => void Native.openUrl({ url: `https://github.com/${__UPDATE_REPO__}/releases/latest` })}>
-        {tr("Neueste Version auf GitHub")}
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button variant="primary" className="w-full" icon={<RefreshCw className="h-4 w-4" />} onClick={requestUpdateCheck}>
+          {tr("Nach Updates suchen")}
+        </Button>
+        <Button className="w-full" icon={<Github className="h-4 w-4" />} onClick={() => void Native.openUrl({ url: `https://github.com/${__UPDATE_REPO__}/releases/latest` })}>
+          {tr("Neueste Version auf GitHub")}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -33,11 +33,12 @@
 
 FancyCode Desktop is an Electron app that turns your machine into a control center for AI-assisted development. Instead of juggling terminal windows, you start a **workspace** with up to four agent terminals in a grid, or open a **chat** with any Anthropic, OpenAI or OpenAI-compatible model that knows which project you are working on.
 
-Everything runs locally. Your projects, chats and API keys stay on your computer.
+Workspaces run either on your PC or completely on a V-Server. Chats and API keys stay on your computer.
 
 ## Features
 
 ### Workspaces for CLI agents
+- Choose the **workspace target**: your PC or a **V-Server**. On a V-Server the project folder, file list, git commands and the agent itself live on the server; nothing is read from the local disk.
 - Launch **1–4 terminals at once**, as tabs or in a **grid**.
 - Pick a **CLI harness** per workspace, for example Claude Code (`claude`), Codex (`codex`) or Antigravity (`agy`).
 - Define your own harnesses in the settings with a **name, start command and icon**.
@@ -50,6 +51,8 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - Tick several servers and press **Connect selected** or **Connect to all**. Each server gets its own terminal; up to four open as a grid, more as tabs.
 - Mix servers, local shells and CLI harnesses in one workspace. Every tab can talk to a different server.
 - **SFTP file browser** for every server: browse folders, upload and download files, create folders, rename and delete. Log in with your key or a password (kept in memory only). Unknown host keys are remembered on first use and connections are refused if the key changes later.
+- Pick the **remote project folder** when starting a V-Server workspace, or browse it directly on the server. Remote project folders can be added to the sidebar and reopened like local ones.
+- **FancyCode on the V-Server**: the built-in agent uploads its harness once and then runs in the remote project folder. Questions, permission prompts and notifications arrive in the app exactly like a local agent.
 
 ### API chat
 - Chat directly with **Anthropic**, **OpenAI** or any **OpenAI-compatible** endpoint (Ollama, OpenRouter, LM Studio, …).
@@ -79,12 +82,17 @@ Everything runs locally. Your projects, chats and API keys stay on your computer
 - **SFTP file browser**: browse, open files on the phone, save to the phone, upload from the phone, rename, delete, new folder, edit text files, open a terminal in a folder.
 - **API chat** with your providers, optionally with a server project folder as context.
 - **Themes** like on the desktop, plus custom colours, animated gradients and **images or videos from your phone as wallpaper**.
+- **FancyCode agent tab**: the same graphical agent as on the desktop, with the project folder on the V-Server. Questions and permission requests appear in the chat and can be answered with a tap.
+- **Updates inside the app**: FancyCode checks GitHub Releases, downloads the new APK, verifies its SHA-256 checksum and opens Android's installer. No Play Store and no manual download.
+- **Edge-to-edge**: the theme (colours, image or video) continues behind the status and navigation bars, while the app's own buttons stay clear of them.
+- **Questions from agents on the server**: the FancyCode MCP server runs on the V-Server and forwards questions, forms and notifications to the phone over the existing SSH connection — no extra port or tunnel.
 - **Take over from the PC**: on the home screen choose *Für Android exportieren* next to your V-Servers, copy the file to the phone and import it under *Vom PC übernehmen*.
 
 ### Automatic updates
 - FancyCode Desktop checks GitHub Releases on start and every six hours.
 - Updates download in the background and are verified with SHA-512.
 - Installation starts with one click, so running agents are never interrupted.
+- The Android app checks once a day and from *Settings → Updates*, downloads the APK in the app, verifies it with SHA-256 and starts the installer.
 
 ## Getting started
 

@@ -148,6 +148,7 @@ function FancyCodeHost({ visible }: { visible: boolean }) {
       <FancyCodePanel
         bridge={bridge}
         cwd={selectedProject?.path || ''}
+        server={selectedProject?.vserver}
         onPickFolder={addProject}
         emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode arbeitet dann direkt darin.")}
         onOpenUsage={openUsagePopup}
@@ -1526,7 +1527,8 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             ? 'grid-cols-3 grid-rows-2'
             : 'grid-cols-4 grid-rows-2';
 
-  const startPath = terminalStartPath || selectedProject?.path || undefined;
+  // A remote project is always the start folder; a local start path would not exist on the server.
+  const startPath = (selectedProject?.vserver ? selectedProject.path : terminalStartPath || selectedProject?.path) || undefined;
   const activeServer = tabs.find((tab) => tab.id === activeTabId)?.vserver ?? currentChat.vserver;
 
   // Dictation writes recognized text into the active terminal tab.
@@ -2058,9 +2060,14 @@ function HomeView() {
   const [count, setCount] = useState(1);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  // Workspace target: this PC or a V-Server. "server" means the project and every tool run there.
+  const [targetServerId, setTargetServerId] = useState('');
+  const [remotePath, setRemotePath] = useState('');
+  const [browsingRemote, setBrowsingRemote] = useState(false);
   const [agyStarting, setAgyStarting] = useState(false);
   const [agyError, setAgyError] = useState('');
   const savedServers = useVServers();
+  const targetServer = savedServers.find((item) => item.id === targetServerId);
 
   const runAgy = async (server?: VServerConnection) => {
     setAgyStarting(true);
@@ -2121,7 +2128,13 @@ function HomeView() {
     setStarting(true);
     setError('');
     try {
-      await startWorkspace({ harnessId, grid, count });
+      const server = savedServers.find((item) => item.id === targetServerId);
+      await startWorkspace({
+        harnessId,
+        grid,
+        count,
+        ...(server ? { server, remotePath: remotePath.trim() || '~' } : {}),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : tr("Workspace konnte nicht gestartet werden."));
       setStarting(false);
@@ -2333,6 +2346,58 @@ function HomeView() {
         ) : (
           <section className="panel w-full mt-8 p-6 border border-white/10 bg-black/20 backdrop-blur-md rounded-2xl shadow-xl space-y-6">
             <div>
+              <div className="section-label">{tr("Workspace-Ziel")}</div>
+              <p className="text-xs text-zinc-500 mt-2">
+                {tr("Auf einem V-Server laufen Projektordner, Terminals, Dateien und der Agent komplett dort. Der PC ist nur das Fenster.")}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setTargetServerId(''); setBrowsingRemote(false); }}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-sm transition-colors ${!targetServerId ? 'border-orange-400/60 bg-orange-500/10 text-white' : 'border-white/10 bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]'}`}
+                >
+                  <Monitor className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span className="truncate">{tr("Dieser PC")}</span>
+                </button>
+                {savedServers.map((server) => (
+                  <button
+                    key={server.id}
+                    onClick={() => setTargetServerId(server.id)}
+                    title={`${server.user ? `${server.user}@` : ''}${server.host}`}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-sm transition-colors ${targetServerId === server.id ? 'border-sky-400/60 bg-sky-500/10 text-white' : 'border-white/10 bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]'}`}
+                  >
+                    <Server className="w-4 h-4 shrink-0 text-sky-400" />
+                    <span className="truncate">{server.name}</span>
+                  </button>
+                ))}
+              </div>
+              {targetServer && (
+                <div className="mt-3 rounded-xl border border-sky-400/20 bg-sky-500/[0.04] p-3">
+                  <div className="text-[11px] font-medium text-sky-200">{tr("Projektordner auf dem V-Server")}</div>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={remotePath}
+                      onChange={(event) => setRemotePath(event.target.value)}
+                      placeholder="/root/mein-projekt"
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-sky-400/40"
+                    />
+                    <button
+                      onClick={() => setBrowsingRemote(true)}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 hover:bg-white/[0.08]"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" /> {tr("Wählen")}
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-zinc-600">
+                    {tr("Alle Terminals starten in diesem Ordner; Dateien und der FancyCode-Agent arbeiten ausschließlich dort.")}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div>
               <div className="section-label">{tr("CLI-Harness")}</div>
               {cliHarnesses.length === 0 ? (
                 <p className="text-xs text-zinc-500 mt-3">
@@ -2410,7 +2475,107 @@ function HomeView() {
           </section>
         )}
       </div>
+      {browsingRemote && targetServer && (
+        <RemoteFolderPicker
+          server={targetServer}
+          onClose={() => setBrowsingRemote(false)}
+          onPick={(nextPath) => {
+            setRemotePath(nextPath);
+            setBrowsingRemote(false);
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+// Directory picker for a project folder on a V-Server (the project lives only there).
+function RemoteFolderPicker({ server, onClose, onPick }: { server: VServerConnection; onClose(): void; onPick(path: string): void }) {
+  const [path, setPath] = useState('');
+  const [home, setHome] = useState('');
+  const [entries, setEntries] = useState<{ name: string; type: 'dir' | 'file' | 'link' }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = async (target: string) => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await window.agentWorkspace.sftpList({ vserver: server, path: target });
+      setPath(result.path);
+      setEntries(result.entries);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const connected = await window.agentWorkspace.sftpConnect({ vserver: server });
+        if (!alive) return;
+        setHome(connected.home);
+        await load(connected.home);
+      } catch (err) {
+        if (alive) {
+          setError(err instanceof Error ? err.message : String(err));
+          setLoading(false);
+        }
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server.id]);
+
+  const parent = path.replace(/\/$/, '').split('/').slice(0, -1).join('/') || '/';
+  const dirs = entries.filter((entry) => entry.type === 'dir').sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
+      <div className="flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-zinc-100">{tr("Projektordner auf {name}", { name: server.name })}</div>
+            <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500">{path || '~'}</div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-xs text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" /> {tr("Lade Ordner...")}</div>
+          ) : error ? (
+            <div className="m-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</div>
+          ) : (
+            <div className="flex flex-col">
+              {path && path !== home && path !== '/' && (
+                <button onClick={() => void load(parent)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.06]">
+                  <FolderOpen className="h-4 w-4 text-zinc-500" /> ..
+                </button>
+              )}
+              {dirs.length === 0 && <div className="px-3 py-6 text-center text-xs text-zinc-600">{tr("Keine Unterordner")}</div>}
+              {dirs.map((entry) => (
+                <button key={entry.name} onClick={() => void load(`${path.replace(/\/$/, '')}/${entry.name}`)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.06]">
+                  <FolderOpen className="h-4 w-4 shrink-0 text-sky-400/80" />
+                  <span className="truncate">{entry.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-3">
+          <span className="truncate font-mono text-[10px] text-zinc-600">{path || '~'}</span>
+          <div className="flex shrink-0 gap-2">
+            <button onClick={onClose} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 hover:bg-white/[0.05]">{tr("Abbrechen")}</button>
+            <button onClick={() => onPick(path || '~')} disabled={!path || Boolean(error)} className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-400 disabled:opacity-40">
+              {tr("Diesen Ordner nehmen")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
