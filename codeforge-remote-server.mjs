@@ -144,8 +144,10 @@ function bearerToken(req) {
 }
 
 function equalsSecret(value, expected) {
-  if (typeof value !== 'string' || !expected || value.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(value), Buffer.from(expected));
+  if (typeof value !== 'string' || typeof expected !== 'string' || !expected) return false;
+  const actualBytes = Buffer.from(value);
+  const expectedBytes = Buffer.from(expected);
+  return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
 }
 
 function tokenMatches(value) {

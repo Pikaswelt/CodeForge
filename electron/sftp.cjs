@@ -257,14 +257,27 @@ async function removeRecursive(sftp, target, depth = 0) {
   }
 }
 
-async function remove(server, remotePath) {
-  const target = String(remotePath || '').trim();
-  // Refuse to wipe the root or a top-level system folder by accident.
-  if (!target || target === '/' || target === '.' || target === '~' || /^\/[^/]+\/?$/.test(target)) {
+function assertSafeDeletePath(target) {
+  // Normalisierung verhindert, dass /tmp/.. oder doppelte Schrägstriche die Sperre umgehen.
+  const normalized = path.posix.normalize(target);
+  if (!target || normalized === '/' || normalized === '.' || normalized === '~' || /^\/[^/]+\/?$/.test(normalized)) {
     throw new Error(mt('Dieser Pfad kann aus Sicherheitsgruenden nicht geloescht werden.'));
   }
+}
+
+async function remove(server, remotePath) {
+  const raw = String(remotePath || '').trim();
+  // Do not normalize through a symlink: `link/..` may name a different remote directory.
+  if (raw.split('/').includes('..')) throw new Error(mt('Dieser Pfad kann aus Sicherheitsgruenden nicht geloescht werden.'));
+  const target = path.posix.normalize(raw || '.');
+  assertSafeDeletePath(target);
   const entry = await getEntry(server);
-  await removeRecursive(entry.sftp, target);
+  // Elternverzeichnis auf dem Server auflösen, damit auch Symlinks und relative Pfade
+  // nicht auf einen geschützten Ordner zeigen. Der letzte Symlink selbst bleibt löschbar.
+  const parent = await call(entry.sftp, 'realpath', path.posix.dirname(target));
+  const resolved = path.posix.join(parent, path.posix.basename(target.replace(/\/+$/, '')));
+  assertSafeDeletePath(resolved);
+  await removeRecursive(entry.sftp, resolved);
 }
 
 function disconnectAll() {

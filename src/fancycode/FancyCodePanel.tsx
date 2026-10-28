@@ -40,7 +40,7 @@ export interface FancyCodeBridge {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FcEvent = { type: string; [key: string]: any };
-type Account = { name: string; plan: string; avatar?: string; offline?: boolean } | null;
+type Account = { name: string; plan: string; avatar?: string; offline?: boolean; supermodeUntil?: number } | null;
 type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed' };
 type Window = { used: number; limit: number; resetAt: number };
 type Usage = { fiveHour: Window; weekly: Window; plan: string; resets: number };
@@ -372,6 +372,8 @@ export function FancyCodePanel({
   const [model, setModel] = useState('');
   const [models, setModels] = useState<Model[]>([]);
   const [hoverModel, setHoverModel] = useState('');
+  const [frontierInfo, setFrontierInfo] = useState(false);
+  const [supermode, setSupermode] = useState(false);
   const [mode, setMode] = useState('default');
   const [profile, setProfile] = useState('');
   const [items, setItems] = useState<Item[]>([]);
@@ -393,6 +395,13 @@ export function FancyCodePanel({
 
   const push = useCallback((item: Item) => setItems((list) => [...list, item]), []);
   const send = useCallback((msg: unknown) => sidRef.current && bridge.send(sidRef.current, msg), [bridge]);
+
+  // Geschenk-Freischaltungen und deren Ablauf auch während einer offenen Sitzung aktualisieren.
+  useEffect(() => {
+    if (!account) return;
+    const timer = setInterval(() => send({ type: 'command', name: 'usage' }), 60_000);
+    return () => clearInterval(timer);
+  }, [account, send]);
 
   // Harness für diesen Ordner starten (neu bei Ordnerwechsel).
   useEffect(() => {
@@ -427,6 +436,7 @@ export function FancyCodePanel({
             setReady(true);
             setAccount(ev.account);
             setModel(ev.model || '');
+            setSupermode(Boolean(ev.supermode));
             setMode(ev.mode || 'default');
             setProfile(ev.profile?.label || '');
             if (ev.type === 'ready') {
@@ -474,8 +484,8 @@ export function FancyCodePanel({
               const question = permissionTitle(ev.kind);
               push({ k: 'note', id: uid(), level: 'info', text: `${question} ${ev.summary}` });
               void askPermission({ question, summary: ev.summary, preview: ev.preview || '', sessionId: id })
-                .then((answer) => send({ type: 'permission', id: ev.id, answer: answer || 'no' }))
-                .catch(() => send({ type: 'permission', id: ev.id, answer: 'no' }));
+                .then((answer) => bridge.send(id, { type: 'permission', id: ev.id, answer: answer || 'no' }))
+                .catch(() => bridge.send(id, { type: 'permission', id: ev.id, answer: 'no' }));
             } else {
               push({ k: 'ask', id: ev.id, kind: ev.kind, summary: ev.summary, preview: ev.preview || '' });
             }
@@ -501,6 +511,7 @@ export function FancyCodePanel({
             break;
           case 'usage':
             setUsage(ev.data);
+            if (typeof ev.data?.supermodeUntil === 'number') setAccount((current) => current ? { ...current, supermodeUntil: ev.data.supermodeUntil } : current);
             break;
           case 'models':
             setModels(ev.data?.models || []);
@@ -578,7 +589,7 @@ export function FancyCodePanel({
             break;
         }
       }),
-    [bridge, push],
+    [bridge, push, askPermission],
   );
 
   // Automatisch mitscrollen, solange der Nutzer unten ist.
@@ -607,7 +618,7 @@ export function FancyCodePanel({
           <Meter w={usage.fiveHour} label="5 Stunden" />
           <Meter w={usage.weekly} label="7 Tage" />
           <div className="fc-muted fc-small">
-            Resets: {usage.resets}. Das Abo gilt für alle FancyServers-Apps, FancyCode hat ein eigenes Token-Budget.
+            Resets: {usage.resets}. Dieses Token-Budget gilt gemeinsam für den Agenten und die eingebauten KI-Chats aller FancyServers-Apps.
           </div>
         </div>
       ),
@@ -622,6 +633,7 @@ export function FancyCodePanel({
       case '/clear':
         return send({ type: 'command', name: 'new' });
       case '/model':
+        if (arg === 'frontier') return setFrontierInfo(true);
         if (arg) return send({ type: 'set', model: arg });
         return setMenu('model');
       case '/mode':
@@ -757,7 +769,20 @@ export function FancyCodePanel({
   }
 
   return (
-    <div className="fc-root" onKeyDown={(e) => e.key === 'Escape' && running && send({ type: 'abort' })}>
+    <div className="fc-root" onKeyDown={(e) => e.key === 'Escape' && running && !frontierInfo && send({ type: 'abort' })}>
+      {frontierInfo && (
+        <div className="fc-modal-backdrop" onClick={() => setFrontierInfo(false)}>
+          <div className="fc-modal" role="dialog" aria-modal="true" aria-labelledby="fc-frontier-title" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') setFrontierInfo(false); }}>
+            <h2 id="fc-frontier-title">Frontier Model</h2>
+            <p>Frontier Model von FancyNode nutzt ausgewählte Spitzenmodelle. Die normale Route ist kostenlos; Supermode ist nur mit Geschenk-Freischaltung nutzbar.</p>
+            <a href="https://livebench.ai/#/" target="_blank" rel="noreferrer">LiveBench-Rangliste öffnen ↗</a>
+            <div className="fc-ask-btns">
+              <button type="button" className="fc-btn" onClick={() => setFrontierInfo(false)}>Abbrechen</button>
+              <button type="button" className="fc-btn primary" onClick={() => { send({ type: 'set', model: 'frontier' }); setFrontierInfo(false); }}>Frontier Model auswählen</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="fc-top">
         <div className="fc-brand">
           <Zap size={16} /> FancyCode
@@ -766,6 +791,11 @@ export function FancyCodePanel({
           <FolderOpen size={13} /> {folderName}
         </button>
         <div className="fc-spacer" />
+        {model === 'frontier' && (
+          <button type="button" className="fc-chip" role="switch" aria-checked={supermode} disabled={running || (!supermode && !(account?.supermodeUntil && account.supermodeUntil > Date.now()))} title={account?.supermodeUntil && account.supermodeUntil > Date.now() ? `Supermode bis ${when(account.supermodeUntil)} · doppelter Tokenverbrauch` : 'Supermode benötigt ein Geschenk'} onClick={() => send({ type: 'set', supermode: !supermode })}>
+            <Sparkles size={13} /> Supermode {supermode ? 'an' : 'aus'} · 2×
+          </button>
+        )}
         {usage && (
           <button type="button" className="fc-usage" onClick={showUsageCard} title="Verbrauch (5 Stunden)">
             <Gauge size={13} />
@@ -929,7 +959,8 @@ export function FancyCodePanel({
                         onFocus={() => setHoverModel(m.id)}
                         onBlur={() => setHoverModel('')}
                         onClick={() => {
-                          send({ type: 'set', model: m.id });
+                          if (m.id === 'frontier') setFrontierInfo(true);
+                          else send({ type: 'set', model: m.id });
                           setMenu('');
                         }}
                       >

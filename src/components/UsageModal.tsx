@@ -13,7 +13,7 @@ const APPS: Record<Kind, 'fancycode-cli' | 'fancycode'> = {
 };
 
 const TITLES: Record<Kind, string> = {
-  agent: 'FancyCode Agent',
+  agent: 'Globales KI-Limit',
   chat: 'Chat',
 };
 
@@ -40,8 +40,7 @@ function resetLabel(window: FancyUsageWindow) {
   });
 }
 
-// Verbrauch der eingebauten KI. Der Agent zählt Tokens, der einfache Chat Nachrichten – beide
-// Fenster und ihre Resets liegen serverseitig in getrennten Apps (fancycode-cli / fancycode).
+// Agent und eingebaute Chats teilen sich ein globales Token-Limit.
 // `initial` sind die Agent-Werte, die die FancyCode-Ansicht schon kennt; das Popup zeigt sie
 // sofort und aktualisiert im Hintergrund.
 export default function UsageModal({ onClose, initial }: { onClose(): void; initial?: UsagePopupSeed | null }) {
@@ -59,13 +58,8 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
     try {
       const api = window.agentWorkspace?.fancyAccount;
       if (!api) throw new Error(tr('Die Nutzung zeigt nur die Desktop-App.'));
-      const [agent, chat] = await Promise.allSettled([api.usage(APPS.agent), api.usage(APPS.chat)]);
-      const next: UsageMap = {
-        agent: agent.status === 'fulfilled' ? agent.value : null,
-        chat: chat.status === 'fulfilled' ? chat.value : null,
-      };
-      if (!next.agent && !next.chat) throw (agent.status === 'rejected' ? agent.reason : chat.status === 'rejected' ? chat.reason : new Error(''));
-      setUsage(next);
+      const [agent, chat] = await Promise.all([api.usage(APPS.agent), api.usage(APPS.chat)]);
+      setUsage({ agent, chat });
       hasData.current = true;
     } catch (err) {
       // Mit Werten aus der FancyCode-Ansicht bleibt das Popup gefuellt, statt einen Fehler zu zeigen.
@@ -85,7 +79,7 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
     if (!api || !group || group.resets <= 0) return;
     const ok = window.confirm(
       tr("Limit für {name} zurücksetzen? Danach sind noch {left} von {total} Resets übrig.", {
-        name: TITLES[kind],
+        name: kind === 'chat' ? tr('globales KI-Limit mit Chat-Guthaben') : TITLES[kind],
         left: group.resets - 1,
         total: group.resets,
       }),
@@ -97,15 +91,8 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
     try {
       const next = await api.resetUsage(APPS[kind]);
       setUsage((current) => ({
-        ...current,
-        [kind]: {
-          ...group,
-          fiveHour: next.fiveHour,
-          weekly: next.weekly,
-          resets: next.resets,
-          unit: next.unit || group.unit,
-          plan: next.plan || group.plan,
-        },
+        agent: current.agent ? { ...current.agent, fiveHour: next.fiveHour, weekly: next.weekly, resets: kind === 'agent' ? next.resets : current.agent.resets, unit: next.unit || current.agent.unit, plan: next.plan || current.agent.plan } : null,
+        chat: current.chat ? { ...current.chat, fiveHour: next.fiveHour, weekly: next.weekly, resets: kind === 'chat' ? next.resets : current.chat.resets } : null,
       }));
       setMessage(tr("Limit zurückgesetzt."));
     } catch (err) {
@@ -115,7 +102,7 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
     }
   };
 
-  const sections: Kind[] = (['agent', 'chat'] as Kind[]).filter((kind) => usage[kind]);
+  const sections: Kind[] = (['agent'] as Kind[]).filter((kind) => usage[kind]);
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-5 backdrop-blur-lg" onClick={onClose}>
@@ -169,6 +156,8 @@ export default function UsageModal({ onClose, initial }: { onClose(): void; init
                   resetting={resetting === kind}
                   disabled={resetting !== null}
                   onReset={() => void reset(kind)}
+                  chatResets={usage.chat?.resets}
+                  onChatReset={() => void reset('chat')}
                 />
               </div>
             ))}
@@ -198,12 +187,16 @@ function UsageSection({
   resetting,
   disabled,
   onReset,
+  chatResets,
+  onChatReset,
 }: {
   kind: Kind;
   group: FancyUsage;
   resetting: boolean;
   disabled: boolean;
   onReset(): void;
+  chatResets?: number;
+  onChatReset(): void;
 }) {
   const unit: FancyUsageUnit = group.unit || (kind === 'agent' ? 'tokens' : 'messages');
   return (
@@ -233,6 +226,14 @@ function UsageSection({
           {tr("Zurücksetzen")}
         </button>
       </div>
+      {chatResets !== undefined && (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="text-[11px] text-zinc-500">{tr('Chat-Reset-Guthaben')}: {chatResets}</div>
+          <button onClick={onChatReset} disabled={chatResets <= 0 || disabled} className="flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-[11px] text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-40">
+            <RotateCcw className="h-3.5 w-3.5" /> {tr('Globales Limit zurücksetzen')}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

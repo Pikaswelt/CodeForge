@@ -23,6 +23,11 @@
 .fc-root * { box-sizing: border-box; }
 .fc-root button { font: inherit; color: inherit; cursor: pointer; }
 .fc-root button:disabled { cursor: default; opacity: 0.55; }
+.fc-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, 0.65); }
+.fc-modal { width: min(480px, 100%); padding: 22px; border: 1px solid var(--fc-border); border-radius: 14px; background: var(--fc-panel); box-shadow: 0 16px 60px rgba(0, 0, 0, 0.45); }
+.fc-modal h2 { margin: 0 0 10px; font-size: 19px; }
+.fc-modal p { color: var(--fc-muted); }
+.fc-modal a { display: inline-block; color: var(--fc-accent-2); margin-bottom: 18px; }
 .fc-muted { color: var(--fc-muted); }
 .fc-small { font-size: 12px; }
 .fc-spacer { flex: 1; }

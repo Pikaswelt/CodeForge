@@ -54,6 +54,7 @@ const sftp = require('./sftp.cjs');
 const fancycodeRemote = require('./fancycode-remote.cjs');
 const { createSessionClient, unixSocketPath } = require('./session-client.cjs');
 let updater = null;
+let fancycodeRemoteIpc = null;
 const whisper = setupWhisper({ app, getWindow: () => mainWindow });
 
 const http = require('node:http');
@@ -82,7 +83,7 @@ function broadcast(msg, excludeWs = null) {
   if (!wss) return;
   const data = JSON.stringify(msg);
   for (const client of wss.clients) {
-    if (client !== excludeWs && client.readyState === 1) {
+    if (client !== excludeWs && client.readyState === 1 && client.isAuthorized === true) {
       client.send(data);
     }
   }
@@ -101,7 +102,7 @@ function startSyncServer() {
   // Initialize sync token
   syncToken = process.env.CODEFORGE_SYNC_TOKEN || '';
   if (!syncToken) {
-    syncToken = 'codeforge-' + crypto.randomUUID().slice(0, 8);
+    syncToken = 'codeforge-' + crypto.randomBytes(32).toString('hex');
     console.log('FancyCode Desktop Sync Token (set CODEFORGE_SYNC_TOKEN env to customize): ' + syncToken);
   }
 
@@ -302,9 +303,13 @@ function startSyncServer() {
     }
 
     // ---- EXISTING: Media File Serving ----
-    if (req.url.startsWith('/media')) {
+    if (urlPath === '/media') {
       try {
         const urlObj = new URL(req.url, `http://${req.headers.host}`);
+        if (!isAuthorized && urlObj.searchParams.get('token') !== syncToken) {
+          jsonResponse(401, { ok: false, error: 'Unauthorized.' });
+          return;
+        }
         const filePath = urlObj.searchParams.get('path');
         if (filePath && fs.existsSync(filePath)) {
           const ext = path.extname(filePath).toLowerCase();
@@ -357,7 +362,20 @@ function startSyncServer() {
     if (reqPath === '/') reqPath = '/index.html';
     
     const targetFile = path.join(distPath, reqPath);
+    const relativeTarget = path.relative(distPath, targetFile);
+    if (relativeTarget === '..' || relativeTarget.startsWith(`..${path.sep}`) || path.isAbsolute(relativeTarget)) {
+      res.writeHead(403, { 'content-type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
     if (fs.existsSync(targetFile) && fs.statSync(targetFile).isFile()) {
+      const realDist = fs.realpathSync(distPath);
+      const relativeRealTarget = path.relative(realDist, fs.realpathSync(targetFile));
+      if (relativeRealTarget === '..' || relativeRealTarget.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRealTarget)) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+      }
       const ext = path.extname(targetFile).toLowerCase();
       let contentType = 'text/html';
       if (ext === '.js') contentType = 'application/javascript';
@@ -464,7 +482,6 @@ const originalHandle = ipcMain.handle.bind(ipcMain);
 ipcMain.handle = (channel, fn) => {
   handlers.set(channel, fn);
   originalHandle(channel, async (event, ...args) => {
-    broadcast({ type: 'ipc-event', channel, args: args[0] });
     return fn(event, ...args);
   });
 };
@@ -672,6 +689,12 @@ function createWindow() {
   // One clear line in the log once the UI is really there - the Linux smoke test waits for it.
   mainWindow.webContents.on('did-finish-load', () => {
     console.log(`[Start] FancyCode Desktop UI geladen auf ${process.platform} (v${app.getVersion()})`);
+  });
+
+  // Untrusted pages must never replace the privileged renderer and inherit its preload bridge.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) openUrlInChrome(url).catch((error) => console.error(`[Links] ${error.message}`));
   });
 
   // Never open popups as extra app windows; web links go to Chrome instead.
@@ -4283,7 +4306,7 @@ app.whenReady().then(() => {
     console.warn(`[Skills] sync failed: ${error.message}`);
   }
   fancycodeHarness.registerIpc(ipcMain, (event) => !!mainWindow && event.sender === mainWindow.webContents);
-  fancycodeRemote.registerIpc({
+  fancycodeRemoteIpc = fancycodeRemote.registerIpc({
     ipcMain,
     allow: (event) => !!mainWindow && event.sender === mainWindow.webContents,
     buildSshArgs: buildVServerSshArgs,
@@ -4398,10 +4421,14 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('fancy:was-granted', () => fancyAccount.wasGranted());
   ipcMain.handle('fancy:login', async (_event, provider, invite) => {
     const result = await fancyAccount.login(String(provider || ''), invite ? String(invite).slice(0, 40) : '');
-    fancycodeHarness.syncSession();
+    await fancycodeHarness.syncSession();
     return result;
   });
-  ipcMain.handle('fancy:guest', (_event, invite) => fancyAccount.guest(String(invite || '')));
+  ipcMain.handle('fancy:guest', async (_event, invite) => {
+    const result = await fancyAccount.guest(String(invite || ''));
+    await fancycodeHarness.syncSession();
+    return result;
+  });
   ipcMain.handle('fancy:check-invite', (_event, invite) => fancyAccount.checkInvite(String(invite || '')));
   ipcMain.handle('fancy:cancel', () => fancyAccount.cancelLogin());
   ipcMain.handle('fancy:usage', (_event, app) => fancyAccount.usage(String(app || '')));
@@ -4955,8 +4982,8 @@ app.on('before-quit', () => {
   try { sftp.disconnectAll(); } catch (_) {}
   try { stopAllMcpSessions(); } catch (_) {}
   // Remote agent watchers and SDK processes hold SSH children; close them with the app.
-  try { fancycodeRemote.stopWatchers(); } catch (_) {}
-  try { fancycodeRemote.stopAll(); } catch (_) {}
+  try { fancycodeRemoteIpc?.stopWatchers(); } catch (_) {}
+  try { fancycodeRemoteIpc?.stopAll(); } catch (_) {}
   for (const [runId, child] of activeProcesses) {
     try {
       if (child && !child.killed) killProcessTree(child);

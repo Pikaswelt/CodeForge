@@ -35,6 +35,10 @@ export function toFileUrl(filePath: string) {
           token = config.vpsToken || '';
         }
       }
+      if (!token) {
+        const params = new URLSearchParams(window.location.search);
+        token = params.get('token') || params.get('syncToken') || localStorage.getItem('agentWorkspace.syncToken') || '';
+      }
     } catch (e) {}
     const auth = token ? `&token=${encodeURIComponent(token)}` : '';
     return `${baseUrl}/media?path=${encodeURIComponent(filePath)}${auth}`;

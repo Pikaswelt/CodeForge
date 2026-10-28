@@ -57,7 +57,7 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
       const wsUrl = token
         ? `${targetProto}//${targetHost}?token=${encodeURIComponent(token)}`
         : `${targetProto}//${targetHost}`;
-      console.log('Connecting to sync WebSocket at', wsUrl);
+      console.log('Connecting to sync WebSocket at', `${targetProto}//${targetHost}`);
       ws = new WebSocket(wsUrl);
 
       ws.onmessage = (event) => {

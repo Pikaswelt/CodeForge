@@ -62,6 +62,8 @@ function registerIpc({ ipcMain, allow, buildSshArgs, runCommand, getWindow, open
       const args = [...ssh.args.slice(0, -1), '-N', '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${port}:127.0.0.1:${port}`, host];
       const child = spawn(ssh.command, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
       let errorText = '';
+      let spawnError = null;
+      child.on('error', (error) => { spawnError = error; });
       child.stderr.setEncoding('utf8');
       child.stderr.on('data', (chunk) => {
         errorText = (errorText + chunk).slice(-500);
@@ -79,8 +81,9 @@ function registerIpc({ ipcMain, allow, buildSshArgs, runCommand, getWindow, open
       }, 5 * 60 * 1000).unref();
       // Give ssh a moment to bind the local port before the browser follows the redirect.
       await new Promise((resolve) => setTimeout(resolve, 800));
-      if (child.exitCode !== null) {
-        throw new Error(`Anmelde-Port ${port} konnte nicht weitergeleitet werden. ${errorText.trim().split('\n').slice(-1)[0] || ''}`);
+      if (spawnError || child.exitCode !== null || child.signalCode !== null) {
+        if (tunnels.get(port) === child) tunnels.delete(port);
+        throw new Error(`Anmelde-Port ${port} konnte nicht weitergeleitet werden. ${spawnError?.message || errorText.trim().split('\n').slice(-1)[0] || ''}`);
       }
     }
     await openExternal(url);
