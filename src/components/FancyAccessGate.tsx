@@ -1,6 +1,10 @@
 import { tr } from '../i18n';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowRight, KeyRound, Loader2 } from 'lucide-react';
+import { startTeam, stopTeam } from '../collab/team';
+
+// Rechtstexte liegen zentral beim FancyServers-Konto.
+export const LEGAL_BASE = 'https://account.crazymine.de';
 
 const cleanError = (error: unknown) =>
   error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("Unbekannter Fehler");
@@ -24,10 +28,18 @@ export function FancyAccessGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     void check();
     // Abmelden im Kontomenü führt zurück zum Zugang.
-    const onLogout = () => setState('locked');
+    const onLogout = () => {
+      stopTeam();
+      setState('locked');
+    };
     window.addEventListener('fancy:logged-out', onLogout);
     return () => window.removeEventListener('fancy:logged-out', onLogout);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Angemeldet: Team-Verbindung (FancyAgent) starten, damit Einladungen und Anfragen als Popup ankommen.
+  useEffect(() => {
+    if (state === 'open' && api) startTeam().catch((e) => console.warn('[team]', e));
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (state === 'checking') return <div className="fixed inset-0 bg-black" />;
   if (state === 'locked') return <AccessScreen onDone={() => void check()} />;
@@ -117,6 +129,14 @@ function AccessScreen({ onDone }: { onDone(): void }) {
           {' · '}
           <button disabled={!!busy} className="text-orange-300 hover:underline" onClick={() => void run('github', false)}>{tr("Mit GitHub anmelden")}</button>
         </div>
+        <p className="mt-3 text-center text-[11px] leading-relaxed text-zinc-500">
+          {tr("Mit der Anmeldung akzeptierst du die")}{' '}
+          <a href={`${LEGAL_BASE}/nutzungsbedingungen`} target="_blank" rel="noreferrer" className="underline hover:text-zinc-300">{tr("Nutzungsbedingungen")}</a>
+          {' '}{tr("und hast die")}{' '}
+          <a href={`${LEGAL_BASE}/datenschutz`} target="_blank" rel="noreferrer" className="underline hover:text-zinc-300">{tr("Datenschutzerklärung")}</a>
+          {' '}{tr("gelesen.")}{' · '}
+          <a href={`${LEGAL_BASE}/impressum`} target="_blank" rel="noreferrer" className="underline hover:text-zinc-300">{tr("Impressum")}</a>
+        </p>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { tr } from '../i18n';
+import TeamView from '../collab/TeamView';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { fancycodeBridge } from '../fancycode/bridge';
@@ -128,6 +129,8 @@ export default function MainArea() {
           <LibraryView />
         ) : mainView === 'workspace' ? (
           <WorkspaceView />
+        ) : mainView === 'team' ? (
+          <TeamView />
         ) : (
           <ChatView />
         )}

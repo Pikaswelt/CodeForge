@@ -1,7 +1,7 @@
 import { tr } from '../i18n';
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, CircleUserRound, Gauge, LogOut, Megaphone, MessageSquare, Puzzle, Settings } from 'lucide-react';
+import { BookOpen, CircleUserRound, Gauge, LogOut, Megaphone, MessageSquare, Puzzle, Scale, Settings } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { PLAN_INFO } from '../plans';
 import type { FancyAccount } from '../electron';
@@ -209,6 +209,11 @@ export default function AccountMenu({
             icon={<Megaphone className="h-4 w-4" />}
             label={tr("Was ist neu")}
             onClick={() => setShowNews(true)}
+          />
+          <AccountMenuButton
+            icon={<Scale className="h-4 w-4" />}
+            label={tr("Datenschutz & Impressum")}
+            onClick={() => window.open('https://account.crazymine.de/datenschutz', '_blank')}
           />
           <AccountMenuButton icon={<LogOut className="h-4 w-4" />} label={tr("Abmelden")} onClick={logout} />
         </div>

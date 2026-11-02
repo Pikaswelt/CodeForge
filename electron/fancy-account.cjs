@@ -156,8 +156,10 @@ async function me() {
     return null;
   }
   if (!r.ok) throw new Error(await readError(r));
-  setGranted(true);
-  return r.json();
+  const data = await r.json();
+  // Gesperrte Konten verlieren auch den Offline-Zugang (wasGranted).
+  setGranted(!data?.banned);
+  return data;
 }
 
 // Die eingebaute KI zählt pro App: fancycode-cli sind die Tokens des FancyCode-Agenten,

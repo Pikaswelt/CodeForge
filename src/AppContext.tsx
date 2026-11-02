@@ -85,7 +85,7 @@ export const DEFAULT_LIBRARY_STYLE: LibraryStyle = {
   bannerTitle: '',
   bannerText: '',
 };
-export type MainView = 'library' | 'chat' | 'workspace' | 'fancycode';
+export type MainView = 'library' | 'chat' | 'workspace' | 'fancycode' | 'team';
 
 export type ProviderModel = {
   id: string;

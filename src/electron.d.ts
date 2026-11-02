@@ -241,6 +241,9 @@ declare global {
         announcements(): Promise<{ items: FancyAnnouncement[]; ban: FancyBan | null; plan?: FancyPlan }>;
         seenAnnouncements(ids: string[]): Promise<boolean>;
         logout(): Promise<boolean>;
+        collabToken(opts?: { reset?: boolean }): Promise<{ hub: string; token: string; error?: string }>;
+        openLiveFile(): Promise<{ path: string; name: string; content: string } | null>;
+        saveLiveFile(input: { path?: string; name?: string; content: string }): Promise<{ path: string } | null>;
       };
       plugins?: {
         catalog(): Promise<FancyPluginCatalog>;

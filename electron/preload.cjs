@@ -98,6 +98,9 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     announcements: () => ipcRenderer.invoke('fancy:announcements'),
     seenAnnouncements: (ids) => ipcRenderer.invoke('fancy:announcements-seen', ids),
     logout: () => ipcRenderer.invoke('fancy:logout'),
+    collabToken: (opts) => ipcRenderer.invoke('fancy:collab-token', opts || {}),
+    openLiveFile: () => ipcRenderer.invoke('collab:open-file'),
+    saveLiveFile: (input) => ipcRenderer.invoke('collab:save-file', input),
   },
   plugins: {
     catalog: () => ipcRenderer.invoke('plugins:catalog'),

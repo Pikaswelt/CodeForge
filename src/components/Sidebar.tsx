@@ -16,6 +16,7 @@ import {
   House,
   Terminal,
   Trash2,
+  Users,
   X,
   Zap,
 } from 'lucide-react';
@@ -159,6 +160,16 @@ export default function Sidebar({
             FancyCode
           </motion.button>
         )}
+        <motion.button
+          onClick={() => setMainView('team')}
+          whileHover={{ x: 4 }}
+          whileTap={{ scale: 0.98 }}
+          className={navClass(mainView === 'team')}
+        >
+          {renderActiveBg(mainView === 'team')}
+          <Users className="w-4 h-4" />
+          {tr("Team")}
+        </motion.button>
       </div>
 
       {!mobileMode && (

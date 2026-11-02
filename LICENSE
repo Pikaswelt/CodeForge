@@ -1,0 +1,52 @@
+FancyCode Desktop – Proprietäre Lizenz / Proprietary License
+Copyright (c) 2026 Pikaswelt. Alle Rechte vorbehalten. All rights reserved.
+
+DEUTSCH
+
+1. Diese Software (Programm, Installer, Quellcode, Grafiken, Dokumentation) ist
+   Eigentum des Urhebers. Sie wird nicht verkauft, sondern lizenziert.
+
+2. Erlaubt ist ausschließlich: die vom Urheber veröffentlichten Programmdateien
+   (z. B. den Installer aus den GitHub-Releases) herunterzuladen, zu installieren
+   und kostenlos für private, nicht-kommerzielle Zwecke zu benutzen.
+
+3. Verboten ist ohne vorherige schriftliche Erlaubnis des Urhebers insbesondere:
+   a) die Software oder Teile davon zu verändern, zu übersetzen oder abgeleitete
+      Werke daraus zu erstellen;
+   b) die Software zu dekompilieren, zu disassemblieren, zu entschleiern oder auf
+      andere Weise den Quellcode zu rekonstruieren (Reverse Engineering), soweit
+      das Gesetz dies nicht ausdrücklich zwingend erlaubt;
+   c) die Software zu kopieren (außer zur Installation auf eigenen Geräten),
+      weiterzugeben, erneut hochzuladen, zu verbreiten, zu vermieten oder zu
+      verkaufen;
+   d) die Software kommerziell oder zur Erbringung von Dienstleistungen für
+      Dritte zu nutzen;
+   e) Urheberrechtsvermerke, Namen oder Logos zu entfernen oder zu verändern.
+
+4. Die Software wird „wie besehen“ ohne jede Gewährleistung bereitgestellt.
+   Der Urheber haftet nicht für Schäden aus der Nutzung, soweit gesetzlich
+   zulässig.
+
+5. Bei einem Verstoß erlischt die Nutzungserlaubnis automatisch.
+
+6. Für Konto, Online-Funktionen und KI gelten zusätzlich die Nutzungsbedingungen
+   (https://account.crazymine.de/nutzungsbedingungen) und die Datenschutzerklärung
+   (https://account.crazymine.de/datenschutz). Anbieterangaben:
+   https://account.crazymine.de/impressum
+
+7. Enthaltene Open-Source-Komponenten stehen unter ihren eigenen Lizenzen
+   (Datei THIRD_PARTY_NOTICES.txt im Installationsordner). Diese Lizenz schränkt
+   die Rechte aus jenen Lizenzen nicht ein.
+
+ENGLISH (summary – the German text prevails)
+
+You may download, install and use the official releases free of charge for
+private, non-commercial purposes only. Without prior written permission you may
+NOT modify, create derivative works, decompile, reverse engineer, copy (beyond
+installing on your own devices), redistribute, re-upload, rent, sell or use the
+software commercially, or remove copyright notices. Provided "as is" without
+warranty. Any violation terminates this license automatically.
+
+Online features are additionally governed by the terms of use and privacy policy
+linked above. Bundled open-source components are licensed under their own terms
+(THIRD_PARTY_NOTICES.txt); this license does not restrict those rights.

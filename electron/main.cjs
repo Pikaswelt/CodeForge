@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol, net, nativeImage, session, systemPreferences } = require('electron');
 const fancyAccount = require('./fancy-account.cjs');
+const fancyCollab = require('./fancy-collab.cjs');
 const fancycodeHarness = require('./fancycode-harness.cjs');
 const plugins = require('./plugins.cjs');
 const skills = require('./skills.cjs');
@@ -4435,7 +4436,39 @@ ipcMain.handle('device:status', () => {
   ipcMain.handle('fancy:usage-reset', (_event, app) => fancyAccount.resetUsage(String(app || '')));
   ipcMain.handle('fancy:announcements', () => fancyAccount.announcements());
   ipcMain.handle('fancy:announcements-seen', (_event, ids) => fancyAccount.seenAnnouncements(ids));
-  ipcMain.handle('fancy:logout', () => fancyAccount.logout());
+  ipcMain.handle('fancy:logout', () => {
+    fancyCollab.forget();
+    return fancyAccount.logout();
+  });
+  // Team (FancyAgent-Collab): Geräte-Token für Chat, Popups und Live-Arbeit.
+  ipcMain.handle('fancy:collab-token', (_event, opts) => fancyCollab.deviceToken({ reset: Boolean(opts?.reset) }));
+  // Live-Dateien: Lesen nur über den Dialog, Speichern nur in Dateien, die hier geöffnet/gewählt wurden.
+  const collabFiles = new Set();
+  const MAX_LIVE_FILE = 2 * 1024 * 1024;
+  ipcMain.handle('collab:open-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { title: mt('Datei live teilen'), properties: ['openFile'] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const file = result.filePaths[0];
+    const stat = fs.statSync(file);
+    if (stat.size > MAX_LIVE_FILE) throw new Error(mt('Datei zu groß für Live-Bearbeitung (max. 2 MB).'));
+    const buf = fs.readFileSync(file);
+    if (buf.includes(0)) throw new Error(mt('Binärdateien können nicht live bearbeitet werden.'));
+    collabFiles.add(file);
+    return { path: file, name: path.basename(file), content: buf.toString('utf8') };
+  });
+  ipcMain.handle('collab:save-file', async (_event, input = {}) => {
+    const content = String(input.content ?? '');
+    if (Buffer.byteLength(content) > MAX_LIVE_FILE) throw new Error(mt('Datei zu groß.'));
+    let file = typeof input.path === 'string' ? input.path : '';
+    if (!collabFiles.has(file)) {
+      const result = await dialog.showSaveDialog(mainWindow, { title: mt('Live-Datei speichern'), defaultPath: path.basename(String(input.name || 'datei.txt')) });
+      if (result.canceled || !result.filePath) return null;
+      file = result.filePath;
+      collabFiles.add(file);
+    }
+    fs.writeFileSync(file, content, 'utf8');
+    return { path: file };
+  });
 
   // Plugins: Katalog, Installation mit Prüfsumme, Entfernen.
   ipcMain.handle('plugins:catalog', () => plugins.catalog());

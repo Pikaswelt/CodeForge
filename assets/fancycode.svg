@@ -1,24 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="FancyCode Desktop">
   <defs>
-    <linearGradient id="fc-bg" x1="24" x2="232" y1="16" y2="240" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ff5fb8"/>
-      <stop offset=".5" stop-color="#8b5cf6"/>
-      <stop offset="1" stop-color="#22d3ee"/>
+    <linearGradient id="fs-fancycode-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
     </linearGradient>
-    <radialGradient id="fc-glow" cx="128" cy="128" r="120" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff" stop-opacity=".22"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="fc-shadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#1e0b3a" flood-opacity=".45"/>
+    <linearGradient id="fs-fancycode-gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="fs-fancycode-edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.25"/>
+    </linearGradient>
+    <filter id="fs-fancycode-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1d4ed8" flood-opacity="0.45"/>
+    </filter>
+    <filter id="fs-fancycode-text" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#000000" flood-opacity="0.28"/>
     </filter>
   </defs>
-  <rect width="256" height="256" rx="58" fill="url(#fc-bg)"/>
-  <rect width="256" height="256" rx="58" fill="url(#fc-glow)"/>
-  <g filter="url(#fc-shadow)" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M94 82 48 128l46 46"/>
-    <path d="m162 82 46 46-46 46"/>
+  <g filter="url(#fs-fancycode-shadow)">
+    <rect x="32" y="24" width="448" height="448" rx="104" fill="url(#fs-fancycode-bg)"/>
+    <rect x="33.5" y="25.5" width="445" height="445" rx="102.5" fill="none" stroke="url(#fs-fancycode-edge)" stroke-width="3"/>
+    <path d="M136 24h240a104 104 0 0 1 104 104v40c-80 34-176 50-252 50-72 0-132-10-196-32v-58A104 104 0 0 1 136 24z" fill="url(#fs-fancycode-gloss)"/>
   </g>
-  <path filter="url(#fc-shadow)" fill="#fff" d="M128 88c4 26 12 34 38 40-26 6-34 14-38 40-4-26-12-34-38-40 26-6 34-14 38-40Z"/>
-  <path fill="#fff" fill-opacity=".9" d="M190 40c2 11 5 14 16 16-11 2-14 5-16 16-2-11-5-14-16-16 11-2 14-5 16-16Z"/>
+  <text x="256" y="326" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="800" letter-spacing="-8" fill="#ffffff" filter="url(#fs-fancycode-text)"><tspan font-size="232">F</tspan><tspan font-size="196" dx="4">c</tspan></text>
 </svg>
