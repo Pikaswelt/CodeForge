@@ -7,6 +7,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 const isWin = process.platform === 'win32';
+// Kennung in unseren Launchern: daran erkennen wir beim Aktualisieren, dass die Datei von uns ist.
+const MARKER = 'fancycode – automatisch von FancyCode Desktop verwaltet';
 
 function configDir() {
   if (process.env.FANCYCODE_HOME) return process.env.FANCYCODE_HOME;
@@ -21,14 +23,10 @@ function writeIfChanged(file, content, mode) {
   fs.writeFileSync(file, content, { mode });
 }
 
-/**
- * bundle: Pfad zu fancycode.mjs in den App-Ressourcen.
- * runtime: { electron: execPath } startet mit Electron als Node, sonst { node: 'node' }.
- * Liefert den bin-Ordner, den die App an PATH hängt.
- */
-function install({ bundle, binDir, runtime }) {
-  fs.mkdirSync(binDir, { recursive: true });
-  const target = path.join(binDir, 'fancycode.mjs');
+/** Schreibt Bundle und Launcher (sh + cmd) in einen Ordner; aktualisiert nur, was sich ändert. */
+function writeSet(dir, bundle, runtime) {
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, 'fancycode.mjs');
   const src = fs.readFileSync(bundle);
   let same = false;
   try {
@@ -40,12 +38,103 @@ function install({ bundle, binDir, runtime }) {
   // Symlink-Ordner – dort liegt kein fancycode.mjs. Deshalb erst den echten Pfad auflösen.
   const self = `self="$0"\ncase "$self" in /*) ;; *) self="$PWD/$self" ;; esac\nwhile [ -L "$self" ]; do\n  t=$(readlink "$self") || break\n  case "$t" in /*) ;; *) t="$(dirname "$self")/$t" ;; esac\n  self="$t"\ndone\n`;
   if (runtime.electron) {
-    writeIfChanged(path.join(binDir, 'fancycode'), `#!/bin/sh\n${self}ELECTRON_RUN_AS_NODE=1 exec ${q(runtime.electron)} "$(dirname "$self")/fancycode.mjs" "$@"\n`, 0o755);
-    writeIfChanged(path.join(binDir, 'fancycode.cmd'), `@ECHO off\r\nSET dp0=%~dp0\r\nSET ELECTRON_RUN_AS_NODE=1\r\n${q(runtime.electron)} "%dp0%\\fancycode.mjs" %*\r\n`, 0o644);
+    writeIfChanged(path.join(dir, 'fancycode'), `#!/bin/sh\n# ${MARKER}\n${self}ELECTRON_RUN_AS_NODE=1 exec ${q(runtime.electron)} "$(dirname "$self")/fancycode.mjs" "$@"\n`, 0o755);
+    writeIfChanged(path.join(dir, 'fancycode.cmd'), `@ECHO off\r\nREM ${MARKER}\r\nSET dp0=%~dp0\r\nSET ELECTRON_RUN_AS_NODE=1\r\n${q(runtime.electron)} "%dp0%\\fancycode.mjs" %*\r\n`, 0o644);
   } else {
-    writeIfChanged(path.join(binDir, 'fancycode'), `#!/bin/sh\n${self}exec node "$(dirname "$self")/fancycode.mjs" "$@"\n`, 0o755);
+    writeIfChanged(path.join(dir, 'fancycode'), `#!/bin/sh\n# ${MARKER}\n${self}exec node "$(dirname "$self")/fancycode.mjs" "$@"\n`, 0o755);
     // Gleicher Aufbau wie npm-Shims, damit Apps sie ohne cmd.exe direkt mit node starten können.
-    writeIfChanged(path.join(binDir, 'fancycode.cmd'), `@ECHO off\r\nSET dp0=%~dp0\r\nnode "%dp0%\\fancycode.mjs" %*\r\n`, 0o644);
+    writeIfChanged(path.join(dir, 'fancycode.cmd'), `@ECHO off\r\nREM ${MARKER}\r\nSET dp0=%~dp0\r\nnode "%dp0%\\fancycode.mjs" %*\r\n`, 0o644);
+  }
+  return dir;
+}
+
+/** Ordner, in dem „fancycode“ auch in normalen Terminals liegt (außerhalb der App). */
+function globalDir() {
+  if (isWin) return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'FancyServers', 'bin');
+  return path.join(os.homedir(), '.local', 'bin');
+}
+
+/** Windows: Ordner dauerhaft an den PATH des Nutzers hängen (nur wenn er dort fehlt). */
+function ensureUserPath(dir) {
+  try {
+    const { execFileSync } = require('node:child_process');
+    const d = dir.replace(/'/g, "''");
+    const ps = `$d='${d}';$p=[Environment]::GetEnvironmentVariable('Path','User');if(-not (($p -split ';') -contains $d)){if($p){$p=$p.TrimEnd(';')+';'+$d}else{$p=$d};[Environment]::SetEnvironmentVariable('Path',$p,'User')}`;
+    execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: 'ignore', timeout: 15000, windowsHide: true });
+  } catch {}
+}
+
+/**
+ * Legt „fancycode“ auch außerhalb der App ab, damit der Befehl in jedem Terminal gilt und nach jedem
+ * App-Update automatisch die neue Fassung nutzt. Fremde Installationen bleiben unangetastet.
+ */
+function installGlobal(bundle, runtime) {
+  const dir = globalDir();
+  const target = path.join(dir, 'fancycode');
+  try {
+    let st = null;
+    try {
+      st = fs.lstatSync(target);
+    } catch {}
+    // Alte Verweise (z. B. auf einen früheren Build) ersetzen, fremde Dateien in Ruhe lassen.
+    if (st && st.isSymbolicLink()) fs.unlinkSync(target);
+    else if (st && !fs.readFileSync(target, 'utf8').includes(MARKER)) {
+      console.log(`[fancycode] ${target} stammt nicht von FancyCode Desktop – bleibt unverändert.`);
+      return '';
+    }
+    writeSet(dir, bundle, runtime);
+    if (isWin) ensureUserPath(dir);
+    return target;
+  } catch (err) {
+    console.warn('[fancycode] Befehl außerhalb der App:', err.message);
+    return '';
+  }
+}
+
+/** Merkzettel: womit und womit gebündelt FancyCode Desktop zuletzt lief (für andere Apps). */
+function desktopRecord() {
+  return path.join(configDir(), 'desktop.json');
+}
+
+/**
+ * Sucht eine installierte FancyCode Desktop über den Merkzettel im gemeinsamen Config-Ordner.
+ * Liefert { runtime, bundle } oder null – andere Apps starten damit die Harness ohne eigenes Node.js.
+ */
+function findDesktop() {
+  try {
+    const rec = JSON.parse(fs.readFileSync(desktopRecord(), 'utf8'));
+    if (!rec?.runtime || !fs.existsSync(rec.runtime)) return null;
+    return { runtime: rec.runtime, bundle: rec.bundle && fs.existsSync(rec.bundle) ? rec.bundle : '' };
+  } catch {
+    return null;
+  }
+}
+
+function rememberDesktop(runtime, bundle) {
+  try {
+    const data = JSON.stringify({ app: 'FancyCode Desktop', runtime: runtime.electron, bundle, saved: Date.now() }, null, 2);
+    const file = desktopRecord();
+    let same = false;
+    try {
+      same = fs.readFileSync(file, 'utf8') === data;
+    } catch {}
+    if (same) return;
+    fs.mkdirSync(configDir(), { recursive: true });
+    fs.writeFileSync(file, data, { mode: 0o600 });
+  } catch {}
+}
+
+/**
+ * bundle: Pfad zu fancycode.mjs in den App-Ressourcen.
+ * runtime: { electron: execPath } startet mit Electron als Node, sonst { node: 'node' }.
+ * global: auch außerhalb der App installieren (Standard: ja, wenn Electron die Laufzeit ist).
+ * Liefert den bin-Ordner, den die App an PATH hängt.
+ */
+function install({ bundle, binDir, runtime, global }) {
+  writeSet(binDir, bundle, runtime);
+  if (global ?? Boolean(runtime.electron)) {
+    const where = installGlobal(bundle, runtime);
+    if (runtime.electron) rememberDesktop(runtime, where ? path.join(globalDir(), 'fancycode.mjs') : path.join(binDir, 'fancycode.mjs'));
   }
   return binDir;
 }
@@ -173,4 +262,4 @@ function registerIpc({ ipcMain, bundle, runtime, apiBase, extraArgs = [], allow 
   return { stopAll: () => [...procs.keys()].forEach(stop) };
 }
 
-module.exports = { install, ensureSession, registerIpc, configDir };
+module.exports = { install, findDesktop, ensureSession, registerIpc, configDir };

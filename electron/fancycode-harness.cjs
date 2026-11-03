@@ -1,8 +1,7 @@
 // Eingebaute Harness „FancyCode“: läuft mit dem Electron dieser App als Node (keine Node-Installation nötig).
-// Der Befehl „fancycode“ liegt im bin-Ordner der App und steht damit in allen Terminals der App bereit.
+// Der Befehl „fancycode“ wird bei jedem Start mitgeliefert und aktualisiert: im bin-Ordner der App und
+// zusätzlich außerhalb (~/.local/bin bzw. %LOCALAPPDATA%\FancyServers\bin), damit er in jedem Terminal gilt.
 // Die Harness bekommt eine eigene Sitzung des FancyServers-Kontos (kein zweiter Login).
-const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { app } = require('electron');
 const fancyAccount = require('./fancy-account.cjs');
@@ -21,11 +20,6 @@ function setup() {
     const electron = process.env.APPIMAGE || process.execPath;
     const bin = host().install({ bundle: path.join(resDir(), 'fancycode.mjs'), binDir: path.join(app.getPath('userData'), 'bin'), runtime: { electron } });
     if (!(process.env.PATH || '').split(path.delimiter).includes(bin)) process.env.PATH = [process.env.PATH, bin].filter(Boolean).join(path.delimiter);
-    // Linux: auch in normalen Terminals verfügbar machen, falls dort noch kein „fancycode“ liegt.
-    if (process.platform !== 'win32') {
-      const link = path.join(os.homedir(), '.local', 'bin', 'fancycode');
-      if (fs.existsSync(path.dirname(link)) && !fs.existsSync(link)) fs.symlinkSync(path.join(bin, 'fancycode'), link);
-    }
   } catch (err) {
     console.warn('[fancycode] Einrichtung fehlgeschlagen:', err.message);
   }
