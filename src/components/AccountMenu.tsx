@@ -1,7 +1,7 @@
 import { tr } from '../i18n';
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, CircleUserRound, Gauge, LogOut, Megaphone, MessageSquare, Puzzle, Scale, Settings } from 'lucide-react';
+import { BookOpen, CircleUserRound, Crown, Gauge, LogOut, Megaphone, MessageSquare, Puzzle, Scale, Settings } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { PLAN_INFO } from '../plans';
 import type { FancyAccount } from '../electron';
@@ -84,13 +84,15 @@ export default function AccountMenu({
                   <span
                     className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
                       account.plan === 'max'
-                        ? 'bg-violet-400/15 text-violet-300'
+                        ? 'bg-gradient-to-r from-cyan-400/25 via-indigo-400/25 to-fuchsia-400/25 text-indigo-200'
                         : account.plan === 'pro'
-                          ? 'bg-amber-400/15 text-amber-300'
-                          : 'bg-white/10 text-zinc-400'
+                          ? 'bg-violet-400/15 text-violet-300'
+                          : account.plan === 'mini'
+                            ? 'bg-amber-400/15 text-amber-300'
+                            : 'bg-white/10 text-zinc-400'
                     }`}
                   >
-                    {PLAN_INFO[account.plan].label}
+                    {(PLAN_INFO[account.plan] || PLAN_INFO.free).label}
                   </span>
                 )}
               </div>
@@ -118,6 +120,14 @@ export default function AccountMenu({
             shortcut="Ctrl+,"
             onClick={() => {
               onSettingsClick();
+              onClose();
+            }}
+          />
+          <AccountMenuButton
+            icon={<Crown className="h-4 w-4" />}
+            label={tr("Pläne")}
+            onClick={() => {
+              openUsagePopup({ fiveHour: { used: 0, limit: 0, resetAt: 0 }, weekly: { used: 0, limit: 0, resetAt: 0 }, resets: 0, tab: 'plans' });
               onClose();
             }}
           />

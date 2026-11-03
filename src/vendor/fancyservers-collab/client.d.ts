@@ -1,5 +1,5 @@
 export declare const DEFAULT_HUB = "https://fancyagent.crazymine.de";
-export type DeviceApp = 'fancycode' | 'kuroi' | 'fancyagent-desktop';
+export type DeviceApp = 'fancycode' | 'kuroi' | 'fancyagent-desktop' | 'fancygames';
 export interface Person {
     id: number;
     login: string;

@@ -2,6 +2,7 @@ import { tr, locale } from '../i18n';
 import { useState, useRef, useEffect } from 'react';
 import { useDictation } from '../useDictation';
 import { appendSpoken, useVoiceSettings } from '../voice';
+import { featureFree } from '../plans';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -281,7 +282,7 @@ export default function InputArea() {
                 </Dropdown>
               )}
             </AnimatePresence>
-            {voice.enabled && voice.showMicButton && (
+            {voice.enabled && voice.showMicButton && featureFree('fancycode.voice') && (
               <button
                 onClick={startDictation}
                 className={`p-1.5 rounded-md ${listening ? 'text-red-400 bg-red-500/10 animate-pulse' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}

@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { Image as ImageIcon, Loader2, Sparkles, Upload, Video, X } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { isVideoPath, toFileUrl } from '../media';
-import { animatedEffectsAllowed } from '../plans';
+import { animatedEffectsAllowed, requirePlanFeature } from '../plans';
 import { THEME_CREATOR_EVENT } from '../themeIntent';
 
 // Öffnet sich, wenn der Agent nach einem Theme gefragt wird: Medium wählen, „Anwenden“,
@@ -77,6 +77,7 @@ export default function ThemeCreator() {
   };
 
   const create = () => {
+    if (!requirePlanFeature('fancycode.themes')) return;
     const title = name.trim();
     if (!title) {
       setError(tr("Bitte gib dem Theme einen Namen."));

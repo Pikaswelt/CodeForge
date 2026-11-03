@@ -1,59 +1,57 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { FancyAnnouncement, FancyBan } from '../electron';
-import AnnouncementPopup from './AnnouncementPopup';
+import { useEffect, useState } from 'react';
+import type { FancyBan } from '../electron';
+import { startAppPopups, type AccountPopup } from '../vendor/fancyservers-collab/collab.js';
+import '../vendor/fancyservers-collab/collab.css';
 import BanScreen from './BanScreen';
 
-// Fünf Minuten reichen: Popups sind Ankündigungen, kein Chat. Beim Start, beim Zurückkehren
-// ins Fenster und nach dem Anmelden wird zusätzlich sofort gefragt.
-const POLL_MS = 5 * 60_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Holt die Popups des Betreibers vom Konto-Server und zeigt sie nacheinander. Ein Ban hat
-// Vorrang und legt die ganze App lahm, bis die Sperre aufgehoben oder abgelaufen ist.
+// Popups des Betreibers (Geschenke, Hinweise, Vollbild), Wartung und Pflicht-Updates kommen vom Konto-Server;
+// dargestellt werden sie vom gemeinsamen Modul (fancyservers-collab/apppopups) im FancyCode-Stil, hell oder dunkel
+// passend zum Theme. Ein Ban hat Vorrang und legt die ganze App lahm, bis die Sperre aufgehoben oder abgelaufen ist.
 export default function AnnouncementGate() {
   const api = window.agentWorkspace?.fancyAccount;
-  const [queue, setQueue] = useState<FancyAnnouncement[]>([]);
   const [ban, setBan] = useState<FancyBan | null>(null);
-  // Bereits geschlossene Popups bleiben in dieser Sitzung weg, auch wenn das Melden scheitert.
-  const handled = useRef(new Set<string>());
-
-  const check = useCallback(async () => {
-    if (!api) return;
-    try {
-      const data = await api.announcements();
-      setBan(data.ban || null);
-      const fresh = (data.items || []).filter((item) => !handled.current.has(item.id));
-      if (fresh.length) {
-        setQueue((current) => [...current, ...fresh.filter((item) => !current.some((open) => open.id === item.id))]);
-      }
-    } catch {
-      // Ohne Verbindung bleibt der letzte Stand; der nächste Durchlauf versucht es erneut.
-    }
-  }, [api]);
 
   useEffect(() => {
-    if (!api) return;
-    void check();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void check();
-    }, POLL_MS);
-    const onFocus = () => void check();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
+    if (!api?.appInfo) return;
+    let popups: ReturnType<typeof startAppPopups> | null = null;
+    let alive = true;
+    void api.appInfo().then((info) => {
+      if (!alive || !info.apiBase) return;
+      popups = startAppPopups({
+        app: 'fancycode',
+        apiBase: info.apiBase,
+        version: info.version,
+        fetchPopups: async () => {
+          const data = await api.announcements();
+          setBan(data.ban || null);
+          return (data.items || []) as unknown as AccountPopup[];
+        },
+        markSeen: (ids) => api.seenAnnouncements(ids),
+        // Pflicht-Update: mit dem eingebauten Updater laden und gleich installieren.
+        onUpdate: async () => {
+          const ws = window.agentWorkspace;
+          if (!ws?.checkForUpdates) return;
+          let st = await ws.checkForUpdates({ manual: true });
+          for (let i = 0; i < 600 && ['checking', 'downloading'].includes(st.status); i++) {
+            await sleep(1000);
+            st = await ws.checkForUpdates({ manual: true });
+          }
+          if (st.status === 'downloaded') await ws.installUpdate();
+        },
+        openExternal: (url) => void window.agentWorkspace?.openExternal?.(url),
+      });
+    });
+    // Theme-Wechsel: Popups hell/dunkel neu zeichnen.
+    const mo = new MutationObserver(() => popups?.refresh());
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
+      alive = false;
+      mo.disconnect();
+      popups?.stop();
     };
-  }, [api, check]);
+  }, [api]);
 
-  const close = () => {
-    const item = queue[0];
-    if (!item) return;
-    handled.current.add(item.id);
-    setQueue((current) => current.slice(1));
-    void api?.seenAnnouncements([item.id]).catch(() => {});
-  };
-
-  if (ban) return <BanScreen ban={ban} />;
-  return queue.length > 0 ? <AnnouncementPopup item={queue[0]} onClose={close} /> : null;
+  return ban ? <BanScreen ban={ban} /> : null;
 }

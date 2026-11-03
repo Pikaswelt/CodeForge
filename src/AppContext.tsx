@@ -46,7 +46,7 @@ import type {
   WorkDisplayMode,
 } from './types';
 import { uiClick, uiKey, uiSnapshot, uiType } from './uiControl';
-import { planInfo, writePlan } from './plans';
+import { featureFree, planInfo, writePlan } from './plans';
 import { THEME_CREATOR_EVENT, wantsThemeCreator } from './themeIntent';
 import { DEFAULT_MULTI_LAUNCH_CONFIG } from './types';
 
@@ -206,6 +206,8 @@ export type UsagePopupSeed = {
   weekly: { used: number; limit: number; resetAt: number };
   plan?: string;
   resets: number;
+  /** Welcher Reiter im Fenster „Pläne & Nutzung“ zuerst offen ist. */
+  tab?: 'plans' | 'usage';
 };
 
 interface AppContextType {
@@ -2452,6 +2454,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (server && !String(remotePath || '').trim()) throw new Error(tr('Bitte einen Projektordner auf dem V-Server angeben.'));
     const projectForRun = server ? ensureRemoteProject(server, String(remotePath || '')) : await ensureRunnableProject();
     const harness = cliHarnesses.find((item) => item.id === harnessId) || cliHarnesses[0];
+    if (harness && harness.id !== 'fancycode' && harness.id !== 'shell' && !featureFree('fancycode.harness')) {
+      window.alert(tr('Eigene CLI-Harnesses gibt es ab Spark. Der FancyCode-Agent bleibt frei.'));
+      return;
+    }
     const maxTerminals = planInfo().terminals;
     const requested = Math.max(1, Math.min(8, Math.round(count) || 1));
     const size = Math.min(requested, maxTerminals);

@@ -25,6 +25,7 @@ import { isWebBuild, useWallpaper } from './wallpaper';
 import { FancyAccessGate } from './components/FancyAccessGate';
 import Onboarding from './components/Onboarding';
 import ThemeCreator from './components/ThemeCreator';
+import { featureFree } from './plans';
 import { animatedEffectsAllowed } from './plans';
 import { PluginProvider } from './plugins/PluginProvider';
 import AgentPopups from './components/AgentPopups';
@@ -261,7 +262,7 @@ function AppLayout() {
         </div>
         <Suspense fallback={null}>
         <AnimatePresence>
-          {spotifyWidgetEnabled && <SpotifyWidget />}
+          {spotifyWidgetEnabled && featureFree('fancycode.spotify') && <SpotifyWidget />}
         </AnimatePresence>
         <AnimatePresence>
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}

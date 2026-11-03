@@ -4,6 +4,7 @@ import { ArrowUp, Loader2, MessageSquare, Mic, MicOff, Plus, Trash2 } from 'luci
 import { useAppContext } from '../AppContext';
 import { useDictation } from '../useDictation';
 import { appendSpoken, useVoiceSettings } from '../voice';
+import { featureFree } from '../plans';
 import type { ApiChatProvider, ApiProviderConfig, Chat } from '../types';
 
 export const apiProviderTypes = (): { id: ApiChatProvider; label: string; baseUrl: string; model: string }[] => [
@@ -410,7 +411,7 @@ export function ApiChatView({ chat, renderMessage }: { chat: Chat; renderMessage
             placeholder={tr("Nachricht schreiben... (Enter senden, Shift+Enter neue Zeile)")}
             className="flex-1 min-w-0 resize-none bg-transparent px-2 py-2 text-sm text-white outline-none max-h-48"
           />
-          {voice.enabled && voice.showMicButton && <button
+          {voice.enabled && voice.showMicButton && featureFree('fancycode.voice') && <button
             onClick={dictation.toggle}
             className={`rounded-lg p-2 transition-colors ${
               dictation.listening ? 'bg-red-500/20 text-red-300 animate-pulse' : 'text-zinc-400 hover:bg-white/[0.06] hover:text-white'

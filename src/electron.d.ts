@@ -1,19 +1,26 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
 import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
 
-export type FancyPlan = 'free' | 'pro' | 'max';
+export type FancyPlan = 'free' | 'mini' | 'pro' | 'max';
 
 export type FancyAccount = {
   id: string;
   name: string;
   avatar: string;
-  provider: 'discord' | 'github' | 'guest';
+  provider: 'discord' | 'github' | 'guest' | 'code';
   quota: { used: number; limit: number };
+  // Anmeldewege (ab Konto-Server mit Zugangscodes; ältere Server liefern sie nicht).
+  accessCode?: { set: boolean; hint: string };
+  identities?: FancyIdentity[];
+  suggestLink?: boolean;
   plan?: FancyPlan;
   banned?: boolean;
   banReason?: string;
   banUntil?: number;
 };
+
+export type FancyIdentity = { provider: 'discord' | 'github'; name: string; avatar: string; linked: number };
+export type FancyCodeLogin = { user: FancyAccount; accessCode: string; created: boolean };
 
 // Popup vom Server: Hinweis oder Geschenk (Plan-Zeit und/oder Reset-Guthaben).
 export type FancyAnnouncement = {
@@ -234,11 +241,16 @@ declare global {
         wasGranted(): Promise<boolean>;
         login(provider: 'discord' | 'github', invite?: string): Promise<FancyAccount>;
         guest(invite: string): Promise<FancyAccount>;
+        codeLogin(code: string, name?: string): Promise<FancyCodeLogin>;
+        link(provider: 'discord' | 'github'): Promise<FancyAccount | null>;
+        unlink(provider: 'discord' | 'github'): Promise<FancyAccount | null>;
+        newAccessCode(): Promise<string>;
         checkInvite(invite: string): Promise<boolean>;
         cancel(): Promise<void>;
         usage(app?: FancyUsageApp): Promise<FancyUsage>;
         resetUsage(app?: FancyUsageApp): Promise<FancyUsage & { ok: true }>;
         announcements(): Promise<{ items: FancyAnnouncement[]; ban: FancyBan | null; plan?: FancyPlan }>;
+        appInfo(): Promise<{ version: string; apiBase: string }>;
         seenAnnouncements(ids: string[]): Promise<boolean>;
         logout(): Promise<boolean>;
         collabToken(opts?: { reset?: boolean }): Promise<{ hub: string; token: string; error?: string }>;

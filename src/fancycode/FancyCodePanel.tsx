@@ -27,23 +27,28 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import './fancycode.css';
 
 export interface FancyCodeBridge {
-  start(opts: { cwd: string; resume?: string; server?: unknown }): Promise<string>;
+  start(opts: { cwd: string; resume?: string; server?: unknown; engine?: Engine }): Promise<string>;
   send(id: string, msg: unknown): void;
   stop(id: string): void;
   onEvent(cb: (id: string, ev: FcEvent) => void): () => void;
   openExternal?(url: string): void;
 }
 
+export type Engine = 'fancycode' | 'claude';
+/** Steuerung von außen (z. B. Live-Teilen): aktuelle Sitzung und Aufträge, die wie eigene Eingaben laufen. */
+export type PanelControl = { sessionId: string; engine: Engine; ready: boolean; folder: string; prompt: (text: string) => void };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FcEvent = { type: string; [key: string]: any };
-type Account = { name: string; plan: string; avatar?: string; offline?: boolean; supermodeUntil?: number } | null;
+type Account = { name: string; plan: string; avatar?: string; offline?: boolean } | null;
 type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed' };
 type Window = { used: number; limit: number; resetAt: number };
-type Usage = { fiveHour: Window; weekly: Window; plan: string; resets: number };
+type Usage = { fiveHour: Window; weekly: Window; plan: string; resets: number; unit?: 'percent' };
+type Mode = { id: string; label: string; hint: string };
+type Question = { question: string; header: string; multiSelect: boolean; options: { label: string; description: string }[] };
 type Model = { id: string; label: string; note: string };
 
 type Item =
@@ -51,10 +56,11 @@ type Item =
   | { k: 'assistant'; id: string; text: string }
   | { k: 'tool'; id: string; name: string; kind: string; summary: string; preview: string; output?: string; ok?: boolean }
   | { k: 'ask'; id: string; kind: string; summary: string; preview: string; answer?: string }
+  | { k: 'question'; id: string; questions: Question[]; answered?: boolean }
   | { k: 'note'; id: string; level: 'info' | 'warn' | 'error'; text: string }
   | { k: 'card'; id: string; title: string; body: ReactNode };
 
-const MODES: { id: string; label: string; hint: string }[] = [
+const MODES: Mode[] = [
   { id: 'default', label: 'Nachfragen', hint: 'Fragt vor Änderungen und Befehlen' },
   { id: 'acceptEdits', label: 'Änderungen erlauben', hint: 'Dateien ändern ohne Rückfrage, Befehle mit Rückfrage' },
   { id: 'plan', label: 'Planen', hint: 'Nur lesen und einen Plan erstellen' },
@@ -70,10 +76,43 @@ const SLASH: { cmd: string; hint: string }[] = [
   { cmd: '/init', hint: 'FANCYCODE.md mit Projektwissen anlegen' },
   { cmd: '/compact', hint: 'Verlauf zusammenfassen' },
   { cmd: '/mode', hint: 'Rechte: Nachfragen, Änderungen, Planen, Alles' },
+  { cmd: '/effort', hint: 'Denktiefe: low, medium, high' },
+  { cmd: '/todos', hint: 'Aufgabenliste anzeigen' },
+  { cmd: '/cost', hint: 'Tokens dieser Sitzung' },
   { cmd: '/login', hint: 'Mit FancyServers-Konto anmelden' },
   { cmd: '/logout', hint: 'Abmelden' },
   { cmd: '/help', hint: 'Alle Befehle' },
 ];
+
+const CLAUDE_SLASH: { cmd: string; hint: string }[] = [
+  { cmd: '/new', hint: 'Neue Sitzung' },
+  { cmd: '/model', hint: 'Claude-Modell wechseln' },
+  { cmd: '/effort', hint: 'Denktiefe: low, medium, high, xhigh, max' },
+  { cmd: '/mode', hint: 'Rechte: Automatisch, Nachfragen, Änderungen, Planen, Alles' },
+  { cmd: '/usage', hint: 'Claude-Limits (5 Stunden, 7 Tage)' },
+  { cmd: '/status', hint: 'Konto, Modell, Modus, Sitzung' },
+  { cmd: '/resume', hint: 'Frühere Claude-Sitzung fortsetzen' },
+  { cmd: '/init', hint: 'CLAUDE.md mit Projektwissen anlegen' },
+  { cmd: '/compact', hint: 'Verlauf zusammenfassen' },
+  { cmd: '/login', hint: 'Mit Claude anmelden' },
+  { cmd: '/logout', hint: 'Bei Claude abmelden' },
+  { cmd: '/help', hint: 'Alle Befehle – andere /Befehle und Skills gehen direkt an Claude' },
+];
+
+const EFFORT_LABEL: Record<string, string> = { low: 'Niedrig', medium: 'Mittel', high: 'Hoch', xhigh: 'Sehr hoch', max: 'Maximal' };
+
+const ENGINE_KEY = 'fancycode.engine';
+// FancyServers-Pläne: intern free/mini/pro/max, angezeigt Free/Spark/Nova/Galaxy.
+const PLAN_NAMES: Record<string, string> = { free: 'Free', mini: 'Spark', pro: 'Nova', max: 'Galaxy' };
+const planName = (p?: string | null) => PLAN_NAMES[String(p || 'free')] || String(p || 'Free').toUpperCase();
+const isPaidPlan = (p?: string | null) => p === 'mini' || p === 'pro' || p === 'max';
+function storedEngine(engines: Engine[]): Engine {
+  try {
+    const v = localStorage.getItem(ENGINE_KEY) as Engine | null;
+    if (v && engines.includes(v)) return v;
+  } catch {}
+  return engines[0] || 'fancycode';
+}
 
 let seq = 0;
 const uid = () => `i${++seq}`;
@@ -272,7 +311,7 @@ function ToolCard({ item }: { item: Extract<Item, { k: 'tool' }> }) {
 }
 
 function permissionTitle(kind: string) {
-  return kind === 'edit' ? 'Datei ändern?' : kind === 'exec' ? 'Befehl ausführen?' : kind === 'trust' ? 'Projekt vertrauen?' : 'Werkzeug ausführen?';
+  return kind === 'plan' ? 'Plan freigeben?' : kind === 'edit' ? 'Datei ändern?' : kind === 'exec' ? 'Befehl ausführen?' : kind === 'trust' ? 'Projekt vertrauen?' : 'Werkzeug ausführen?';
 }
 
 function AskCard({ item, onAnswer }: { item: Extract<Item, { k: 'ask' }>; onAnswer: (a: string) => void }) {
@@ -283,9 +322,18 @@ function AskCard({ item, onAnswer }: { item: Extract<Item, { k: 'ask' }>; onAnsw
         <Shield size={15} /> <b>{title}</b>
       </div>
       <div className="fc-ask-sum">{item.summary}</div>
-      {item.preview ? <Diff text={item.preview} /> : null}
+      {item.preview ? item.kind === 'plan' ? <div className="fc-plan"><Markdown text={item.preview} /></div> : <Diff text={item.preview} /> : null}
       {item.answer ? (
-        <div className="fc-ask-answer">{item.answer === 'no' ? 'Abgelehnt' : item.answer === 'always' ? 'Für diese Sitzung erlaubt' : 'Erlaubt'}</div>
+        <div className="fc-ask-answer">{item.answer === 'no' ? (item.kind === 'plan' ? 'Wird überarbeitet' : 'Abgelehnt') : item.answer === 'always' ? 'Für diese Sitzung erlaubt' : item.kind === 'plan' ? 'Freigegeben' : 'Erlaubt'}</div>
+      ) : item.kind === 'plan' ? (
+        <div className="fc-ask-btns">
+          <button type="button" className="fc-btn primary" onClick={() => onAnswer('yes')}>
+            Plan freigeben
+          </button>
+          <button type="button" className="fc-btn" onClick={() => onAnswer('no')}>
+            Weiter planen
+          </button>
+        </div>
       ) : (
         <div className="fc-ask-btns">
           <button type="button" className="fc-btn primary" onClick={() => onAnswer('yes')}>
@@ -303,14 +351,79 @@ function AskCard({ item, onAnswer }: { item: Extract<Item, { k: 'ask' }>; onAnsw
   );
 }
 
-function Meter({ w, label }: { w: Window; label: string }) {
+function QuestionCard({ item, onAnswer }: { item: Extract<Item, { k: 'question' }>; onAnswer: (answers: Record<string, string> | null) => void }) {
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [other, setOther] = useState<Record<string, string>>({});
+  const toggle = (q: Question, label: string) =>
+    setPicked((p) => {
+      const cur = p[q.question] || [];
+      return { ...p, [q.question]: q.multiSelect ? (cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label]) : [label] };
+    });
+  const complete = item.questions.every((q) => (picked[q.question] || []).length || (other[q.question] || '').trim());
+  const submit = () => {
+    const answers: Record<string, string> = {};
+    for (const q of item.questions) {
+      const vals = [...(picked[q.question] || [])];
+      if ((other[q.question] || '').trim()) vals.push(other[q.question].trim());
+      answers[q.question] = vals.join(', ');
+    }
+    onAnswer(answers);
+  };
+  return (
+    <div className={`fc-ask fc-question ${item.answered ? 'done' : ''}`}>
+      {item.questions.map((q) => (
+        <div key={q.question} className="fc-q">
+          <div className="fc-ask-head">
+            <Sparkles size={15} /> {q.header ? <span className="fc-q-tag">{q.header}</span> : null} <b>{q.question}</b>
+          </div>
+          <div className="fc-q-opts">
+            {q.options.map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                disabled={item.answered}
+                className={`fc-q-opt ${(picked[q.question] || []).includes(o.label) ? 'active' : ''}`}
+                onClick={() => toggle(q, o.label)}
+              >
+                <b>{o.label}</b>
+                {o.description ? <span>{o.description}</span> : null}
+              </button>
+            ))}
+          </div>
+          {!item.answered && (
+            <input
+              className="fc-q-other"
+              placeholder="Andere Antwort …"
+              value={other[q.question] || ''}
+              onChange={(e) => setOther((x) => ({ ...x, [q.question]: e.target.value }))}
+            />
+          )}
+        </div>
+      ))}
+      {item.answered ? (
+        <div className="fc-ask-answer">Beantwortet</div>
+      ) : (
+        <div className="fc-ask-btns">
+          <button type="button" className="fc-btn primary" disabled={!complete} onClick={submit}>
+            Antworten
+          </button>
+          <button type="button" className="fc-btn" onClick={() => onAnswer(null)}>
+            Überspringen
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Meter({ w, label, percent }: { w: Window; label: string; percent?: boolean }) {
   const pct = w.limit ? Math.min(100, (100 * w.used) / w.limit) : 0;
   return (
     <div className="fc-meter-row">
       <div className="fc-row">
         <span>{label}</span>
         <span className="fc-muted">
-          {fmtTokens(w.used)} / {fmtTokens(w.limit)} Tokens
+          {percent ? `${Math.round(pct)} % genutzt` : `${fmtTokens(w.used)} / ${fmtTokens(w.limit)} Tokens`}
         </span>
       </div>
       <div className={`fc-meter ${pct >= 100 ? 'full' : ''}`}>
@@ -321,21 +434,44 @@ function Meter({ w, label }: { w: Window; label: string }) {
   );
 }
 
-function Todos({ todos }: { todos: Todo[] }) {
+// Aufgabenliste wie in Claude Desktop: Fortschritt, abgehakte Schritte, aktueller Schritt hervorgehoben.
+// Ist alles erledigt, klappt sie nach kurzer Zeit auf eine Zeile zusammen.
+function Todos({ todos, running }: { todos: Todo[]; running: boolean }) {
   const [open, setOpen] = useState(true);
-  if (!todos.length) return null;
   const done = todos.filter((t) => t.status === 'completed').length;
+  const allDone = todos.length > 0 && done === todos.length;
+  const current = todos.find((t) => t.status === 'in_progress');
+  useEffect(() => {
+    if (!allDone) {
+      setOpen(true);
+      return;
+    }
+    const t = setTimeout(() => setOpen(false), 2500);
+    return () => clearTimeout(t);
+  }, [allDone, todos.length]);
+  if (!todos.length) return null;
+  const pct = Math.round((done / todos.length) * 100);
   return (
-    <div className="fc-todos">
-      <button type="button" className="fc-todos-head" onClick={() => setOpen(!open)}>
-        <ListChecks size={14} /> Aufgaben {done}/{todos.length} {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+    <div className={`fc-todos ${allDone ? 'done' : ''}`}>
+      <button type="button" className="fc-todos-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <ListChecks size={14} />
+        <span className="fc-todos-title">{allDone ? 'Alle Aufgaben erledigt' : !open && current ? current.content : 'Aufgaben'}</span>
+        <span className="fc-todos-count">
+          {done}/{todos.length}
+        </span>
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
       </button>
+      <div className="fc-todos-bar">
+        <i style={{ width: `${pct}%` }} />
+      </div>
       {open && (
         <ul>
           {todos.map((t, i) => (
             <li key={i} className={t.status}>
-              <span className="fc-todo-mark">{t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '▶' : '○'}</span>
-              {t.content}
+              <span className={`fc-todo-box ${t.status}`} aria-hidden="true">
+                {t.status === 'completed' ? <Check size={11} strokeWidth={3} /> : t.status === 'in_progress' && running ? <i className="fc-todo-spin" /> : null}
+              </span>
+              <span className="fc-todo-text">{t.content}</span>
             </li>
           ))}
         </ul>
@@ -354,6 +490,13 @@ export function FancyCodePanel({
   emptyHint,
   onOpenUsage,
   askPermission,
+  engines = ['fancycode'],
+  controlRef,
+  topActions,
+  plan: hostPlan,
+  paidEngines = [],
+  onEngineLocked,
+  appearance = 'solid',
 }: {
   bridge: FancyCodeBridge;
   cwd: string;
@@ -366,14 +509,53 @@ export function FancyCodePanel({
   // App-eigene Darstellung für Rückfragen (FancyCode Desktop zeigt sie als Popup unten rechts).
   // Fehlt der Aufruf, erscheint die Frage wie bisher als Karte im Verlauf.
   askPermission?: (req: { question: string; summary: string; preview: string; sessionId: string }) => Promise<'yes' | 'always' | 'no' | null>;
+  // Verfügbare Engines: „fancycode“ (FancyServers-Modelle) und „claude“ (installierte Claude-CLI des Nutzers).
+  engines?: Engine[];
+  controlRef?: MutableRefObject<PanelControl | null>;
+  // Zusätzliche Knöpfe in der Kopfzeile (z. B. „Live teilen“).
+  topActions?: ReactNode;
+  // „glass“: durchsichtig wie die Terminals der App (Hintergrundbild/Theme scheint durch, Farben aus dem Theme).
+  appearance?: 'solid' | 'glass';
+  // FancyServers-Plan aus der App (free/mini/pro/max). Ohne Wert gibt es keine Sperren.
+  plan?: string | null;
+  // Engines, die erst ab Spark (bezahlter Plan) gehen, z. B. ['claude'].
+  paidEngines?: Engine[];
+  // Gesperrte Engine angeklickt: die App zeigt „Ab Spark verfügbar“.
+  onEngineLocked?: (engine: Engine) => void;
 }) {
+  const queued = useRef<string[]>([]);
+  const sendTextRef = useRef<(t: string) => void>(() => {});
+  const engineLocked = (e: Engine) => hostPlan !== undefined && hostPlan !== null && paidEngines.includes(e) && !isPaidPlan(hostPlan);
+  const [engine, setEngineState] = useState<Engine>(() => storedEngine(engines));
+  const setEngine = (e: Engine) => {
+    if (engineLocked(e)) {
+      onEngineLocked?.(e);
+      return;
+    }
+    setEngineState(e);
+    try {
+      localStorage.setItem(ENGINE_KEY, e);
+    } catch {}
+  };
+  const isClaude = engine === 'claude';
+  // Plan gesunken oder gespeicherte Engine nicht mehr frei: zurück auf FancyCode.
+  useEffect(() => {
+    if (engineLocked(engine)) setEngineState(engines.find((e) => !engineLocked(e)) || 'fancycode');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostPlan, engine]);
+  const [modes, setModes] = useState<Mode[]>(MODES);
+  const [efforts, setEfforts] = useState<string[]>([]);
+  const [effort, setEffort] = useState('');
+  const [claudeInfo, setClaudeInfo] = useState<{ installed: boolean; version: string } | null>(null);
+  const [loginUrl, setLoginUrl] = useState('');
+  const [loginCode, setLoginCode] = useState('');
+  const [installing, setInstalling] = useState<string[] | null>(null);
   const [ready, setReady] = useState(false);
   const [account, setAccount] = useState<Account>(null);
   const [model, setModel] = useState('');
   const [models, setModels] = useState<Model[]>([]);
   const [hoverModel, setHoverModel] = useState('');
   const [frontierInfo, setFrontierInfo] = useState(false);
-  const [supermode, setSupermode] = useState(false);
   const [mode, setMode] = useState('default');
   const [profile, setProfile] = useState('');
   const [items, setItems] = useState<Item[]>([]);
@@ -385,7 +567,7 @@ export function FancyCodePanel({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [acIndex, setAcIndex] = useState(0);
   const [acClosed, setAcClosed] = useState(false);
-  const [menu, setMenu] = useState<'' | 'model' | 'mode'>('');
+  const [menu, setMenu] = useState<'' | 'model' | 'mode' | 'effort'>('');
   const [invite, setInvite] = useState('');
   const [startError, setStartError] = useState('');
   const scroller = useRef<HTMLDivElement>(null);
@@ -411,8 +593,13 @@ export function FancyCodePanel({
     setReady(false);
     setItems([]);
     setTodos([]);
-    setStartError('');      bridge
-        .start({ cwd, ...(server ? { server } : {}) })
+    setStartError('');
+    setUsage(null);
+    setModels([]);
+    setLoginUrl('');
+    setInstalling(null);
+    bridge
+      .start({ cwd, ...(server ? { server } : {}), ...(engine !== 'fancycode' ? { engine } : {}) })
         .then((id) => {
         if (!alive) return bridge.stop(id);
         current = id;
@@ -424,7 +611,7 @@ export function FancyCodePanel({
       if (current) bridge.stop(current);
       sidRef.current = '';
     };
-  }, [bridge, cwd, server]);
+  }, [bridge, cwd, server, engine]);
 
   useEffect(
     () =>
@@ -436,8 +623,12 @@ export function FancyCodePanel({
             setReady(true);
             setAccount(ev.account);
             setModel(ev.model || '');
-            setSupermode(Boolean(ev.supermode));
             setMode(ev.mode || 'default');
+            setModes(Array.isArray(ev.modes) && ev.modes.length ? ev.modes : MODES);
+            setEfforts(Array.isArray(ev.efforts) ? ev.efforts : []);
+            setEffort(ev.effort || '');
+            setClaudeInfo(ev.claude || null);
+            if (ev.claude?.installed) setInstalling(null);
             setProfile(ev.profile?.label || '');
             if (ev.type === 'ready') {
               bridge.send(id, { type: 'command', name: 'models' });
@@ -490,6 +681,21 @@ export function FancyCodePanel({
               push({ k: 'ask', id: ev.id, kind: ev.kind, summary: ev.summary, preview: ev.preview || '' });
             }
             break;
+          case 'question':
+            setThinking(false);
+            push({ k: 'question', id: ev.id, questions: ev.questions || [] });
+            break;
+          case 'permission_cancel':
+            setItems((list) => list.map((x) => ((x.k === 'ask' && x.id === ev.id && !x.answer) ? { ...x, answer: 'no' } : x.k === 'question' && x.id === ev.id ? { ...x, answered: true } : x)));
+            break;
+          case 'install_log':
+            setInstalling((l) => [...(l || []), String(ev.text || '')].slice(-6));
+            break;
+          case 'login_done':
+            setLoginUrl('');
+            setLoginCode('');
+            if (!ev.ok) push({ k: 'note', id: uid(), level: 'warn', text: 'Anmeldung bei Claude nicht abgeschlossen.' });
+            break;
           case 'todos':
             setTodos(ev.todos || []);
             break;
@@ -500,18 +706,19 @@ export function FancyCodePanel({
           case 'error':
             setRunning(false);
             setThinking(false);
-            push({ k: 'note', id: uid(), level: 'error', text: ev.status === 401 ? 'Nicht angemeldet. Melde dich mit deinem FancyServers-Konto an.' : ev.message });
+            push({ k: 'note', id: uid(), level: 'error', text: ev.status === 401 && ev.engine !== 'claude' ? 'Nicht angemeldet. Melde dich mit deinem FancyServers-Konto an.' : ev.message });
             if (ev.status === 401) setAccount(null);
             break;
           case 'done':
             setRunning(false);
             setThinking(false);
+            // Aufträge, die während der Antwort von außen kamen, der Reihe nach abarbeiten.
+            if (queued.current.length) setTimeout(() => sendTextRef.current(queued.current.shift()!), 0);
             if (ev.aborted) push({ k: 'note', id: uid(), level: 'info', text: 'Abgebrochen.' });
             bridge.send(id, { type: 'command', name: 'usage' });
             break;
           case 'usage':
             setUsage(ev.data);
-            if (typeof ev.data?.supermodeUntil === 'number') setAccount((current) => current ? { ...current, supermodeUntil: ev.data.supermodeUntil } : current);
             break;
           case 'models':
             setModels(ev.data?.models || []);
@@ -522,7 +729,10 @@ export function FancyCodePanel({
             if (ev.account) bridge.send(id, { type: 'command', name: 'usage' });
             break;
           case 'login_url':
-            push({ k: 'note', id: uid(), level: 'info', text: 'Anmeldung im Browser geöffnet …' });
+            if (ev.engine === 'claude') {
+              setLoginUrl(ev.url || '');
+              if (ev.url) bridge.openExternal?.(ev.url);
+            } else push({ k: 'note', id: uid(), level: 'info', text: 'Anmeldung im Browser geöffnet …' });
             break;
           case 'suggestions':
             setSuggestions(Array.isArray(ev.items) ? ev.items.filter((s: unknown): s is string => typeof s === 'string').slice(0, 3) : []);
@@ -549,21 +759,24 @@ export function FancyCodePanel({
                   <dt>Konto</dt>
                   <dd>{ev.data.account ? `${ev.data.account.name} · ${String(ev.data.account.plan).toUpperCase()}` : 'nicht angemeldet'}</dd>
                   <dt>Modell</dt>
-                  <dd>{ev.data.model || 'fancy (Standard)'}</dd>
+                  <dd>
+                    {ev.data.model || 'fancy (Standard)'}
+                    {ev.data.effort ? ` · Denktiefe ${EFFORT_LABEL[ev.data.effort] || ev.data.effort}` : ''}
+                  </dd>
                   <dt>Profil</dt>
                   <dd>{ev.data.profile?.label}</dd>
                   <dt>Modus</dt>
-                  <dd>{MODES.find((x) => x.id === ev.data.mode)?.label || ev.data.mode}</dd>
+                  <dd>{((ev.data.modes as Mode[] | undefined) || MODES).find((x) => x.id === ev.data.mode)?.label || ev.data.mode}</dd>
                   <dt>Ordner</dt>
                   <dd>{ev.data.cwd}</dd>
                   <dt>Sitzung</dt>
                   <dd>
-                    {ev.data.session} · {ev.data.messages} Nachrichten · {fmtTokens(ev.data.usage.input + ev.data.usage.output)} Tokens
+                    {ev.data.session || '–'} · {ev.data.engine === 'claude' ? `${fmtTokens(ev.data.usage.input + ev.data.usage.output)} Tokens (letzte Anfrage)` : `${ev.data.messages} Nachrichten · ${fmtTokens(ev.data.usage.input + ev.data.usage.output)} Tokens`}
                   </dd>
                   <dt>MCP</dt>
                   <dd>{ev.data.mcp.length ? ev.data.mcp.map((m: { name: string; tools: number }) => `${m.name} (${m.tools})`).join(', ') : '–'}</dd>
                   <dt>Version</dt>
-                  <dd>FancyCode {ev.data.version}</dd>
+                  <dd>{ev.data.engine === 'claude' ? ev.data.version : `FancyCode ${ev.data.version}`}</dd>
                 </dl>
               ),
             });
@@ -603,6 +816,13 @@ export function FancyCodePanel({
     setItems((list) => list.map((x) => (x.k === 'ask' && x.id === id ? { ...x, answer: a } : x)));
   };
 
+  const slash = isClaude ? CLAUDE_SLASH : SLASH;
+
+  const answerQuestion = (id: string, answers: Record<string, string> | null) => {
+    send({ type: 'answer', id, answers });
+    setItems((list) => list.map((x) => (x.k === 'question' && x.id === id ? { ...x, answered: true } : x)));
+  };
+
   const showUsageCard = () => {
     if (onOpenUsage) {
       if (!usage) send({ type: 'command', name: 'usage' });
@@ -612,13 +832,15 @@ export function FancyCodePanel({
     push({
       k: 'card',
       id: uid(),
-      title: `Verbrauch · Plan ${usage.plan.toUpperCase()}`,
+      title: usage.unit === 'percent' ? `Claude · ${usage.plan}` : `Verbrauch · Plan ${planName(usage.plan)}`,
       body: (
         <div>
-          <Meter w={usage.fiveHour} label="5 Stunden" />
-          <Meter w={usage.weekly} label="7 Tage" />
+          <Meter w={usage.fiveHour} label="5 Stunden" percent={usage.unit === 'percent'} />
+          <Meter w={usage.weekly} label="7 Tage" percent={usage.unit === 'percent'} />
           <div className="fc-muted fc-small">
-            Resets: {usage.resets}. Dieses Token-Budget gilt gemeinsam für den Agenten und die eingebauten KI-Chats aller FancyServers-Apps.
+            {usage.unit === 'percent'
+              ? 'Limits deines Claude-Abos – sie gelten auch für Claude Code und claude.ai.'
+              : `Resets: ${usage.resets}. Dieses Token-Budget gilt gemeinsam für den Agenten und die eingebauten KI-Chats aller FancyServers-Apps.`}
           </div>
         </div>
       ),
@@ -637,9 +859,10 @@ export function FancyCodePanel({
         if (arg) return send({ type: 'set', model: arg });
         return setMenu('model');
       case '/mode':
-        if (MODES.some((m) => m.id === arg)) return send({ type: 'set', mode: arg });
+        if (modes.some((m) => m.id === arg)) return send({ type: 'set', mode: arg });
         return setMenu('mode');
       case '/effort':
+        if (!arg && efforts.length) return setMenu('effort');
         return send({ type: 'set', effort: arg });
       case '/usage':
         return showUsageCard();
@@ -650,11 +873,23 @@ export function FancyCodePanel({
       case '/init':
         setRunning(true);
         setThinking(true);
-        push({ k: 'user', id: uid(), text: '/init – FANCYCODE.md anlegen' });
+        push({ k: 'user', id: uid(), text: isClaude ? '/init – CLAUDE.md anlegen' : '/init – FANCYCODE.md anlegen' });
         return send({ type: 'command', name: 'init' });
       case '/compact':
         return send({ type: 'command', name: 'compact' });
+      case '/todos':
+        return push({
+          k: 'note',
+          id: uid(),
+          level: 'info',
+          text: todos.length
+            ? todos.map((t) => `${t.status === 'completed' ? '☑' : t.status === 'in_progress' ? '▶' : '☐'} ${t.content}`).join('\n')
+            : 'Noch keine Aufgabenliste in dieser Sitzung.',
+        });
+      case '/cost':
+        return send({ type: 'command', name: 'status' });
       case '/login':
+        if (isClaude) return send({ type: 'command', name: 'login', provider: arg === 'console' ? 'console' : 'claudeai' });
         return send({ type: 'command', name: 'login', provider: arg === 'discord' ? 'discord' : 'github', invite });
       case '/logout':
         return send({ type: 'command', name: 'logout' });
@@ -665,7 +900,7 @@ export function FancyCodePanel({
           title: 'Befehle',
           body: (
             <div className="fc-help">
-              {SLASH.map((s) => (
+              {slash.map((s) => (
                 <div key={s.cmd}>
                   <code>{s.cmd}</code> {s.hint}
                 </div>
@@ -675,6 +910,8 @@ export function FancyCodePanel({
           ),
         });
       default:
+        // Claude kennt eigene Befehle und Skills (z. B. /review) – die gehen direkt an Claude.
+        if (isClaude) return sendText(raw);
         push({ k: 'note', id: uid(), level: 'warn', text: `Unbekannter Befehl ${cmd}. /help zeigt alle.` });
     }
   };
@@ -691,6 +928,21 @@ export function FancyCodePanel({
     setThinking(true);
     send({ type: 'prompt', text });
   };
+
+  sendTextRef.current = sendText;
+  if (controlRef)
+    controlRef.current = {
+      sessionId: sidRef.current,
+      engine,
+      ready,
+      folder: cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() || cwd : '',
+      prompt: (t: string) => {
+        if (running || !ready) {
+          queued.current.push(t);
+          push({ k: 'note', id: uid(), level: 'info', text: `Auftrag aus dem Team wartet: ${t.slice(0, 120)}` });
+        } else sendText(t);
+      },
+    };
 
   const submit = () => {
     const text = input.trim();
@@ -730,7 +982,7 @@ export function FancyCodePanel({
     if (input.startsWith('/')) {
       if (input.includes(' ')) return [];
       const typed = input.toLowerCase();
-      return SLASH.filter((s) => s.cmd.startsWith(typed))
+      return slash.filter((s) => s.cmd.startsWith(typed))
         .sort((a, b) => Number(b.cmd === typed) - Number(a.cmd === typed))
         .map((s) => ({ value: s.cmd, hint: s.hint, kind: 'cmd' as const }));
     }
@@ -738,7 +990,7 @@ export function FancyCodePanel({
     return suggestions
       .filter((s) => s.toLowerCase().includes(q))
       .map((s) => ({ value: s, hint: 'Vorschlag', kind: 'idea' as const }));
-  }, [input, suggestions, acClosed]);
+  }, [input, suggestions, acClosed, slash]);
   useEffect(() => {
     const ta = textarea.current;
     if (!ta) return;
@@ -746,19 +998,22 @@ export function FancyCodePanel({
     ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
   }, [input]);
 
-  const modelLabel = models.find((m) => m.id === (model || 'fancy'))?.label || 'FancyCode';
+  const engineName = isClaude ? 'Claude' : 'FancyCode';
+  // Gespeicherte Modelle, die der Plan nicht (mehr) hat, laufen serverseitig über Auto – so auch anzeigen.
+  const activeModel = models.some((m) => m.id === model) ? model : models[0]?.id || (isClaude ? 'default' : 'auto');
+  const modelLabel = models.find((m) => m.id === activeModel)?.label || (isClaude ? 'Claude' : 'Auto');
   // Beim Hovern das gehoverte Modell, sonst das aktive – so springt das Panel nicht.
-  const hoverInfo = menu === 'model' ? models.find((m) => m.id === (hoverModel || model || 'fancy')) || models[0] : undefined;
-  const plan = (usage?.plan || account?.plan || 'free').toUpperCase();
-  const modeInfo = MODES.find((m) => m.id === mode) || MODES[0];
+  const hoverInfo = menu === 'model' ? models.find((m) => m.id === (hoverModel || activeModel)) || models[0] : undefined;
+  const plan = isClaude ? String(usage?.plan || account?.plan || 'Claude').toUpperCase() : planName(usage?.plan || account?.plan);
+  const modeInfo = modes.find((m) => m.id === mode) || modes[0];
   const folderName = cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : '';
 
   if (!cwd) {
     return (
-      <div className="fc-root fc-empty-state">
+      <div className={`fc-root fc-empty-state${appearance === 'glass' ? ' fc-glass' : ''}`}>
         <Zap size={34} />
-        <h2>FancyCode</h2>
-        <p>{emptyHint || 'Wähle einen Projektordner, in dem FancyCode arbeiten soll.'}</p>
+        <h2>{engineName}</h2>
+        <p>{emptyHint || `Wähle einen Projektordner, in dem ${engineName} arbeiten soll.`}</p>
         {onPickFolder && (
           <button type="button" className="fc-btn primary" onClick={onPickFolder}>
             <FolderOpen size={15} /> Ordner wählen
@@ -769,12 +1024,12 @@ export function FancyCodePanel({
   }
 
   return (
-    <div className="fc-root" onKeyDown={(e) => e.key === 'Escape' && running && !frontierInfo && send({ type: 'abort' })}>
+    <div className={`fc-root${appearance === 'glass' ? ' fc-glass' : ''}`} onKeyDown={(e) => e.key === 'Escape' && running && !frontierInfo && send({ type: 'abort' })}>
       {frontierInfo && (
         <div className="fc-modal-backdrop" onClick={() => setFrontierInfo(false)}>
           <div className="fc-modal" role="dialog" aria-modal="true" aria-labelledby="fc-frontier-title" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') setFrontierInfo(false); }}>
             <h2 id="fc-frontier-title">Frontier Model</h2>
-            <p>Frontier Model von FancyNode nutzt ausgewählte Spitzenmodelle. Die normale Route ist kostenlos; Supermode ist nur mit Geschenk-Freischaltung nutzbar.</p>
+            <p>Frontier Model von FancyNode nutzt ausgewählte Spitzenmodelle. Ist es gerade nicht erreichbar, nimm „Auto“ – das wechselt selbst auf ein freies Modell.</p>
             <a href="https://livebench.ai/#/" target="_blank" rel="noreferrer">LiveBench-Rangliste öffnen ↗</a>
             <div className="fc-ask-btns">
               <button type="button" className="fc-btn" onClick={() => setFrontierInfo(false)}>Abbrechen</button>
@@ -784,20 +1039,36 @@ export function FancyCodePanel({
         </div>
       )}
       <div className="fc-top">
-        <div className="fc-brand">
-          <Zap size={16} /> FancyCode
-        </div>
+        {engines.length > 1 ? (
+          <div className="fc-engines" role="tablist" aria-label="Agent">
+            {engines.map((e) => (
+              <button
+                key={e}
+                type="button"
+                role="tab"
+                aria-selected={engine === e}
+                className={engine === e ? 'active' : ''}
+                disabled={running}
+                title={engineLocked(e) ? 'Ab Spark verfügbar' : e === 'claude' ? 'Claude über dein eigenes Claude-Konto (Claude Code)' : 'FancyCode über dein FancyServers-Konto'}
+                onClick={() => engine !== e && setEngine(e)}
+              >
+                {e === 'claude' ? <Sparkles size={14} /> : <Zap size={14} />} {e === 'claude' ? 'Claude' : 'FancyCode'}
+                {engineLocked(e) ? <span className="fc-lock-tag">Spark</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="fc-brand">
+            <Zap size={16} /> FancyCode
+          </div>
+        )}
         <button type="button" className="fc-chip" onClick={onPickFolder} title={cwd} disabled={!onPickFolder}>
           <FolderOpen size={13} /> {folderName}
         </button>
         <div className="fc-spacer" />
-        {model === 'frontier' && (
-          <button type="button" className="fc-chip" role="switch" aria-checked={supermode} disabled={running || (!supermode && !(account?.supermodeUntil && account.supermodeUntil > Date.now()))} title={account?.supermodeUntil && account.supermodeUntil > Date.now() ? `Supermode bis ${when(account.supermodeUntil)} · doppelter Tokenverbrauch` : 'Supermode benötigt ein Geschenk'} onClick={() => send({ type: 'set', supermode: !supermode })}>
-            <Sparkles size={13} /> Supermode {supermode ? 'an' : 'aus'} · 2×
-          </button>
-        )}
+        {topActions}
         {usage && (
-          <button type="button" className="fc-usage" onClick={showUsageCard} title="Verbrauch (5 Stunden)">
+          <button type="button" className="fc-usage" onClick={showUsageCard} title={usage.unit === 'percent' ? `Claude-Limit 5 Stunden: ${usage.fiveHour.used} %` : 'Verbrauch (5 Stunden)'}>
             <Gauge size={13} />
             <span className="fc-meter mini">
               <i style={{ width: `${Math.min(100, (100 * usage.fiveHour.used) / Math.max(1, usage.fiveHour.limit))}%` }} />
@@ -826,9 +1097,69 @@ export function FancyCodePanel({
         }}
       >
         <div className="fc-thread">
-          {startError && <div className="fc-note error">FancyCode konnte nicht starten: {startError}</div>}
-          {!ready && !startError && <div className="fc-loading">FancyCode startet …</div>}
-          {ready && !account && (
+          {startError && <div className="fc-note error">{engineName} konnte nicht starten: {startError}</div>}
+          {!ready && !startError && <div className="fc-loading">{engineName} startet …</div>}
+          {ready && isClaude && !account && (
+            <div className="fc-login">
+              <Sparkles size={26} />
+              {claudeInfo && !claudeInfo.installed ? (
+                <>
+                  <h3>Claude Code einrichten</h3>
+                  <p className="fc-muted">Claude arbeitet hier mit deinem eigenen Claude-Abo (Pro/Max) oder API-Konto. Dafür braucht es das offizielle Claude Code – die App installiert es mit einem Klick von claude.ai.</p>
+                  {installing ? (
+                    <div className="fc-install-log">
+                      <div className="fc-loading">Installiere …</div>
+                      {installing.map((l, i) => (
+                        <div key={i} className="fc-muted fc-small">{l}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="fc-ask-btns">
+                      <button type="button" className="fc-btn primary" onClick={() => { setInstalling([]); send({ type: 'command', name: 'install' }); }}>
+                        <Sparkles size={14} /> Claude Code installieren
+                      </button>
+                      <button type="button" className="fc-btn" onClick={() => send({ type: 'command', name: 'refresh' })}>
+                        Erneut prüfen
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : loginUrl ? (
+                <>
+                  <h3>Anmeldung im Browser abschließen</h3>
+                  <p className="fc-muted">Der Browser ist offen. Meldet sich Claude danach nicht von selbst, kopiere den angezeigten Code hierher.</p>
+                  <div className="fc-login-code">
+                    <input value={loginCode} onChange={(e) => setLoginCode(e.target.value)} placeholder="Code aus dem Browser" maxLength={500} />
+                    <button type="button" className="fc-btn primary" disabled={!loginCode.trim()} onClick={() => send({ type: 'command', name: 'login_code', arg: loginCode })}>
+                      Bestätigen
+                    </button>
+                  </div>
+                  <div className="fc-ask-btns">
+                    <button type="button" className="fc-btn" onClick={() => bridge.openExternal?.(loginUrl)}>
+                      Browser erneut öffnen
+                    </button>
+                    <button type="button" className="fc-btn" onClick={() => copyToClipboard(loginUrl)}>
+                      <Copy size={13} /> Link kopieren
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3>Mit Claude anmelden</h3>
+                  <p className="fc-muted">Nutze dein Claude-Abo (Pro/Max) oder ein Anthropic-API-Konto. Die Anmeldung läuft über Claude Code selbst – {claudeInfo?.version ? `Version ${claudeInfo.version}` : 'installiert'}. Die App sieht deine Zugangsdaten nie.</p>
+                  <div className="fc-ask-btns">
+                    <button type="button" className="fc-btn primary" onClick={() => runSlash('/login')}>
+                      <LogIn size={14} /> Mit Claude-Abo anmelden
+                    </button>
+                    <button type="button" className="fc-btn" onClick={() => runSlash('/login console')}>
+                      <LogIn size={14} /> Mit API-Konto
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {ready && !isClaude && !account && (
             <div className="fc-login">
               <Zap size={26} />
               <h3>Mit deinem FancyServers-Konto anmelden</h3>
@@ -848,7 +1179,11 @@ export function FancyCodePanel({
             <div className="fc-welcome">
               <Zap size={30} />
               <h3>Was soll ich in {folderName} tun?</h3>
-              <p className="fc-muted">FancyCode liest deinen Code, ändert Dateien und führt Befehle aus – vor Änderungen fragt es nach.</p>
+              <p className="fc-muted">
+                {isClaude
+                  ? `Claude arbeitet mit deinem Konto ${account.name}: liest Code, ändert Dateien, führt Befehle aus und nutzt deine Skills und MCP-Server.`
+                  : 'FancyCode liest deinen Code, ändert Dateien und führt Befehle aus – vor Änderungen fragt es nach.'}
+              </p>
               <div className="fc-suggest">
                 {['Erkläre mir dieses Projekt', 'Finde und behebe Fehler im Build', 'Schreib Tests für die wichtigsten Funktionen', '/init'].map((s) => (
                   <button key={s} type="button" onClick={() => (s.startsWith('/') ? runSlash(s) : setInput(s))}>
@@ -878,6 +1213,7 @@ export function FancyCodePanel({
             }
             if (item.k === 'tool') return <ToolCard key={item.id} item={item} />;
             if (item.k === 'ask') return <AskCard key={item.id} item={item} onAnswer={(a) => answer(item.id, a)} />;
+            if (item.k === 'question') return <QuestionCard key={item.id} item={item} onAnswer={(a) => answerQuestion(item.id, a)} />;
             if (item.k === 'card')
               return (
                 <div key={item.id} className="fc-card">
@@ -900,7 +1236,7 @@ export function FancyCodePanel({
       </div>
 
       <div className="fc-bottom">
-        <Todos todos={todos} />
+        <Todos todos={todos} running={running} />
         {suggestions.length > 0 && (!input.trim() || suggestions.includes(input)) && (
           <div className="fc-suggests">
             {suggestions.map((s) => (
@@ -942,7 +1278,7 @@ export function FancyCodePanel({
                 </div>
               )}
               <div className="fc-pop-title">
-                {menu === 'model' ? 'Modell' : 'Rechte'}
+                {menu === 'model' ? 'Modell' : menu === 'effort' ? 'Denktiefe' : 'Rechte'}
                 <button type="button" onClick={() => setMenu('')}>
                   <X size={13} />
                 </button>
@@ -953,7 +1289,7 @@ export function FancyCodePanel({
                       <button
                         key={m.id}
                         type="button"
-                        className={(model || 'fancy') === m.id ? 'active' : ''}
+                        className={activeModel === m.id ? 'active' : ''}
                         onMouseEnter={() => setHoverModel(m.id)}
                         onMouseLeave={() => setHoverModel('')}
                         onFocus={() => setHoverModel(m.id)}
@@ -967,7 +1303,21 @@ export function FancyCodePanel({
                         <b>{m.label}</b> <span>{m.note}</span>
                       </button>
                     ))
-                  : MODES.map((o) => (
+                  : menu === 'effort'
+                    ? efforts.map((e) => (
+                        <button
+                          key={e}
+                          type="button"
+                          className={effort === e ? 'active' : ''}
+                          onClick={() => {
+                            send({ type: 'set', effort: e });
+                            setMenu('');
+                          }}
+                        >
+                          <b>{EFFORT_LABEL[e] || e}</b> <span>{e === 'low' ? 'Schnell, für einfache Aufgaben' : e === 'medium' ? 'Ausgewogen' : e === 'high' ? 'Gründlich – empfohlen' : e === 'xhigh' ? 'Sehr gründlich für schwere Aufgaben' : 'Maximale Tiefe, langsam und teuer'}</span>
+                        </button>
+                      ))
+                    : modes.map((o) => (
                       <button
                         key={o.id}
                         type="button"
@@ -981,7 +1331,7 @@ export function FancyCodePanel({
                       </button>
                     ))}
               </div>
-              {menu === 'model' && hoverInfo && (
+              {menu === 'model' && hoverInfo && !isClaude && (
                 <div className="fc-model-info">
                   <div className="fc-mi-title">Rate-Limits</div>
                   <div className="fc-mi-row">
@@ -1013,7 +1363,7 @@ export function FancyCodePanel({
             rows={1}
             value={input}
             disabled={!ready}
-            placeholder={account ? 'Beschreibe, was FancyCode tun soll … (/ für Befehle)' : 'Bitte zuerst anmelden'}
+            placeholder={account ? `Beschreibe, was ${engineName} tun soll … (/ für Befehle)` : 'Bitte zuerst anmelden'}
             onChange={(e) => {
               setInput(e.target.value);
               setAcClosed(false);
@@ -1053,6 +1403,11 @@ export function FancyCodePanel({
             <button type="button" className="fc-chip" onClick={() => setMenu(menu === 'model' ? '' : 'model')}>
               <Sparkles size={13} /> {modelLabel}
             </button>
+            {efforts.length > 0 && (
+              <button type="button" className="fc-chip" onClick={() => setMenu(menu === 'effort' ? '' : 'effort')} title="Denktiefe (Reasoning)">
+                <Gauge size={13} /> {EFFORT_LABEL[effort] || effort || 'Denktiefe'}
+              </button>
+            )}
             <div className="fc-spacer" />
             {running ? (
               <button type="button" className="fc-send stop" title="Abbrechen (Esc)" onClick={() => send({ type: 'abort' })}>

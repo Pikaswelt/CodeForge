@@ -33,3 +33,5 @@ export declare function startCollab(o: StartOptions): {
     mountChat(container: HTMLElement): CollabChat;
     stop(): void;
 };
+export { startAppPopups, pageTheme, type AccountPopup, type AppStatus, type AppPopupOptions } from './apppopups';
+export { openPlans, requireFeature, showLocked, loadPlanCatalog, planCatalogSync, planLabel, planBadge, planAtLeast, planRank, featureAllowed, featureMinPlan, normalizePlan as normalizePlanId, type PlanId, type PlanInfo, type PlanCatalog, type PlanUsage, type UsageRow, type PlansOptions, } from './plans';

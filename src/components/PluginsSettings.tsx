@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, Download, Loader2, Puzzle, RefreshCw, Trash2
 import { usePlugins } from '../plugins/PluginProvider';
 import { BuiltinSkills } from './BuiltinSkills';
 import type { FancyPluginCatalog, FancyPluginInstalled } from '../electron';
+import { requirePlanFeature } from '../plans';
 
 const cleanError = (error: unknown) =>
   error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : tr("Unbekannter Fehler");
@@ -43,6 +44,7 @@ export function PluginsSettings() {
   const findInstalled = (id: string): FancyPluginInstalled | undefined => installed.find((plugin) => plugin.id === id);
 
   const install = async (id: string) => {
+    if (!requirePlanFeature('fancycode.plugins')) return;
     const api = window.agentWorkspace?.plugins;
     if (!api) return;
     setBusy(id);

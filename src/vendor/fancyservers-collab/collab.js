@@ -271,10 +271,12 @@ function timeLabel(ts) {
 var BRANDS = {
   fancycode: { key: "fancycode", name: "FancyCode Desktop", letters: ["F", "c"], accent: "#3b82f6", from: "#60a5fa", to: "#1d4ed8", light: "#bfdbfe" },
   fancyagent: { key: "fancyagent", name: "FancyAgent", letters: ["F", "a"], accent: "#8b5cf6", from: "#a78bfa", to: "#6d28d9", light: "#ddd6fe" },
-  kuroi: { key: "kuroi", name: "Kuroi Studio", letters: ["K", "s"], accent: "#ec4868", from: "#fb7185", to: "#be185d", light: "#fecdd3" }
+  kuroi: { key: "kuroi", name: "Kuroi Studio", letters: ["K", "s"], accent: "#ec4868", from: "#fb7185", to: "#be185d", light: "#fecdd3" },
+  fancygames: { key: "fancygames", name: "FancyGames Studio", letters: ["F", "g"], accent: "#5b5cf6", from: "#34d399", to: "#4f46e5", light: "#c7d2fe" }
 };
 function brandOf(app) {
   if (app === "kuroi") return BRANDS.kuroi;
+  if (app === "fancygames") return BRANDS.fancygames;
   if (app === "fancycode" || app === "fancycode-cli") return BRANDS.fancycode;
   return BRANDS.fancyagent;
 }
@@ -1633,6 +1635,816 @@ function withMe(m, meId) {
   return { ...m, reactions: (m.reactions || []).map((r) => ({ ...r, me: r.me ?? false })), _me: meId };
 }
 
+// src/apppopups.ts
+var fmtDate = (t) => new Date(t).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+var planName = (p) => p === "max" ? "Galaxy" : p === "pro" ? "Nova" : p === "mini" ? "Spark" : "";
+var APP_NAME = { fancycode: "FancyCode", fancygames: "FancyGames", fancyagent: "FancyAgent", kuroi: "Kuroi Studio" };
+function giftText(p, app) {
+  const parts = [];
+  if (p.plan && p.days) parts.push(`${APP_NAME[app]} ${planName(p.plan)}`);
+  if (p.resets) parts.push(`${p.resets} Limit-Reset${p.resets === 1 ? "" : "s"}`);
+  if (p.supermode) parts.push("Supermode bis heute Nacht");
+  const what = parts.join(" + ") || "ein Geschenk";
+  const dur = p.plan && p.days ? p.days % 30 === 0 ? `${p.days / 30} ${p.days === 30 ? "Monat" : "Monate"}` : `${p.days} Tage` : p.resets ? "sofort nutzbar" : "";
+  return { what, dur };
+}
+function pageTheme() {
+  for (const el of [document.body, document.documentElement, document.querySelector("#root, #app")]) {
+    if (!el) continue;
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(getComputedStyle(el).backgroundColor);
+    if (!m || m[4] !== void 0 && Number(m[4]) < 0.5) continue;
+    const [r, g, b] = [m[1], m[2], m[3]].map(Number);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 140 ? "light" : "dark";
+  }
+  return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+function startAppPopups(o) {
+  const f = o.fetch || ((...a) => fetch(...a));
+  const root = h("div", { class: "fsp-root", "data-app": o.app });
+  (o.container || document.body).appendChild(root);
+  const theme = () => o.theme?.() || pageTheme();
+  const abs = (u) => !u ? "" : /^https:\/\//.test(u) ? u : u.startsWith("/") ? `${o.apiBase.replace(/\/+$/, "")}${u}` : "";
+  const open = (url) => o.openExternal ? o.openExternal(url) : window.open(url, "_blank", "noopener");
+  let status = null;
+  const queue = [];
+  const handled = /* @__PURE__ */ new Set();
+  let shown = "";
+  let stopped = false;
+  if (!["fancycode", "fancygames", "fancyagent", "kuroi"].includes(o.app)) {
+    const brand = BRANDS[o.app] || BRANDS.fancyagent;
+    root.style.setProperty("--fsp-accent", brand.accent);
+    root.style.setProperty("--fsp-from", brand.from);
+    root.style.setProperty("--fsp-to", brand.to);
+  }
+  const art = (img) => img ? h("div", { class: "fsp-art" }, h("img", { src: img, alt: "", onerror: (e) => e.target.parentElement.style.display = "none" })) : null;
+  function full(kind, img, title, body, actions) {
+    return h(
+      "div",
+      { class: `fsp-full fsp-${kind}`, role: "alertdialog", "aria-modal": "true" },
+      h("div", { class: "fsp-full-card" }, art(img), h("h1", {}, title), ...body, actions.length ? h("div", { class: "fsp-actions" }, ...actions) : null)
+    );
+  }
+  function giftCard(p, close) {
+    const { what, dur } = giftText(p, o.app);
+    const img = abs(theme() === "light" ? p.imageLight || p.image : p.imageDark || p.image);
+    return h(
+      "div",
+      { class: "fsp-backdrop" },
+      h(
+        "div",
+        { class: "fsp-card fsp-gift", role: "dialog", "aria-modal": "true" },
+        h("button", { class: "fsp-x", title: "Schlie\xDFen", "aria-label": "Schlie\xDFen", onclick: close }, "\xD7"),
+        art(img),
+        h("h2", {}, p.title && !/^geschenk!?$/i.test(p.title) ? p.title : "Du hast ein ", p.title && !/^geschenk!?$/i.test(p.title) ? "" : h("em", {}, "Geschenk"), p.title && !/^geschenk!?$/i.test(p.title) ? "" : " erhalten!"),
+        h("p", { class: "fsp-sub" }, p.message || `F\xFCr dich: ${what}.`),
+        h(
+          "div",
+          { class: "fsp-giftrow" },
+          h("span", { class: "fsp-crown", "aria-hidden": "true" }, "\u265B"),
+          h("div", {}, h("b", {}, what), dur ? h("small", {}, `Dauer: ${dur}`) : null),
+          h("span", { class: "fsp-from" }, "Von: FancyServers \u2665")
+        ),
+        h("p", { class: "fsp-enjoy" }, "\u2726 Viel Spa\xDF mit den neuen Funktionen!"),
+        h("button", { class: "fsp-btn", onclick: close }, "Super!", h("span", { "aria-hidden": "true" }, " \u203A"))
+      )
+    );
+  }
+  function noticeCard(p, close) {
+    const img = abs(theme() === "light" ? p.imageLight || p.image : p.imageDark || p.image);
+    const cta = p.cta ? h("button", { class: "fsp-btn", onclick: () => open(p.cta.url) }, p.cta.label) : null;
+    if (p.blocking) return full("blocking", img, p.title || "Hinweis", [h("p", { class: "fsp-sub" }, p.message)], cta ? [cta] : []);
+    return h(
+      "div",
+      { class: "fsp-backdrop" },
+      h(
+        "div",
+        { class: "fsp-card", role: "dialog", "aria-modal": "true" },
+        h("button", { class: "fsp-x", title: "Schlie\xDFen", "aria-label": "Schlie\xDFen", onclick: close }, "\xD7"),
+        art(img),
+        h("h2", {}, p.title || "Hinweis"),
+        p.message ? h("p", { class: "fsp-sub fsp-pre" }, p.message) : null,
+        h("div", { class: "fsp-actions" }, cta, h("button", { class: cta ? "fsp-btn ghost" : "fsp-btn", onclick: close }, "Okay"))
+      )
+    );
+  }
+  function render() {
+    if (stopped) return;
+    root.setAttribute("data-theme", theme());
+    let node = null;
+    let key = "";
+    const m = status?.maintenance;
+    const u = status?.update;
+    if (m?.active) {
+      key = `m:${m.title}:${m.message}:${m.until}`;
+      node = full("maint", abs(m.image), m.title, [h("p", { class: "fsp-sub fsp-pre" }, m.message), m.until ? h("p", { class: "fsp-until" }, `Voraussichtlich bis ${fmtDate(m.until)}`) : h("p", { class: "fsp-until" }, "Die App pr\xFCft regelm\xE4\xDFig, ob es weitergeht.")], [h("button", { class: "fsp-btn ghost", onclick: () => void check() }, "Erneut pr\xFCfen")]);
+    } else if (u?.required) {
+      key = `u:${u.minVersion}`;
+      const btn = h("button", { class: "fsp-btn", onclick: async () => {
+        btn.setAttribute("disabled", "");
+        btn.textContent = "Update l\xE4uft \u2026";
+        try {
+          if (o.onUpdate) await o.onUpdate(u);
+          else if (u.url) open(u.url);
+        } finally {
+          setTimeout(() => {
+            btn.removeAttribute("disabled");
+            btn.textContent = "Jetzt aktualisieren";
+          }, 4e3);
+        }
+      } }, "Jetzt aktualisieren");
+      node = full(
+        "update",
+        abs(`/popups/${o.app}-gift-${theme()}.webp`),
+        "Update erforderlich",
+        [h("p", { class: "fsp-sub" }, `Diese Version (${o.version}) wird nicht mehr unterst\xFCtzt. Bitte aktualisiere auf ${u.latest || u.minVersion} oder neuer, um ${APP_NAME[o.app]} weiter zu nutzen.`), u.notes ? h("p", { class: "fsp-notes fsp-pre" }, u.notes) : null].filter(Boolean),
+        [btn, ...u.url && o.onUpdate ? [h("button", { class: "fsp-btn ghost", onclick: () => open(u.url) }, "Download-Seite")] : []]
+      );
+    } else {
+      const blocking = queue.find((p2) => p2.blocking);
+      const p = blocking || queue[0];
+      if (p) {
+        key = `p:${p.id}:${theme()}`;
+        const close = () => {
+          if (p.blocking) return;
+          handled.add(p.id);
+          queue.splice(queue.indexOf(p), 1);
+          void o.markSeen?.([p.id]);
+          render();
+        };
+        node = p.kind === "gift" && !p.blocking ? giftCard(p, close) : noticeCard(p, close);
+      }
+    }
+    if (key === shown) return;
+    shown = key;
+    root.replaceChildren(...node ? [node] : []);
+  }
+  async function check() {
+    try {
+      const r = await f(`${o.apiBase.replace(/\/+$/, "")}/v1/app/status?app=${encodeURIComponent(o.app)}&version=${encodeURIComponent(o.version)}`, { cache: "no-store" });
+      if (r.ok) status = await r.json();
+    } catch {
+    }
+    try {
+      const items = await o.fetchPopups?.() || [];
+      const live = new Set(items.map((p) => p.id));
+      for (let i = queue.length - 1; i >= 0; i--) if (queue[i].blocking && !live.has(queue[i].id)) queue.splice(i, 1);
+      for (const p of items) if (!handled.has(p.id) && !queue.some((q) => q.id === p.id)) queue.push(p);
+    } catch {
+    }
+    render();
+  }
+  const onFocus = () => void check();
+  window.addEventListener("focus", onFocus);
+  const timer = setInterval(() => document.visibilityState === "visible" && void check(), o.pollMs || 5 * 6e4);
+  const fast = setInterval(() => (status?.maintenance?.active || status?.update?.required) && void check(), 3e4);
+  void check();
+  return {
+    check,
+    /** Nach Theme-Wechsel neu zeichnen. */
+    refresh: () => {
+      shown = "";
+      render();
+    },
+    get blocked() {
+      return Boolean(status?.maintenance?.active || status?.update?.required || queue.some((p) => p.blocking));
+    },
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+      clearInterval(fast);
+      window.removeEventListener("focus", onFocus);
+      root.remove();
+    }
+  };
+}
+
+// src/plan-catalog.generated.ts
+var FALLBACK_CATALOG = {
+  "version": 1,
+  "order": [
+    "free",
+    "mini",
+    "pro",
+    "max"
+  ],
+  "yearlyDiscount": 0.2,
+  "currency": "EUR",
+  "upgradeUrl": "https://fancyservers.crazymine.de/#plaene",
+  "plans": [
+    {
+      "id": "free",
+      "name": "Free",
+      "tagline": "Zum Reinschnuppern",
+      "icon": "star",
+      "badge": "",
+      "price": {
+        "month": 0,
+        "yearMonthly": 0,
+        "year": 0
+      },
+      "tokens": {
+        "fiveHour": 0,
+        "weekly": 0
+      },
+      "monthlyResets": 0,
+      "perks": [
+        "Konto f\xFCr alle FancyServers-Apps",
+        "Kein KI-Kontingent \u2013 KI gibt es ab Spark",
+        "Community-Support im Discord"
+      ],
+      "apps": {
+        "fancycode": [
+          "2 Terminals",
+          "1 V-Server",
+          "FancyCode-Agent",
+          "MCP ohne Server-Limit"
+        ],
+        "fancygames": [
+          "FancyCode-Agent & Engine-Tools",
+          "MCP ohne Server-Limit"
+        ],
+        "fancyagent": [
+          "2 Projekte",
+          "1 Agent",
+          "1 Mitglied/Projekt",
+          "100 Aufrufe/Tag & Projekt",
+          "100 MB Speicher"
+        ],
+        "kuroi": [
+          "Schneiden, Effekte, Export",
+          "MCP: Projekte, Ops, Beats, Export",
+          "Videos bis 50 MB im Team"
+        ]
+      }
+    },
+    {
+      "id": "mini",
+      "name": "Spark",
+      "tagline": "Mehr Power f\xFCr Kreative",
+      "icon": "bolt",
+      "badge": "Spark",
+      "price": {
+        "month": 2.99,
+        "yearMonthly": 2.39,
+        "year": 28.7
+      },
+      "tokens": {
+        "fiveHour": 6e5,
+        "weekly": 3e6
+      },
+      "monthlyResets": 0,
+      "perks": [
+        "600.000 Tokens / 5 h \xB7 3 Mio. / Woche",
+        "Auto: w\xE4hlt immer ein freies Modell \u2013 kein Abbruch bei Engp\xE4ssen",
+        "Claude direkt in allen Apps",
+        "Spark-Badge im Profil"
+      ],
+      "apps": {
+        "fancycode": [
+          "4 Terminals",
+          "2 V-Server",
+          "Animierte & eigene Themes",
+          "Eigene Harnesses",
+          "Plugins & Skills",
+          "Spracheingabe & Spotify-Widget"
+        ],
+        "fancygames": [
+          "Claude direkt im Agent",
+          "Live teilen im Team",
+          "Eigene Harnesses",
+          "Eigene Themes"
+        ],
+        "fancyagent": [
+          "5 Projekte",
+          "5 Agents",
+          "5 Mitglieder/Projekt",
+          "2.000 Aufrufe/Tag & Projekt",
+          "1 GB Speicher"
+        ],
+        "kuroi": [
+          "MCP: Auto-Untertitel, Beat-Schnitt, URL-Download",
+          "MCP: Presets & Schriften speichern",
+          "KI-Agent beim Schneiden (FancyCode & Claude)",
+          "KI-Texte f\xFCr TikTok & YouTube Shorts",
+          "Videos bis 150 MB im Team"
+        ]
+      }
+    },
+    {
+      "id": "pro",
+      "name": "Nova",
+      "tagline": "F\xFCr alle, die ernsthaft bauen",
+      "icon": "crown",
+      "popular": true,
+      "badge": "Nova",
+      "price": {
+        "month": 7.99,
+        "yearMonthly": 6.39,
+        "year": 76.7
+      },
+      "tokens": {
+        "fiveHour": 15e5,
+        "weekly": 75e5
+      },
+      "monthlyResets": 0,
+      "perks": [
+        "1,5 Mio. Tokens / 5 h \xB7 7,5 Mio. / Woche",
+        "Auto: w\xE4hlt immer ein freies Modell \u2013 kein Abbruch bei Engp\xE4ssen",
+        "Alles aus Spark",
+        "Animierte Themes & Hintergr\xFCnde",
+        "Fr\xFCher Zugang zu Beta-Funktionen",
+        "Nova-Badge im Profil"
+      ],
+      "apps": {
+        "fancycode": [
+          "8 Terminals",
+          "5 V-Server"
+        ],
+        "fancygames": [
+          "Mehr Agent-Budget f\xFCr gro\xDFe Projekte"
+        ],
+        "fancyagent": [
+          "10 Projekte",
+          "25 Agents",
+          "25 Mitglieder/Projekt",
+          "10.000 Aufrufe/Tag & Projekt",
+          "5 GB Speicher"
+        ],
+        "kuroi": [
+          "MCP: Referenz 1:1 nachbauen (Vergleich, Schrift-Erkennung)",
+          "MCP: Fensteraufnahme",
+          "Video-Stats: 20 Videos tracken, Update alle 6 h",
+          "Claude kennt deine Stats (MCP, 30 Abfragen/h)",
+          "Videos bis 300 MB im Team",
+          "10 GB Team-Speicher"
+        ]
+      }
+    },
+    {
+      "id": "max",
+      "name": "Galaxy",
+      "tagline": "Das volle Erlebnis",
+      "icon": "gem",
+      "badge": "Galaxy",
+      "price": {
+        "month": 19.99,
+        "yearMonthly": 15.99,
+        "year": 191.9
+      },
+      "tokens": {
+        "fiveHour": 6e6,
+        "weekly": 3e7
+      },
+      "monthlyResets": 0,
+      "perks": [
+        "6 Mio. Tokens / 5 h \xB7 30 Mio. / Woche",
+        "Alles aus Nova",
+        "Freie Modellwahl: Auto oder jedes Modell fest",
+        "Bevorzugter Support",
+        "Galaxy-Badge im Profil"
+      ],
+      "apps": {
+        "fancycode": [
+          "12 Terminals",
+          "20 V-Server"
+        ],
+        "fancygames": [
+          "H\xF6chstes Agent-Budget"
+        ],
+        "fancyagent": [
+          "Unbegrenzt Projekte & Agents",
+          "200.000 Aufrufe/Tag & Projekt",
+          "100 GB Speicher"
+        ],
+        "kuroi": [
+          "MCP: alle Werkzeuge inkl. Referenz & Aufnahme",
+          "Video-Stats: unbegrenzt, Update jede Stunde",
+          "Claude kennt deine Stats (MCP, 120 Abfragen/h)",
+          "Videos bis 1 GB im Team",
+          "50 GB Team-Speicher"
+        ]
+      }
+    }
+  ],
+  "features": {
+    "fancycode.claude": {
+      "app": "fancycode",
+      "label": "Claude direkt im Agent",
+      "minPlan": "mini"
+    },
+    "fancycode.animated": {
+      "app": "fancycode",
+      "label": "Animierte Hintergr\xFCnde",
+      "minPlan": "mini"
+    },
+    "fancygames.claude": {
+      "app": "fancygames",
+      "label": "Claude direkt im Agent",
+      "minPlan": "mini"
+    },
+    "fancygames.share": {
+      "app": "fancygames",
+      "label": "Live teilen im Team",
+      "minPlan": "mini"
+    },
+    "fancycode.harness": {
+      "app": "fancycode",
+      "label": "Eigene KI-Clients (Harnesses)",
+      "minPlan": "mini"
+    },
+    "fancycode.plugins": {
+      "app": "fancycode",
+      "label": "Plugins & eigene Skills",
+      "minPlan": "mini"
+    },
+    "fancycode.voice": {
+      "app": "fancycode",
+      "label": "Spracheingabe (Whisper)",
+      "minPlan": "mini"
+    },
+    "fancycode.spotify": {
+      "app": "fancycode",
+      "label": "Spotify-Widget",
+      "minPlan": "mini"
+    },
+    "fancycode.themes": {
+      "app": "fancycode",
+      "label": "Eigene Themes",
+      "minPlan": "mini"
+    },
+    "fancygames.harness": {
+      "app": "fancygames",
+      "label": "Eigene KI-Clients (Harnesses)",
+      "minPlan": "mini"
+    },
+    "fancygames.themes": {
+      "app": "fancygames",
+      "label": "Eigene Themes",
+      "minPlan": "mini"
+    },
+    "kuroi.agent": {
+      "app": "kuroi",
+      "label": "KI-Agent beim Schneiden (FancyCode & Claude)",
+      "minPlan": "mini"
+    },
+    "kuroi.mcp.captions": {
+      "app": "kuroi",
+      "label": "MCP: Auto-Untertitel (editor_captions)",
+      "minPlan": "mini"
+    },
+    "kuroi.mcp.beatcut": {
+      "app": "kuroi",
+      "label": "MCP: Beat-Schnitt (editor_beat_cut)",
+      "minPlan": "mini"
+    },
+    "kuroi.mcp.download": {
+      "app": "kuroi",
+      "label": "MCP: Video/Audio von URLs laden (editor_download)",
+      "minPlan": "mini"
+    },
+    "kuroi.mcp.library": {
+      "app": "kuroi",
+      "label": "MCP: Presets & Schriften speichern (editor_preset_save, editor_font_add)",
+      "minPlan": "mini"
+    },
+    "kuroi.mcp.reference": {
+      "app": "kuroi",
+      "label": "MCP: Referenz 1:1 nachbauen (editor_reference*, font_match, compare)",
+      "minPlan": "pro"
+    },
+    "kuroi.mcp.record": {
+      "app": "kuroi",
+      "label": "MCP: Fensteraufnahme (editor_record_window)",
+      "minPlan": "pro"
+    },
+    "kuroi.publish": {
+      "app": "kuroi",
+      "label": "KI-Texte f\xFCr TikTok & YouTube Shorts (Titel, Beschreibung, Hashtags)",
+      "minPlan": "mini"
+    },
+    "kuroi.stats": {
+      "app": "kuroi",
+      "label": "Video-Stats: Aufrufe, Likes, Verlauf & Vergleich",
+      "minPlan": "pro"
+    },
+    "kuroi.mcp.stats": {
+      "app": "kuroi",
+      "label": "MCP: Video-Stats abfragen (editor_video_stats) + Claude im Statistik-Tab fragen",
+      "minPlan": "pro"
+    },
+    "models.paid": {
+      "app": "*",
+      "label": "Bessere KI-Modelle",
+      "minPlan": "mini"
+    },
+    "beta": {
+      "app": "*",
+      "label": "Fr\xFCher Zugang zu Beta-Funktionen",
+      "minPlan": "pro"
+    }
+  }
+};
+
+// src/plans.ts
+var DEFAULT_API = "https://account.crazymine.de";
+var catalog = FALLBACK_CATALOG;
+var loading = null;
+function loadPlanCatalog(apiBase = DEFAULT_API, f) {
+  if (loading) return loading;
+  const doFetch = f || ((...a) => fetch(...a));
+  loading = doFetch(`${apiBase.replace(/\/+$/, "")}/v1/plans`).then((r) => r.ok ? r.json() : null).then((c) => {
+    if (c && Array.isArray(c.plans) && c.plans.length) catalog = c;
+    return catalog;
+  }).catch(() => catalog);
+  return loading;
+}
+function planCatalogSync() {
+  return catalog;
+}
+function normalizePlan(p) {
+  return p === "mini" || p === "pro" || p === "max" ? p : "free";
+}
+function planRank(p) {
+  return ["free", "mini", "pro", "max"].indexOf(normalizePlan(p));
+}
+function planAtLeast(p, min) {
+  return planRank(p) >= planRank(min);
+}
+function planLabel(p) {
+  const id = normalizePlan(p);
+  return catalog.plans.find((x) => x.id === id)?.name || "Free";
+}
+function featureMinPlan(feature) {
+  return catalog.features[feature]?.minPlan || "free";
+}
+function featureAllowed(p, feature) {
+  return planAtLeast(p, featureMinPlan(feature));
+}
+function planBadge(p) {
+  const id = normalizePlan(p);
+  return h("span", { class: `fsx-badge fsx-badge-${id}`, title: `Plan: ${planLabel(id)}` }, planLabel(id));
+}
+var ICONS = {
+  star: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3 6.9 7.5.7-5.7 5 1.7 7.4L12 18.2 5.5 22l1.7-7.4L1.5 9.6 9 8.9z"/></svg>',
+  bolt: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+  crown: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5z"/></svg>',
+  gem: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12l4 6-10 12L2 9z"/></svg>'
+};
+var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+var eur = (n) => `${n.toLocaleString("de-DE", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })} \u20AC`;
+var num = (n) => n >= 1e6 ? `${(n / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Mio.` : n.toLocaleString("de-DE");
+var clock = (t) => new Date(t).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+function shell(o) {
+  const root = h("div", { class: "fsp-root fsx-root", "data-app": o.app, "data-theme": o.theme?.() || pageTheme() });
+  (o.container || document.body).appendChild(root);
+  return root;
+}
+function openUrl(o, url) {
+  if (o.openExternal) o.openExternal(url);
+  else window.open(url, "_blank", "noopener");
+}
+function upgradeUrl(o, plan) {
+  const base = catalog.upgradeUrl || "https://fancyservers.crazymine.de/#plaene";
+  const [u, hash] = base.split("#");
+  return `${u}${u.includes("?") ? "&" : "?"}plan=${plan}&app=${o.app}${hash ? `#${hash}` : ""}`;
+}
+function openPlans(o, tab = "plans") {
+  const root = shell(o);
+  let yearly = false;
+  let usage = null;
+  let extra = [];
+  let busy = false;
+  let current = normalizePlan(o.plan?.());
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", onKey);
+    root.remove();
+    o.onClose?.();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKey);
+  const body = h("div", { class: "fsx-body" });
+  const tabs = h("div", { class: "fsx-tabs", role: "tablist" });
+  const toggle = h("div", { class: "fsx-toggle" });
+  const brand = BRANDS[o.app];
+  const card = h(
+    "div",
+    { class: "fsx-card", role: "dialog", "aria-modal": "true", "aria-label": "Pl\xE4ne & Nutzung" },
+    h("button", { class: "fsp-x", "aria-label": "Schlie\xDFen", onclick: close }, "\xD7"),
+    h("div", { class: "fsx-glow" }),
+    h("div", { class: "fsx-brand" }, h("img", { src: logoDataUrl(o.app), alt: "", width: 30, height: 30 }), h("span", null, brand.name)),
+    h(
+      "div",
+      { class: "fsx-top" },
+      h(
+        "div",
+        null,
+        h("h2", { class: "fsx-title" }, "Pl\xE4ne & ", h("em", null, "Nutzung")),
+        h("p", { class: "fsx-sub" }, "Ein Abo f\xFCr alle FancyServers-Apps \u2013 such dir den passenden Plan aus."),
+        h("div", { class: "fsx-line" })
+      ),
+      toggle
+    ),
+    tabs,
+    body
+  );
+  const backdrop = h("div", { class: "fsp-backdrop fsx-backdrop", onclick: (e) => e.target === backdrop && close() }, card);
+  root.appendChild(backdrop);
+  const renderTabs = () => {
+    clear(tabs);
+    for (const [id, label] of [["plans", "Pl\xE4ne"], ["usage", "Nutzung"]]) {
+      tabs.appendChild(h("button", { class: tab === id ? "on" : "", role: "tab", "aria-selected": String(tab === id), onclick: () => {
+        tab = id;
+        render();
+      } }, label));
+    }
+    clear(toggle);
+    if (tab !== "plans") return;
+    toggle.appendChild(h("button", { class: yearly ? "" : "on", onclick: () => {
+      yearly = false;
+      render();
+    } }, "Monatlich"));
+    toggle.appendChild(h("button", { class: yearly ? "on" : "", onclick: () => {
+      yearly = true;
+      render();
+    } }, "J\xE4hrlich ", h("span", { class: "fsx-save" }, `-${Math.round(catalog.yearlyDiscount * 100)} %`)));
+  };
+  const planCard = (p) => {
+    const rank = planRank(current);
+    const mine = p.id === current;
+    const lower = planRank(p.id) < rank;
+    const appPerks = p.apps[o.app] || [];
+    const price = yearly ? p.price.yearMonthly : p.price.month;
+    const btn = mine ? h("button", { class: "fsx-btn ghost", disabled: true }, "Aktueller Plan") : lower ? h("button", { class: "fsx-btn ghost", disabled: true }, "Enthalten") : h("button", { class: `fsx-btn ${p.popular ? "" : "outline"}`, onclick: () => openUrl(o, upgradeUrl(o, p.id)) }, p.id === "max" ? h("span", { class: "fsx-ic-s", html: ICONS.crown }) : null, `Upgrade auf ${p.name}`, p.popular ? " \u203A" : "");
+    const prev = catalog.plans[catalog.plans.indexOf(p) - 1];
+    return h(
+      "div",
+      { class: `fsx-plan${p.popular ? " pop" : ""}${mine ? " mine" : ""}`, "data-plan": p.id },
+      p.popular ? h("div", { class: "fsx-tag" }, "\u2605 Beliebt") : null,
+      h("div", { class: "fsx-phead" }, h("div", { class: "fsx-ic", html: ICONS[p.icon] }), h("div", null, h("b", null, p.name), h("small", null, p.tagline))),
+      h("div", { class: "fsx-price" }, eur(price), h("span", null, " / Monat")),
+      h("div", { class: "fsx-yearly" }, yearly && p.price.year ? `${eur(p.price.year)} j\xE4hrlich` : p.price.month ? "" : "f\xFCr immer"),
+      h(
+        "ul",
+        null,
+        prev ? h("li", { class: "strong" }, h("i", { html: CHECK }), `Alles aus ${prev.name}`) : null,
+        [...p.perks.filter((x) => !/^Alles aus /.test(x)), ...appPerks].map((x) => h("li", null, h("i", { html: CHECK }), x))
+      ),
+      btn
+    );
+  };
+  const bar = (label, w, unit) => {
+    if (!w) return null;
+    const pct = w.limit ? Math.min(100, Math.round(w.used / w.limit * 100)) : 0;
+    return h(
+      "div",
+      { class: "fsx-use" },
+      h("div", { class: "fsx-use-row" }, h("b", null, label), h("span", null, `${num(w.used)} / ${num(w.limit)} ${unit}`)),
+      h("div", { class: `fsx-meter${pct >= 90 ? " hot" : ""}` }, h("i", { style: { width: `${pct}%` } })),
+      h("small", null, w.used && w.resetAt ? `Wieder Platz ab ${clock(w.resetAt)}` : "Noch nichts verbraucht")
+    );
+  };
+  const renderUsage = () => {
+    const p = catalog.plans.find((x) => x.id === current) || catalog.plans[0];
+    const next = catalog.plans[catalog.plans.indexOf(p) + 1];
+    const unit = usage?.unit === "tokens" || !usage?.unit ? "Tokens" : "Nachrichten";
+    const gifts = Math.max(0, Number(usage?.resets || 0) - Number(usage?.planResets?.left || 0));
+    const totalResets = Number(usage?.resets || 0);
+    const box = h(
+      "div",
+      { class: "fsx-usage" },
+      h(
+        "div",
+        { class: "fsx-cur" },
+        h("div", { class: "fsx-ic", html: ICONS[p.icon] }),
+        h("div", { class: "grow" }, h("small", null, "Dein Plan"), h("b", null, p.name), h("small", null, "Gilt in allen FancyServers-Apps")),
+        next ? h("button", { class: "fsx-btn", onclick: () => {
+          tab = "plans";
+          render();
+        } }, `Auf ${next.name} upgraden`) : h("span", { class: "fsx-badge fsx-badge-max" }, "H\xF6chster Plan")
+      ),
+      !usage ? h("div", { class: "fsx-empty" }, o.fetchUsage ? "Verbrauch wird geladen \u2026" : "Melde dich an, um deinen Verbrauch zu sehen.") : h(
+        "div",
+        { class: "fsx-grid2" },
+        bar("KI-Limit \xB7 5 Stunden", usage.fiveHour, unit),
+        bar("KI-Limit \xB7 7 Tage", usage.weekly, unit)
+      ),
+      usage ? h(
+        "div",
+        { class: "fsx-resets" },
+        h(
+          "div",
+          { class: "grow" },
+          h("b", null, `${totalResets} Limit-Reset${totalResets === 1 ? "" : "s"} verf\xFCgbar`),
+          h(
+            "small",
+            null,
+            usage.planResets?.total ? `${usage.planResets.left} von ${usage.planResets.total} aus deinem Plan (diesen Monat)` : `${p.name} hat keine Monats-Resets`,
+            gifts ? ` \xB7 ${gifts} geschenkt` : ""
+          )
+        ),
+        o.resetUsage ? h("button", {
+          class: "fsx-btn outline",
+          disabled: busy || !totalResets,
+          onclick: async () => {
+            if (!o.resetUsage || busy) return;
+            busy = true;
+            render();
+            try {
+              usage = { ...usage, ...await o.resetUsage() || {} };
+            } finally {
+              busy = false;
+              render();
+            }
+          }
+        }, busy ? "Setze zur\xFCck \u2026" : "Limit jetzt zur\xFCcksetzen") : null
+      ) : null,
+      extra.length ? h("div", { class: "fsx-extra" }, extra.map((r) => {
+        const pct = r.limit ? Math.min(100, Math.round(r.used / r.limit * 100)) : 0;
+        return h(
+          "div",
+          { class: "fsx-use" },
+          h("div", { class: "fsx-use-row" }, h("b", null, r.label), h("span", null, `${num(r.used)} / ${r.limit === null ? "\u221E" : num(r.limit)}${r.unit ? ` ${r.unit}` : ""}`)),
+          h("div", { class: `fsx-meter${pct >= 90 ? " hot" : ""}` }, h("i", { style: { width: `${r.limit === null ? 4 : pct}%` } }))
+        );
+      })) : null,
+      usage?.supermodeUntil && usage.supermodeUntil > Date.now() ? h("div", { class: "fsx-note" }, `\u26A1 Supermode aktiv bis ${clock(usage.supermodeUntil)} \u2013 keine Limits.`) : null,
+      h("div", { class: "fsx-note" }, "Das KI-Limit gilt gemeinsam f\xFCr KI-Chats und den FancyCode-Agent in allen Apps. Die Fenster laufen rollierend.")
+    );
+    return box;
+  };
+  const render = () => {
+    renderTabs();
+    clear(body);
+    if (tab === "plans") {
+      body.appendChild(h("div", { class: "fsx-plans" }, catalog.plans.map(planCard)));
+      body.appendChild(h(
+        "div",
+        { class: "fsx-trust" },
+        h("div", null, h("i", { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5L16 9.5"/></svg>' }), h("div", null, h("b", null, "Sicher & zuverl\xE4ssig"), h("small", null, "Deine Daten bleiben gesch\xFCtzt."))),
+        h("div", null, h("i", { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 8c-2.8 0-4.5 1.8-4.5 4s1.7 4 4.5 4c4 0 6-8 10-8 2.8 0 4.5 1.8 4.5 4s-1.7 4-4.5 4c-4 0-6-8-10-8z"/></svg>' }), h("div", null, h("b", null, "Jederzeit k\xFCndbar"), h("small", null, "Keine lange Bindung."))),
+        h("div", null, h("i", { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg>' }), h("div", null, h("b", null, "Support im Discord"), h("small", null, "Wir sind f\xFCr dich da.")))
+      ));
+      body.appendChild(h("p", { class: "fsx-fine" }, "Online-Bezahlung kommt bald. Bis dahin schaltet der Betreiber Upgrades \xFCber das FancyServers-Portal frei."));
+    } else {
+      body.appendChild(renderUsage());
+    }
+  };
+  render();
+  void loadPlanCatalog(o.apiBase || DEFAULT_API, o.fetch).then(render);
+  if (o.fetchUsage) {
+    void o.fetchUsage().then((u) => {
+      usage = u;
+      if (u?.plan) current = normalizePlan(u.plan);
+      render();
+    }).catch(() => render());
+  }
+  if (o.extraUsage) void Promise.resolve(o.extraUsage()).then((r) => {
+    extra = r || [];
+    render();
+  }).catch(() => {
+  });
+  return { close };
+}
+function requireFeature(o, feature, plan) {
+  const p = plan === void 0 ? o.plan?.() : plan;
+  if (featureAllowed(p, feature)) return true;
+  showLocked(o, feature);
+  return false;
+}
+function showLocked(o, feature) {
+  const f = catalog.features[feature];
+  const min = catalog.plans.find((x) => x.id === (f?.minPlan || "mini")) || catalog.plans[1];
+  const root = shell(o);
+  const close = () => root.remove();
+  const card = h(
+    "div",
+    { class: "fsp-card fsx-lock", role: "dialog", "aria-modal": "true" },
+    h("button", { class: "fsp-x", "aria-label": "Schlie\xDFen", onclick: close }, "\xD7"),
+    h("div", { class: "fsx-ic big", html: ICONS[min.icon] }),
+    h("h2", null, "Ab ", h("em", null, min.name)),
+    h("p", { class: "fsp-sub" }, `${f?.label || "Diese Funktion"} gibt es ab dem Plan ${min.name} (${eur(min.price.month)} / Monat).`),
+    h("ul", { class: "fsx-lock-list" }, [...min.perks.slice(0, 4), ...(min.apps[o.app] || []).slice(0, 2)].map((x) => h("li", null, h("i", { html: CHECK }), x))),
+    h(
+      "div",
+      { class: "fsp-actions" },
+      h("button", { class: "fsp-btn", onclick: () => {
+        close();
+        openPlans(o, "plans");
+      } }, "Pl\xE4ne ansehen"),
+      h("button", { class: "fsp-btn ghost", onclick: close }, "Sp\xE4ter")
+    )
+  );
+  const backdrop = h("div", { class: "fsp-backdrop", onclick: (e) => e.target === backdrop && close() }, card);
+  root.appendChild(backdrop);
+  void loadPlanCatalog(o.apiBase || DEFAULT_API, o.fetch);
+  return { close };
+}
+
 // src/index.ts
 function startCollab(o) {
   let chat = o.container ? new CollabChat(o.container, { client: o.client, app: o.app, ...o.chat || {} }) : null;
@@ -1687,13 +2499,27 @@ export {
   PopupHost,
   avatar,
   brandOf,
+  featureAllowed,
+  featureMinPlan,
   formatBytes,
   h,
+  loadPlanCatalog,
   logoDataUrl,
   logoSvg,
+  normalizePlan as normalizePlanId,
+  openPlans,
+  pageTheme,
+  planAtLeast,
+  planBadge,
+  planCatalogSync,
+  planLabel,
+  planRank,
   registerDevice,
+  requireFeature,
   richText,
   roleLabel,
+  showLocked,
+  startAppPopups,
   startCollab,
   timeLabel
 };

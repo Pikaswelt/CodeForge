@@ -1467,3 +1467,14 @@ body .fsc-root {
 .fc-agent-error { color: #fca5a5; font-size: 12.5px; }
 .fc-agent-end, .fc-agent-pending { color: #9b9496; font-size: 12px; font-style: italic; }
 .fc-agent-ask { padding: 8px 10px; border-top: 1px solid var(--fsc-line); background: var(--fsc-bg2); }
+
+/* FancyCode-Tab (Glas-Darstellung): helle Themes brauchen helle Flächen und dunklen Code-Hintergrund. */
+[data-theme="classic-light"] .fc-glass,
+[data-theme="muted-earth"] .fc-glass,
+[data-theme="solarized-dawn"] .fc-glass,
+[data-theme="rose-quartz"] .fc-glass,
+[data-theme="arctic-blue"] .fc-glass,
+[data-theme="glass-apple-light"] .fc-glass {
+  --fc-surface: #fbf9f6;
+  --fc-code: rgb(0 0 0 / 0.05);
+}

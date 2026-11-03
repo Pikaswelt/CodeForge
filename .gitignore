@@ -20,3 +20,4 @@ graphify-out/
 *.keystore
 *.jks
 scripts/welcome-raw/
+.protected/

@@ -15,7 +15,8 @@ import { ApiProvidersSettings } from './ApiChat';
 import { AgyAccountsSettings } from './AgyAccounts';
 import { PluginsSettings } from './PluginsSettings';
 import { McpSettings } from './McpSettings';
-import { animatedEffectsAllowed } from '../plans';
+import { FancyLoginMethods } from './FancyLoginMethods';
+import { animatedEffectsAllowed, featureFree, requirePlanFeature } from '../plans';
 import { MultiLaunchPanel } from './MultiLaunchPanel';
 import type { CliHarness, ProviderId } from '../types';
 
@@ -102,7 +103,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     agyAccounts,
   } = useAppContext();
   const [showMultiLaunch, setShowMultiLaunch] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'voice' | 'appearance' | 'mcp' | 'plugins'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'account' | 'voice' | 'appearance' | 'mcp' | 'plugins'>('general');
   // Some building blocks only exist on one machine; the main process decides that locally.
   const [ownerPc, setOwnerPc] = useState(false);
 
@@ -194,6 +195,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   const saveCustomTheme = () => {
+    if (!requirePlanFeature('fancycode.themes')) return;
     if (!customName.trim()) return;
     if (customMediaOnly && !customMedia) return;
     if (!animatedEffectsAllowed() && customMedia && isVideoPath(customMedia)) {
@@ -255,6 +257,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className="flex border-b border-white/5 bg-[#120f12] px-6 gap-4 shrink-0 overflow-x-auto custom-scrollbar">
           {[
             { id: 'general', label: tr("Allgemein"), icon: Settings },
+            ...(window.agentWorkspace?.fancyAccount ? [{ id: 'account', label: tr("Konto"), icon: KeyRound }] : []),
             { id: 'voice', label: tr("Spracheingabe"), icon: Mic },
             { id: 'appearance', label: tr("Aussehen"), icon: Palette },
             { id: 'mcp', label: 'MCP', icon: Plug },
@@ -537,6 +540,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         <input
                           type="text"
                           value={harness.name}
+                          disabled={!featureFree('fancycode.harness')}
                           onChange={(event) => update({ name: event.target.value })}
                           className="input flex-1 min-w-0"
                           placeholder="Name"
@@ -545,6 +549,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         <input
                           type="text"
                           value={harness.command}
+                          disabled={!featureFree('fancycode.harness')}
                           onChange={(event) => update({ command: event.target.value })}
                           className="input flex-1 min-w-0 font-mono"
                           placeholder={tr("Start-Command, z. B. claude")}
@@ -560,14 +565,24 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       </div>
                     );
                   })}
+                  {!featureFree('fancycode.harness') && (
+                    <p className="text-[11px] leading-4 text-amber-300">
+                      {tr("Eigene CLI-Harnesses gibt es ab Spark. Der FancyCode-Agent bleibt frei.")}
+                    </p>
+                  )}
                   <button
-                    onClick={() =>
+                    disabled={!featureFree('fancycode.harness')}
+                    onClick={() => {
+                      if (!featureFree('fancycode.harness')) {
+                        requirePlanFeature('fancycode.harness');
+                        return;
+                      }
                       setCliHarnesses((current) => [
                         ...current,
                         { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: tr("Neuer Harness"), command: '', icon: tr("Terminal") },
-                      ])
-                    }
-                    className="text-xs text-orange-300 hover:text-orange-200"
+                      ]);
+                    }}
+                    className="text-xs text-orange-300 hover:text-orange-200 disabled:opacity-40"
                   >
                     {tr("+ Harness hinzufuegen")}
                   </button>
@@ -801,6 +816,16 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             </motion.div>
           )}
 
+
+          {activeTab === 'account' && (
+            <motion.div key="account" variants={tabContentVariants} initial="initial" animate="animate" exit="exit" className="space-y-4">
+              <section>
+                <h3 className="mb-1 text-sm font-semibold text-zinc-200">{tr("Anmeldung")}</h3>
+                <p className="mb-3 text-xs text-zinc-500">{tr("Dein FancyServers-Konto gilt in allen Apps. Verknüpfe Discord oder GitHub, damit du dich auch ohne Zugangscode anmelden kannst.")}</p>
+                <FancyLoginMethods />
+              </section>
+            </motion.div>
+          )}
 
           {activeTab === 'mcp' && (
             <motion.div key="mcp" variants={tabContentVariants} initial="initial" animate="animate" exit="exit">
@@ -1055,7 +1080,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   <label className={`mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/15 px-3 py-2 ${animatedEffectsAllowed() ? '' : 'opacity-60'}`}>
                     <span className="text-xs text-zinc-300">
                       {tr("Animierten Farbverlauf aktivieren")}
-                      {!animatedEffectsAllowed() && <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">{tr("ab Pro")}</span>}
+                      {!animatedEffectsAllowed() && <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">{tr("ab Spark")}</span>}
                     </span>
                     <input
                       type="checkbox"

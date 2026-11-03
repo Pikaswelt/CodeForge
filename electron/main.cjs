@@ -4430,11 +4430,21 @@ ipcMain.handle('device:status', () => {
     await fancycodeHarness.syncSession();
     return result;
   });
+  ipcMain.handle('fancy:code-login', async (_event, code, name) => {
+    const result = await fancyAccount.codeLogin(String(code || ''), String(name || ''));
+    await fancycodeHarness.syncSession();
+    return result;
+  });
+  ipcMain.handle('fancy:link', (_event, provider) => fancyAccount.link(String(provider || '')));
+  ipcMain.handle('fancy:unlink', (_event, provider) => fancyAccount.unlink(String(provider || '')));
+  ipcMain.handle('fancy:access-code', () => fancyAccount.newAccessCode());
   ipcMain.handle('fancy:check-invite', (_event, invite) => fancyAccount.checkInvite(String(invite || '')));
   ipcMain.handle('fancy:cancel', () => fancyAccount.cancelLogin());
   ipcMain.handle('fancy:usage', (_event, app) => fancyAccount.usage(String(app || '')));
   ipcMain.handle('fancy:usage-reset', (_event, app) => fancyAccount.resetUsage(String(app || '')));
   ipcMain.handle('fancy:announcements', () => fancyAccount.announcements());
+  // Version und Konto-Server für Popups, Wartung und Pflicht-Updates (vom Server gesteuert).
+  ipcMain.handle('fancy:app-info', () => ({ version: app.getVersion(), apiBase: fancyAccount.apiBase() }));
   ipcMain.handle('fancy:announcements-seen', (_event, ids) => fancyAccount.seenAnnouncements(ids));
   ipcMain.handle('fancy:logout', () => {
     fancyCollab.forget();

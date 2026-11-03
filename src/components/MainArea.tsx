@@ -62,6 +62,9 @@ import libraryBannerUrl from '../../assets/library-banner.png';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { showLocked } from '../vendor/fancyservers-collab/collab.js';
+import '../vendor/fancyservers-collab/collab.css';
+import { readPlan } from '../plans';
 
 const libraryGridVariants = {
   hidden: { opacity: 0 },
@@ -153,8 +156,16 @@ function FancyCodeHost({ visible }: { visible: boolean }) {
         cwd={selectedProject?.path || ''}
         server={selectedProject?.vserver}
         onPickFolder={addProject}
-        emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode arbeitet dann direkt darin.")}
+        emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode oder Claude arbeiten dann direkt darin.")}
         onOpenUsage={openUsagePopup}
+        // Durchsichtig wie die Terminals: Hintergrundbild und Theme scheinen durch.
+        appearance="glass"
+        // Claude läuft nur lokal (installierte Claude-CLI); auf V-Servern bleibt es bei FancyCode.
+        engines={selectedProject?.vserver ? ['fancycode'] : ['fancycode', 'claude']}
+        // Claude direkt gibt es ab Spark (bezahlter FancyServers-Plan).
+        plan={readPlan()}
+        paidEngines={['claude']}
+        onEngineLocked={() => showLocked({ app: 'fancycode', plan: readPlan, openExternal: (url) => void window.agentWorkspace?.openExternal?.(url) }, 'fancycode.claude')}
         askPermission={async ({ question, summary, preview, sessionId }) => {
           // Rückfragen des eingebauten Agenten erscheinen als Popup unten rechts (wie die MCP-Popups).
           const value = await askPermissionPopup({ question: `${question} ${summary}`, preview, sessionId });

@@ -1,4 +1,4 @@
-export type AppKey = 'fancycode' | 'fancyagent' | 'kuroi';
+export type AppKey = 'fancycode' | 'fancyagent' | 'kuroi' | 'fancygames';
 export interface AppBrand {
     key: AppKey;
     name: string;

@@ -114,6 +114,7 @@
 .fc-btn.danger:hover { border-color: var(--fc-err); }
 
 .fc-note { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--fc-muted); padding: 2px 4px; }
+.fc-note.info { white-space: pre-line; align-items: flex-start; }
 .fc-note.warn { color: var(--fc-warn); }
 .fc-note.error { color: var(--fc-err); }
 .fc-card { border: 1px solid var(--fc-border); border-radius: 12px; background: var(--fc-panel); padding: 12px 14px; }
@@ -143,13 +144,22 @@
 .fc-login .fc-ask-btns { justify-content: center; }
 
 .fc-bottom { padding: 0 20px 16px; }
-.fc-todos { max-width: 860px; margin: 0 auto 8px; border: 1px solid var(--fc-border); border-radius: 10px; background: var(--fc-panel); font-size: 13px; }
-.fc-todos-head { display: flex; align-items: center; gap: 7px; width: 100%; background: none; border: 0; padding: 7px 11px; color: var(--fc-muted) !important; }
-.fc-todos ul { list-style: none; margin: 0; padding: 0 12px 9px; max-height: 160px; overflow: auto; }
-.fc-todos li { display: flex; gap: 8px; padding: 2px 0; }
-.fc-todos li.completed { color: var(--fc-muted); text-decoration: line-through; }
-.fc-todos li.in_progress { color: var(--fc-warn); }
-.fc-todo-mark { width: 14px; flex: none; text-align: center; }
+.fc-todos { max-width: 860px; margin: 0 auto 8px; border: 1px solid var(--fc-border); border-radius: 12px; background: var(--fc-panel); font-size: 13px; overflow: hidden; }
+.fc-todos-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 8px 12px 6px; color: var(--fc-text) !important; text-align: left; }
+.fc-todos-title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-todos-count { color: var(--fc-muted); font-variant-numeric: tabular-nums; }
+.fc-todos-bar { height: 2px; margin: 0 12px 6px; background: var(--fc-border); border-radius: 2px; overflow: hidden; }
+.fc-todos-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--fc-accent), var(--fc-ok)); transition: width 0.35s ease; }
+.fc-todos.done .fc-todos-title { color: var(--fc-ok); }
+.fc-todos ul { list-style: none; margin: 0; padding: 0 12px 10px; max-height: 200px; overflow: auto; }
+.fc-todos li { display: flex; align-items: flex-start; gap: 9px; padding: 3px 0; transition: color 0.2s; }
+.fc-todos li.completed .fc-todo-text { color: var(--fc-muted); text-decoration: line-through; }
+.fc-todos li.in_progress .fc-todo-text { color: var(--fc-text); font-weight: 600; }
+.fc-todos li.pending .fc-todo-text { color: var(--fc-muted); }
+.fc-todo-box { flex: none; display: grid; place-items: center; width: 15px; height: 15px; margin-top: 2px; border: 1.5px solid var(--fc-muted); border-radius: 4px; transition: background 0.2s, border-color 0.2s; }
+.fc-todo-box.completed { background: var(--fc-ok); border-color: var(--fc-ok); color: #06281c; }
+.fc-todo-box.in_progress { border-color: var(--fc-accent); }
+.fc-todo-spin { width: 9px; height: 9px; border: 1.5px solid var(--fc-accent); border-top-color: transparent; border-radius: 50%; animation: fc-spin 0.8s linear infinite; }
 
 .fc-composer { position: relative; max-width: 860px; margin: 0 auto; border: 1px solid var(--fc-border); border-radius: 16px; background: var(--fc-panel); padding: 10px 10px 8px 14px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); }
 .fc-composer:focus-within { border-color: var(--fc-accent); }
@@ -172,3 +182,79 @@
 .fc-pop-title { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px 6px; font-size: 12px; font-weight: 700; color: var(--fc-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .fc-pop-title button { background: none; border: 0; color: var(--fc-muted); }
 .fc-pop-profile { display: flex; justify-content: space-between; align-items: center; margin: 2px 4px 6px; padding: 8px 10px; border-radius: 8px; background: rgba(34, 211, 238, 0.08); border: 1px solid rgba(34, 211, 238, 0.3); font-size: 13px; }
+
+/* Engine-Umschalter (FancyCode | Claude) */
+.fc-engines { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--fc-border); border-radius: 10px; background: var(--fc-panel); }
+.fc-engines button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 0; border-radius: 7px; background: transparent; color: var(--fc-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.fc-engines button:hover:not(:disabled) { color: var(--fc-text); }
+.fc-lock-tag { margin-left: 2px; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #fbbf24, #f97316); }
+.fc-engines button.active { background: linear-gradient(135deg, var(--fc-accent), color-mix(in srgb, var(--fc-accent) 60%, var(--fc-accent-2))); color: #fff; box-shadow: 0 2px 10px color-mix(in srgb, var(--fc-accent) 35%, transparent); }
+.fc-engines button:disabled { cursor: not-allowed; opacity: 0.6; }
+
+/* Plan-Freigabe und Rückfragen von Claude */
+.fc-plan { max-height: 360px; overflow: auto; margin: 8px 0; padding: 10px 12px; border: 1px solid var(--fc-border); border-radius: 10px; background: var(--fc-code); }
+.fc-question .fc-q + .fc-q { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--fc-border); }
+.fc-q-tag { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--fc-accent) 22%, transparent); color: var(--fc-text); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.fc-q-opts { display: grid; gap: 6px; margin-top: 8px; }
+.fc-q-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 11px; border: 1px solid var(--fc-border); border-radius: 9px; background: var(--fc-panel-2); color: var(--fc-text); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.fc-q-opt span { color: var(--fc-muted); font-size: 12px; }
+.fc-q-opt:hover:not(:disabled) { border-color: var(--fc-accent); }
+.fc-q-opt.active { border-color: var(--fc-accent); background: color-mix(in srgb, var(--fc-accent) 18%, var(--fc-panel-2)); }
+.fc-q-other, .fc-login-code input { width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--fc-border); border-radius: 9px; background: var(--fc-bg); color: var(--fc-text); font: inherit; box-sizing: border-box; }
+.fc-login-code { display: flex; gap: 8px; align-items: center; width: min(420px, 100%); }
+.fc-login-code input { margin-top: 0; }
+.fc-install-log { width: min(460px, 100%); text-align: left; font-family: ui-monospace, monospace; }
+
+/* ---------------------------------------------------------------- Glas-Darstellung
+   Für Apps mit Hintergrundbildern/Themes (FancyCode Desktop): kein eigener Hintergrund, Flächen als
+   leichte Tönung der Textfarbe (passt zu hellen und dunklen Themes), Akzent aus dem App-Theme. */
+.fc-root.fc-glass {
+  --fc-accent: var(--theme-accent, #8b7cf6);
+  --fc-accent-2: color-mix(in srgb, var(--fc-accent) 55%, #67e8f9);
+  --fc-text: currentColor;
+  --fc-muted: color-mix(in srgb, currentColor 58%, transparent);
+  --fc-panel: color-mix(in srgb, currentColor 6%, transparent);
+  --fc-panel-2: color-mix(in srgb, currentColor 10%, transparent);
+  --fc-border: color-mix(in srgb, currentColor 13%, transparent);
+  --fc-code: rgb(0 0 0 / 0.28);
+  /* Grundfläche für Eingabe, Menüs, Liste – helle Themes setzen hier Weiß (App-CSS). */
+  --fc-surface: var(--theme-surface, #15151c);
+  --fc-blur: blur(var(--glass-blur, 16px)) saturate(var(--glass-saturation, 125%));
+  background: transparent;
+  color: inherit;
+}
+.fc-glass .fc-top { border-bottom-color: transparent; background: linear-gradient(to bottom, rgb(0 0 0 / 0.18), transparent); }
+.fc-glass .fc-thread { max-width: 820px; gap: 14px; }
+.fc-glass .fc-user { background: color-mix(in srgb, var(--fc-accent) 22%, transparent); border-color: color-mix(in srgb, var(--fc-accent) 35%, transparent); border-radius: 18px 18px 6px 18px; backdrop-filter: var(--fc-blur); }
+.fc-glass .fc-assistant { padding: 4px 4px; text-shadow: 0 1px 2px rgb(0 0 0 / 0.25); }
+.fc-glass .fc-tool,
+.fc-glass .fc-card,
+.fc-glass .fc-todos,
+.fc-glass .fc-ask,
+.fc-glass .fc-chip,
+.fc-glass .fc-suggests button,
+.fc-glass .fc-suggest button { backdrop-filter: var(--fc-blur); }
+.fc-glass .fc-tool { border-radius: 12px; }
+.fc-glass .fc-tool-head { padding: 8px 12px; }
+.fc-glass .fc-composer {
+  max-width: 820px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--fc-surface) 62%, transparent);
+  border-color: color-mix(in srgb, currentColor 16%, transparent);
+  backdrop-filter: var(--fc-blur);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35), inset 0 1px 0 color-mix(in srgb, currentColor 8%, transparent);
+}
+.fc-glass .fc-composer:focus-within { border-color: color-mix(in srgb, var(--fc-accent) 70%, transparent); box-shadow: 0 12px 40px rgb(0 0 0 / 0.35), 0 0 0 3px color-mix(in srgb, var(--fc-accent) 18%, transparent); }
+.fc-glass .fc-todos { max-width: 820px; background: color-mix(in srgb, var(--fc-surface) 45%, transparent); }
+.fc-glass .fc-popover { background: color-mix(in srgb, var(--fc-surface) 88%, transparent) !important; backdrop-filter: var(--fc-blur); }
+.fc-glass .fc-popover > .fc-pop-list > button.active, .fc-glass .fc-popover > .fc-pop-list > button:hover { background: color-mix(in srgb, var(--fc-accent) 20%, transparent); }
+.fc-glass .fc-md code, .fc-glass .fc-meter { background: color-mix(in srgb, currentColor 10%, transparent); }
+.fc-glass .fc-act:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+.fc-glass .fc-send { background: var(--fc-accent); box-shadow: 0 4px 14px color-mix(in srgb, var(--fc-accent) 45%, transparent); }
+.fc-glass .fc-btn.primary { background: var(--fc-accent); }
+.fc-glass .fc-modal { background: color-mix(in srgb, var(--fc-surface) 92%, transparent); backdrop-filter: var(--fc-blur); }
+.fc-glass .fc-tool, .fc-glass .fc-card, .fc-glass .fc-ask:not(.done) { background: color-mix(in srgb, var(--fc-surface) 50%, transparent); }
+.fc-glass .fc-chip, .fc-glass .fc-engines { background: color-mix(in srgb, var(--fc-surface) 45%, transparent); }
+.fc-glass .fc-top { background: linear-gradient(to bottom, color-mix(in srgb, var(--fc-surface) 55%, transparent), transparent); }
+.fc-glass .fc-icon-btn, .fc-glass .fc-usage { color: color-mix(in srgb, currentColor 80%, transparent) !important; }
+.fc-glass .fc-assistant { text-shadow: 0 1px 3px rgb(0 0 0 / 0.55); }

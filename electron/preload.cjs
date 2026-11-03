@@ -91,11 +91,16 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
     wasGranted: () => ipcRenderer.invoke('fancy:was-granted'),
     login: (provider, invite) => ipcRenderer.invoke('fancy:login', provider, invite),
     guest: (invite) => ipcRenderer.invoke('fancy:guest', invite),
+    codeLogin: (code, name) => ipcRenderer.invoke('fancy:code-login', code, name),
+    link: (provider) => ipcRenderer.invoke('fancy:link', provider),
+    unlink: (provider) => ipcRenderer.invoke('fancy:unlink', provider),
+    newAccessCode: () => ipcRenderer.invoke('fancy:access-code'),
     checkInvite: (invite) => ipcRenderer.invoke('fancy:check-invite', invite),
     cancel: () => ipcRenderer.invoke('fancy:cancel'),
     usage: (app) => ipcRenderer.invoke('fancy:usage', app),
     resetUsage: (app) => ipcRenderer.invoke('fancy:usage-reset', app),
     announcements: () => ipcRenderer.invoke('fancy:announcements'),
+    appInfo: () => ipcRenderer.invoke('fancy:app-info'),
     seenAnnouncements: (ids) => ipcRenderer.invoke('fancy:announcements-seen', ids),
     logout: () => ipcRenderer.invoke('fancy:logout'),
     collabToken: (opts) => ipcRenderer.invoke('fancy:collab-token', opts || {}),
@@ -189,7 +194,8 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
 contextBridge.exposeInMainWorld('fancycode', {
   start: (opts) => opts?.server
     ? ipcRenderer.invoke('fancycode:remote-start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined, server: opts.server })
-    : ipcRenderer.invoke('fancycode:start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined }),
+    : ipcRenderer.invoke('fancycode:start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined, engine: opts?.engine === 'claude' ? 'claude' : undefined }),
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', String(url || '')),
   send: (id, msg) => ipcRenderer.send('fancycode:send', String(id), msg),
   stop: (id) => ipcRenderer.send('fancycode:stop', String(id)),
   onEvent: (cb) => {

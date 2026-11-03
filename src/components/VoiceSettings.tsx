@@ -1,4 +1,5 @@
 import { tr } from '../i18n';
+import { featureFree, requirePlanFeature } from '../plans';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, Download, Ear, Loader2, Mic, Trash2, X } from 'lucide-react';
@@ -193,6 +194,16 @@ export function VoiceSettingsSection() {
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<VoiceSettings>) => updateVoiceSettings(patch);
   const modelInstalled = Boolean(status?.models?.[settings.model]);
+
+  if (!featureFree('fancycode.voice')) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
+        <p className="text-sm font-medium text-zinc-200">{tr("Spracheingabe gibt es ab Spark")}</p>
+        <p className="mt-1 text-[11px] leading-4 text-zinc-500">{tr("Whisper läuft lokal auf deinem PC und ist in Spark, Nova und Galaxy enthalten. Der FancyCode-Agent bleibt frei.")}</p>
+        <button className="primary-button mt-3" onClick={() => requirePlanFeature('fancycode.voice')}>{tr("Pläne ansehen")}</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-7">

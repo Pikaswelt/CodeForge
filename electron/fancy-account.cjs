@@ -90,6 +90,14 @@ function b64url(buf) {
 
 let pendingLogin = null;
 
+// Fehler vom Konto-Server beim Discord-/GitHub-Login (?error=… auf localhost).
+function loginError(reason) {
+  if (reason === 'invite') return mt('Dieses Konto ist noch mit keinem FancyServers-Konto verknüpft. Melde dich unten mit deinem Zugangs- oder Einladungscode an und verknüpfe es danach unter Einstellungen → Konto.');
+  if (reason === 'invite_later') return mt('Dein Einladungscode ist noch nicht gültig.');
+  if (reason === 'banned') return mt('Dieses FancyServers-Konto wurde gesperrt.');
+  return mt('Anmeldung fehlgeschlagen. Bitte erneut versuchen.');
+}
+
 function login(provider, invite = '') {
   if (!['discord', 'github'].includes(provider)) throw new Error(mt('Unbekannter Anbieter'));
   const base = requireBase();
@@ -102,7 +110,13 @@ function login(provider, invite = '') {
       const url = new URL(req.url, 'http://127.0.0.1');
       if (url.pathname !== '/callback') return res.writeHead(404).end();
       const code = url.searchParams.get('code') || '';
+      const failed = url.searchParams.get('error');
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      if (failed) {
+        const msg = loginError(failed);
+        res.end(`<!doctype html><meta charset="utf-8"><body style="background:#09090b;color:#f4f4f5;font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center;max-width:420px"><h2>${mt('Nicht angemeldet')}</h2><p>${msg}</p><p>${mt('Du kannst dieses Fenster schließen.')}</p></div>`);
+        return finish(() => Promise.reject(new Error(msg)));
+      }
       res.end(mt('<!doctype html><meta charset="utf-8"><body style="background:#09090b;color:#f4f4f5;font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><h2>Angemeldet ✓</h2><p>Du kannst dieses Fenster schließen und zu FancyCode Desktop zurückkehren.</p></div>'));
       finish(async () => {
         const r = await post('/auth/exchange', { code, verifier });
@@ -126,10 +140,81 @@ function login(provider, invite = '') {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address();
       const inv = invite ? `&invite=${encodeURIComponent(String(invite).slice(0, 40))}` : '';
-      shell.openExternal(`${base}/auth/${provider}/start?challenge=${challenge}&port=${port}${inv}`);
+      shell.openExternal(`${base}/auth/${provider}/start?challenge=${challenge}&port=${port}&v=2${inv}`);
     });
     server.on('error', (e) => finish(() => Promise.reject(e)));
   });
+}
+
+// Login per persönlichem Zugangscode (FS-…) oder – für neue Konten – per Einladungscode (FG-…).
+// Bei einem neuen Konto liefert der Server einmalig den frischen Zugangscode mit (accessCode).
+async function codeLogin(code, name = '') {
+  const r = await post('/auth/code', { code: String(code || '').slice(0, 60), name: String(name || '').slice(0, 32) });
+  if (!r.ok) throw new Error(await readError(r));
+  const j = await r.json();
+  setSession(j.token);
+  setGranted(true);
+  return { user: j.user, accessCode: j.accessCode || '', created: j.created === true };
+}
+
+// Discord/GitHub an das angemeldete Konto hängen: Browser öffnen, Rücksprung auf localhost abwarten.
+function link(provider) {
+  if (!['discord', 'github'].includes(provider)) throw new Error(mt('Unbekannter Anbieter'));
+  if (!getSession()) throw new Error(mt('Bitte melde dich erneut an.'));
+  pendingLogin?.cancel();
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url, 'http://127.0.0.1');
+      if (url.pathname !== '/callback') return res.writeHead(404).end();
+      const linked = url.searchParams.get('linked');
+      const failed = url.searchParams.get('error');
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      const msg = linked
+        ? mt('<h2>Verknüpft ✓</h2><p>Du kannst dieses Fenster schließen und zu FancyCode Desktop zurückkehren.</p>')
+        : failed === 'link_taken'
+          ? mt('<h2>Schon vergeben</h2><p>Dieses Konto ist bereits mit einem anderen FancyServers-Konto verknüpft.</p>')
+          : mt('<h2>Nicht verknüpft</h2><p>Die Verknüpfung wurde abgebrochen. Du kannst dieses Fenster schließen.</p>');
+      res.end(`<!doctype html><meta charset="utf-8"><body style="background:#09090b;color:#f4f4f5;font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center">${msg}</div>`);
+      finish(() => {
+        if (linked) return me();
+        throw new Error(failed === 'link_taken' ? mt('Dieses Konto ist bereits mit einem anderen FancyServers-Konto verknüpft.') : mt('Verknüpfung abgebrochen.'));
+      });
+    });
+    const timer = setTimeout(() => finish(() => Promise.reject(new Error(mt('Verknüpfung abgelaufen. Bitte erneut versuchen.')))), 5 * 60_000);
+    function finish(fn) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      server.close();
+      pendingLogin = null;
+      Promise.resolve().then(fn).then(resolve, reject);
+    }
+    pendingLogin = { cancel: () => finish(() => Promise.reject(new Error(mt('Verknüpfung abgebrochen.')))) };
+    server.listen(0, '127.0.0.1', async () => {
+      try {
+        const r = await post('/v1/link/start', { provider, port: server.address().port }, { auth: true });
+        if (!r.ok) throw new Error(await readError(r));
+        shell.openExternal((await r.json()).url);
+      } catch (e) {
+        finish(() => Promise.reject(e));
+      }
+    });
+    server.on('error', (e) => finish(() => Promise.reject(e)));
+  });
+}
+
+async function unlink(provider) {
+  const r = await post('/v1/link/remove', { provider: String(provider || '') }, { auth: true });
+  if (!r.ok) throw new Error(await readError(r));
+  return me();
+}
+
+// Neuer Zugangscode; der alte gilt danach nicht mehr. Wird nur dieses eine Mal angezeigt.
+async function newAccessCode() {
+  const r = await post('/v1/access-code', {}, { auth: true });
+  if (!r.ok) throw new Error(await readError(r));
+  return (await r.json()).code;
 }
 
 async function guest(invite) {
@@ -255,4 +340,4 @@ async function chat(system, messages) {
   return { text, tokens: 0 };
 }
 
-module.exports = { apiBase, login, guest, checkInvite, me, usage, resetUsage, announcements, seenAnnouncements, logout, chat, wasGranted, sessionToken: getSession, cancelLogin: () => pendingLogin?.cancel() };
+module.exports = { apiBase, login, codeLogin, link, unlink, newAccessCode, guest, checkInvite, me, usage, resetUsage, announcements, seenAnnouncements, logout, chat, wasGranted, sessionToken: getSession, cancelLogin: () => pendingLogin?.cancel() };

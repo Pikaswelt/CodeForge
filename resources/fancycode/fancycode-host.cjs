@@ -78,7 +78,8 @@ async function ensureSession({ apiBase, appToken }) {
 }
 
 /**
- * IPC für die grafische Ansicht: startet pro Ansicht eine Harness im Protokoll-Modus (fancycode --sdk)
+ * IPC für die grafische Ansicht: startet pro Ansicht eine Harness im Protokoll-Modus (fancycode --sdk,
+ * mit opts.engine = 'claude' über die Claude-CLI)
  * und reicht Ereignisse an das Fenster weiter. Kanäle: fancycode:start / :send / :stop, Ereignisse fancycode:event.
  */
 function registerIpc({ ipcMain, bundle, runtime, apiBase, extraArgs = [], allow = () => true, log = console }) {
@@ -111,6 +112,8 @@ function registerIpc({ ipcMain, bundle, runtime, apiBase, extraArgs = [], allow 
     if (apiBase) env.FANCY_API_URL = apiBase();
     const args = [bundle, '--sdk', '--cwd', cwd, ...extraArgs];
     if (opts?.resume) args.push('--resume', String(opts.resume).slice(0, 60));
+    // „claude“: dieselbe Ansicht, aber mit der installierten Claude-CLI des Nutzers (siehe src/claude.mjs).
+    if (opts?.engine === 'claude') args.push('--engine', 'claude');
     let file = 'node';
     if (runtime.electron) {
       file = runtime.electron;
