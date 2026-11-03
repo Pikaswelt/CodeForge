@@ -1795,7 +1795,7 @@ function startAppPopups(o) {
   }
   const onFocus = () => void check();
   window.addEventListener("focus", onFocus);
-  const timer = setInterval(() => document.visibilityState === "visible" && void check(), o.pollMs || 5 * 6e4);
+  const timer = setInterval(() => document.visibilityState === "visible" && void check(), o.pollMs || 3e4);
   const fast = setInterval(() => (status?.maintenance?.active || status?.update?.required) && void check(), 3e4);
   void check();
   return {

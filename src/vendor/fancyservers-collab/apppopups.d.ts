@@ -48,6 +48,7 @@ export interface AppPopupOptions {
     onUpdate?: (status: AppStatus['update']) => void | Promise<void>;
     openExternal?: (url: string) => void;
     container?: HTMLElement;
+    /** Wie oft im sichtbaren Fenster nach Popups, Wartung und Pflicht-Update gesehen wird (Standard 30 s). */
     pollMs?: number;
     fetch?: typeof fetch;
 }
