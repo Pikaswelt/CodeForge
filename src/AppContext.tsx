@@ -25,6 +25,7 @@ import type {
   MultiLaunchSlot,
   VServer,
   CliHarness,
+  GuiEngineConfig,
   CliStatus,
   CodexPluginInfo,
   ExternalServerConfig,
@@ -89,6 +90,12 @@ export const DEFAULT_LIBRARY_STYLE: LibraryStyle = {
   bannerTitle: '',
   bannerText: '',
 };
+
+export const DEFAULT_GUI_ENGINES: GuiEngineConfig[] = [
+  { id: 'fancycode', name: 'FancyCode', command: 'fancycode', icon: 'Zap', enabled: true, builtin: true },
+  { id: 'claude', name: 'Claude Code', command: 'claude', icon: 'Sparkles', enabled: true, builtin: true },
+  { id: 'agy', name: 'Antigravity CLI', command: 'agy', icon: 'Rocket', enabled: true, builtin: true },
+];
 export type MainView = 'library' | 'chat' | 'workspace' | 'fancycode' | 'team';
 
 export type ProviderModel = {
@@ -276,6 +283,8 @@ interface AppContextType {
   setTerminalStartCommand: React.Dispatch<React.SetStateAction<string>>;
   cliHarnesses: CliHarness[];
   setCliHarnesses: React.Dispatch<React.SetStateAction<CliHarness[]>>;
+  guiEngines: GuiEngineConfig[];
+  setGuiEngines: React.Dispatch<React.SetStateAction<GuiEngineConfig[]>>;
   terminalPrefixSuffixEnabled: boolean;
   setTerminalPrefixSuffixEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   terminalPrefix: string;
@@ -284,6 +293,8 @@ interface AppContextType {
   setTerminalSuffix: React.Dispatch<React.SetStateAction<string>>;
   terminalTriggerWords: string;
   setTerminalTriggerWords: React.Dispatch<React.SetStateAction<string>>;
+  agentNotificationsEnabled: boolean;
+  setAgentNotificationsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   agyStartCommand: string;
   setAgyStartCommand: React.Dispatch<React.SetStateAction<string>>;
   agyWaitTimeMs: number;
@@ -511,42 +522,37 @@ function getInitialLibrarySettings(): {
   bannerBackgroundEnabled: boolean;
   libraryStyle: LibraryStyle;
 } {
-  const MIGRATION_KEY = 'agentWorkspace.libraryBannerMigrated';
-  let isMigrated = false;
-  try {
-    isMigrated = Boolean(localStorage.getItem(MIGRATION_KEY));
-  } catch {}
-
   const storedBannerEnabled = readStorage<boolean | null>('libraryBannerBackgroundEnabled', null);
   const storedLibraryStyle = readStorage<Partial<LibraryStyle>>('libraryStyle', {});
 
-  if (!isMigrated) {
+  // Clean up legacy anime girl banner and bright-white defaults so the Library uses the dark glass app style.
+  let cleaned = false;
+  if (storedLibraryStyle.bannerMedia === 'anime') {
+    storedLibraryStyle.bannerMedia = '';
+    cleaned = true;
+  }
+  if (storedLibraryStyle.pageBackground === '#f7f8fb' || storedLibraryStyle.pageBackground === '#ffffff') {
+    storedLibraryStyle.pageBackground = '';
+    cleaned = true;
+  }
+  if (storedLibraryStyle.cardBackground === '#ffffff') {
+    storedLibraryStyle.cardBackground = '';
+    cleaned = true;
+  }
+  if (storedLibraryStyle.textColor === '#111827' || storedLibraryStyle.textColor === '#18181b') {
+    storedLibraryStyle.textColor = '';
+    cleaned = true;
+  }
+  if (storedLibraryStyle.accentColor === '#111827' || storedLibraryStyle.accentColor === '#2563eb') {
+    storedLibraryStyle.accentColor = '';
+    cleaned = true;
+  }
+  if (cleaned) {
     try {
-      // Check if user is an existing user who previously had data in FancyCode Desktop
-      const hasAnyExistingData = Boolean(
-        localStorage.getItem('agentWorkspace.setup') !== null ||
-        localStorage.getItem('agentWorkspace.folders') !== null ||
-        localStorage.getItem('agentWorkspace.chats') !== null ||
-        localStorage.getItem('agentWorkspace.provider') !== null ||
-        localStorage.getItem('agentWorkspace.theme') !== null ||
-        localStorage.getItem('agentWorkspace.libraryProjects') !== null ||
-        localStorage.getItem('agentWorkspace.libraryApps') !== null ||
-        storedBannerEnabled !== null ||
-        localStorage.getItem('agentWorkspace.libraryStyle') !== null
-      );
-
-      localStorage.setItem(MIGRATION_KEY, 'true');
-
-      if (hasAnyExistingData) {
-        // Existing user: preserve the anime banner if they didn't have custom media set
-        if (!storedLibraryStyle.bannerMedia) {
-          storedLibraryStyle.bannerMedia = 'anime';
-          writeStorage('libraryStyle', {
-            ...DEFAULT_LIBRARY_STYLE,
-            ...storedLibraryStyle,
-          });
-        }
-      }
+      writeStorage('libraryStyle', {
+        ...DEFAULT_LIBRARY_STYLE,
+        ...storedLibraryStyle,
+      });
     } catch {}
   }
 
@@ -757,6 +763,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [chats, setChats] = useState<Chat[]>(() => readStorage('chats', []));
   const [savedTerminalWorkspaces, setSavedTerminalWorkspaces] = useState<Chat[]>(() => readStorage('terminalWorkspaces', []));
   const [swarmTasks, setSwarmTasks] = useState<SwarmTask[]>(() => readStorage('swarmTasks', []));
+  const [agentNotificationsEnabled, setAgentNotificationsEnabled] = useState<boolean>(() =>
+    readStorage('agentNotificationsEnabled', true),
+  );
+  const agentNotificationsEnabledRef = useRef(agentNotificationsEnabled);
+  useEffect(() => {
+    agentNotificationsEnabledRef.current = agentNotificationsEnabled;
+    writeStorage('agentNotificationsEnabled', agentNotificationsEnabled);
+  }, [agentNotificationsEnabled]);
+  const lastLiveNotifyAtRef = useRef<Record<string, number>>({});
+  const chatsRefForNotify = useRef<Chat[]>(chats);
+  chatsRefForNotify.current = chats;
   const [terminalLiveStates, setTerminalLiveStates] = useState<Record<string, TerminalLiveState>>({});
   const updateTerminalLiveState = useCallback((sessionId: string, patch: Partial<TerminalLiveState>) => {
     if (!sessionId) return;
@@ -765,6 +782,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const nextStatus = patch.status ?? prev.status;
       const nextActivity = patch.activity !== undefined ? patch.activity : prev.activity;
       if (prev.status === nextStatus && prev.activity === nextActivity) return current;
+
+      // Trigger native OS notification on Windows & Linux when an agent finishes or needs input
+      if (agentNotificationsEnabledRef.current && prev.status !== nextStatus) {
+        const now = Date.now();
+        const lastAt = lastLiveNotifyAtRef.current[sessionId] || 0;
+        if (
+          now - lastAt > 3500 &&
+          ((prev.status === 'working' && nextStatus === 'done') || nextStatus === 'waiting')
+        ) {
+          lastLiveNotifyAtRef.current[sessionId] = now;
+          let tabTitle = '';
+          for (const c of chatsRefForNotify.current) {
+            const foundTab = c.terminalTabs?.find((t) => t.id === sessionId);
+            if (foundTab) {
+              tabTitle = foundTab.title || c.title;
+              break;
+            }
+            if (c.id === sessionId) {
+              tabTitle = c.title;
+              break;
+            }
+          }
+          const agentLabel = tabTitle || 'Agent';
+          const title =
+            nextStatus === 'done'
+              ? `${agentLabel} · ${tr('Fertig')}`
+              : `${agentLabel} · ${tr('Eingabe nötig')}`;
+          const body =
+            nextActivity ||
+            (nextStatus === 'done'
+              ? tr('Der Agent hat seine Aufgabe im Terminal abgeschlossen.')
+              : tr('Der Agent wartet im Terminal auf deine Bestätigung.'));
+          if (window.agentWorkspace?.notifyAgentComplete) {
+            void window.agentWorkspace.notifyAgentComplete({ title, body });
+          } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+              new Notification(title, { body });
+            } catch {}
+          }
+        }
+      }
+
       return {
         ...current,
         [sessionId]: {
@@ -956,6 +1015,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       { id: 'shell', name: tr('Leeres Terminal'), command: '', icon: tr("Terminal") },
     ]))),
   );
+  const [guiEngines, setGuiEngines] = useState<GuiEngineConfig[]>(() => {
+    const stored = readStorage<GuiEngineConfig[] | null>('guiEngines', null);
+    if (!stored || !Array.isArray(stored) || !stored.length) return DEFAULT_GUI_ENGINES;
+    // Ensure built-in engines (fancycode, claude, agy) always exist in the list
+    const byId = new Map(stored.map((item) => [item.id, item]));
+    const mergedBuiltins = DEFAULT_GUI_ENGINES.map((b) =>
+      byId.has(b.id) ? { ...b, ...byId.get(b.id)!, builtin: true } : b,
+    );
+    const customs = stored.filter((item) => !DEFAULT_GUI_ENGINES.some((b) => b.id === item.id));
+    return [...mergedBuiltins, ...customs];
+  });
   const [agyAccounts, setAgyAccounts] = useState<AgyAccount[]>(() => readStorage('agyAccounts', []));
   const [multiLaunchConfig, setMultiLaunchConfig] = useState<MultiLaunchConfig>(() =>
     readStorage('multiLaunchConfig', DEFAULT_MULTI_LAUNCH_CONFIG),
@@ -1111,6 +1181,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('terminalStartCommandEnabled', terminalStartCommandEnabled), [terminalStartCommandEnabled]);
   useEffect(() => writeStorage('terminalStartCommand', terminalStartCommand), [terminalStartCommand]);
   useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
+  useEffect(() => writeStorage('guiEngines', guiEngines), [guiEngines]);
   useEffect(() => writeStorage('agyAccounts', agyAccounts), [agyAccounts]);
   useEffect(() => writeStorage('multiLaunchConfig', multiLaunchConfig), [multiLaunchConfig]);
   // FancyCode Web: the accounts live on the server (shared with the codeforge CLI), not in this browser.
@@ -3509,7 +3580,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return describeWorkspace(chat);
       }
       case 'start-terminals': {
-        const tabsInput: { title?: string; command?: string; server?: string }[] = Array.isArray(args.tabs) && args.tabs.length ? args.tabs.slice(0, 6) : [{}];
+        const tabsInput: { title?: string; command?: string; server?: string }[] = Array.isArray(args.tabs) && args.tabs.length ? args.tabs.slice(0, 12) : [{}];
         const projectForRun = await ensureRunnableProject();
         const chatId = newId();
         const terminalTabs: TerminalTab[] = tabsInput.map((input, index) => {
@@ -3542,7 +3613,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const target = chats.find((chat) => chat.id === args.workspaceId) || savedTerminalWorkspaces.find((chat) => chat.id === args.workspaceId);
         if (!target) throw new Error(tr('Diesen Workspace gibt es nicht.'));
         const tabs = target.terminalTabs?.length ? target.terminalTabs : [{ id: target.id, title: target.title } as TerminalTab];
-        if (tabs.length >= 6) throw new Error(tr('Der Workspace hat schon 6 Terminals.'));
+        if (tabs.length >= 12) throw new Error(tr('Der Workspace hat schon 12 Terminals.'));
         const server = findServer(args.server);
         const tab: TerminalTab = args.manager
           ? MANAGER_TAB(newId(), Boolean(target.vserver))
@@ -3561,7 +3632,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...target,
           terminalTabs: nextTabs,
           terminalLayout: 'grid',
-          terminalGridSize: Math.min(6, nextTabs.length),
+          terminalGridSize: Math.min(12, nextTabs.length),
           updatedAt: Date.now(),
         };
         setChats((current) => (current.some((chat) => chat.id === target.id) ? current.map((chat) => (chat.id === target.id ? updated : chat)) : [updated, ...current]));
@@ -3891,6 +3962,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTerminalSuffix,
       terminalTriggerWords,
       setTerminalTriggerWords,
+      agentNotificationsEnabled,
+      setAgentNotificationsEnabled,
       agyStartCommand,
       setAgyStartCommand,
       agyWaitTimeMs,
@@ -4044,6 +4117,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSwarmTasks,
       terminalLiveStates,
       updateTerminalLiveState,
+      guiEngines,
+      setGuiEngines,
     }),
     [
       folders,
@@ -4103,6 +4178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       terminalPrefix,
       terminalSuffix,
       terminalTriggerWords,
+      agentNotificationsEnabled,
       agyStartCommand,
       agyWaitTimeMs,
       agyPrefix,
@@ -4141,6 +4217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startVServerSession,
       startVServerSessions,
       cliHarnesses,
+      guiEngines,
       apiProviders,
       apiChatConfig,
       apiPending,

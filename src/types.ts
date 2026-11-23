@@ -126,6 +126,27 @@ export type TerminalTab = {
   // Isolated Git worktree path & branch for parallel multi-agent execution without file collisions.
   worktreePath?: string;
   worktreeBranch?: string;
+  // Turbo Mode: auto-approves safe tool prompts in this terminal while blocking dangerous commands.
+  turboMode?: boolean;
+};
+
+export type CliHistoryEntry = {
+  id: string;
+  vendor: 'claude' | 'codex' | 'agy' | 'fancycode';
+  vendorLabel: string;
+  title: string;
+  preview: string;
+  projectPath?: string;
+  updatedAt: number;
+  messageCount: number;
+  resumeCommand: string;
+};
+
+export type ProjectShortcut = {
+  id: string;
+  label: string;
+  command: string;
+  source?: 'package.json' | 'detected' | 'custom';
 };
 
 export type TerminalLiveStatus = 'idle' | 'working' | 'waiting' | 'done';
@@ -241,6 +262,15 @@ export type CliHarness = {
   name: string;
   command: string;
   icon: string;
+};
+
+export type GuiEngineConfig = {
+  id: string;
+  name: string;
+  command: string;
+  icon: string;
+  enabled: boolean;
+  builtin?: boolean;
 };
 
 export type ProjectFolder = {

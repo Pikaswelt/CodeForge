@@ -10,7 +10,6 @@ import { DEFAULT_LIBRARY_STYLE, useAppContext } from '../AppContext';
 import TutorialModal from './TutorialModal';
 import { HARNESS_ICONS, harnessIcon } from '../harnessIcons';
 import { isVideoPath, toFileUrl } from '../media';
-import libraryBannerUrl from '../../assets/library-banner.png';
 import { ApiProvidersSettings } from './ApiChat';
 import { AgyAccountsSettings } from './AgyAccounts';
 import { PluginsSettings } from './PluginsSettings';
@@ -18,7 +17,7 @@ import { McpSettings } from './McpSettings';
 import { FancyLoginMethods } from './FancyLoginMethods';
 import { animatedEffectsAllowed, featureFree, requirePlanFeature } from '../plans';
 import { MultiLaunchPanel } from './MultiLaunchPanel';
-import type { CliHarness, ProviderId } from '../types';
+import type { CliHarness, GuiEngineConfig, ProviderId } from '../types';
 
 const providers = (): { id: ProviderId; label: string; command: string }[] => [
   { id: 'antigravity', label: tr("Google Antigravity"), command: 'agy' },
@@ -91,6 +90,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setTerminalStartPath,
     cliHarnesses,
     setCliHarnesses,
+    guiEngines,
+    setGuiEngines,
     terminalPrefixSuffixEnabled,
     setTerminalPrefixSuffixEnabled,
     terminalPrefix,
@@ -99,6 +100,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setTerminalSuffix,
     terminalTriggerWords,
     setTerminalTriggerWords,
+    agentNotificationsEnabled,
+    setAgentNotificationsEnabled,
     multiLaunchConfig,
     agyAccounts,
   } = useAppContext();
@@ -513,6 +516,163 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
               {!mobileMode && (
               <section>
+                <div className="section-label flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    {tr("GUI-Agenten (FancyCode-Ansicht)")}
+                  </div>
+                  <span className="normal-case tracking-normal text-[10px] text-zinc-500">
+                    {guiEngines.filter((e) => e.enabled).length} {tr("aktiv")}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-4 text-zinc-500 mt-1.5">
+                  {tr("Wähle aus, welche Agenten in der grafischen FancyCode-Ansicht oben als Tab erscheinen (z. B. FancyCode, Claude Code, Antigravity CLI oder eigene CLI-Agenten).")}
+                </p>
+                <div className="space-y-2 mt-3">
+                  {guiEngines.map((eng) => {
+                    const updateGuiEngine = (patch: Partial<GuiEngineConfig>) =>
+                      setGuiEngines((current) =>
+                        current.map((item) => (item.id === eng.id ? { ...item, ...patch } : item)),
+                      );
+                    const Icon = harnessIcon(eng.icon || 'Terminal');
+                    return (
+                      <div
+                        key={eng.id}
+                        className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition-colors ${
+                          eng.enabled
+                            ? 'border-white/15 bg-white/[0.04]'
+                            : 'border-white/5 bg-white/[0.015] opacity-70'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={eng.enabled}
+                          onChange={(event) => updateGuiEngine({ enabled: event.target.checked })}
+                          className="h-4 w-4 accent-amber-400 shrink-0 cursor-pointer"
+                          title={tr("In GUI anzeigen")}
+                        />
+                        {eng.builtin ? (
+                          <>
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-amber-300">
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-zinc-100">{eng.name}</span>
+                                <span className="rounded-md border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[9px] font-mono text-zinc-400">
+                                  {eng.command}
+                                </span>
+                                {eng.id === 'agy' && (
+                                  <span className="rounded-md border border-amber-400/25 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-medium text-amber-300">
+                                    Antigravity CLI Support
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-zinc-500 truncate">
+                                {eng.id === 'fancycode'
+                                  ? tr("Eingebauter FancyCode-Agent über dein FancyServers-Konto")
+                                  : eng.id === 'claude'
+                                    ? tr("Offizielle Claude Code CLI in der grafischen Ansicht")
+                                    : tr("Google Antigravity CLI (agy) direkt in der grafischen Ansicht")}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <select
+                              value={eng.icon || 'Terminal'}
+                              onChange={(event) => updateGuiEngine({ icon: event.target.value })}
+                              className="input !w-[100px] !py-1.5 text-xs shrink-0"
+                              title={tr("Icon")}
+                            >
+                              {Object.keys(HARNESS_ICONS).map((name) => (
+                                <option key={name} value={name}>{name}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={eng.name}
+                              onChange={(event) => updateGuiEngine({ name: event.target.value })}
+                              className="input flex-1 min-w-0 !py-1.5 text-xs"
+                              placeholder={tr("Name (z. B. Codex CLI)")}
+                              autoComplete="off"
+                            />
+                            <input
+                              type="text"
+                              value={eng.command}
+                              onChange={(event) => updateGuiEngine({ command: event.target.value })}
+                              className="input flex-1 min-w-0 !py-1.5 text-xs font-mono"
+                              placeholder={tr("CLI-Befehl (z. B. codex)")}
+                              autoComplete="off"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setGuiEngines((current) => current.filter((item) => item.id !== eng.id))}
+                              className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 shrink-0"
+                              title={tr("Entfernen")}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setGuiEngines((current) => [
+                          ...current,
+                          {
+                            id: `gui-${Date.now().toString(36)}`,
+                            name: tr("Eigener Agent"),
+                            command: '',
+                            icon: 'Terminal',
+                            enabled: true,
+                          },
+                        ])
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2.5 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-400/20 transition-colors"
+                    >
+                      {tr("+ Eigenen GUI-Agent hinzufügen")}
+                    </button>
+                    {cliHarnesses
+                      .filter(
+                        (h) =>
+                          h.command.trim() &&
+                          !guiEngines.some(
+                            (g) => g.command.trim().toLowerCase() === h.command.trim().toLowerCase(),
+                          ),
+                      )
+                      .map((h) => (
+                        <button
+                          key={h.id}
+                          type="button"
+                          onClick={() =>
+                            setGuiEngines((current) => [
+                              ...current,
+                              {
+                                id: `gui-${h.id}-${Date.now().toString(36)}`,
+                                name: h.name,
+                                command: h.command,
+                                icon: h.icon || 'Terminal',
+                                enabled: true,
+                              },
+                            ])
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.07] hover:text-white transition-colors"
+                        >
+                          + {h.name} ({h.command})
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </section>
+              )}
+
+              {!mobileMode && (
+              <section>
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
                   {tr("CLI-Harnesses")}
@@ -642,21 +802,46 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
               {!mobileMode && (
               <section>
-                <div className="section-label flex items-center gap-2">
-                  <Terminal className="w-3.5 h-3.5" />
-                  {tr("Terminal-Triggerwörter")}
+                <div className="section-label flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-3.5 h-3.5" />
+                    {tr("Desktop-Benachrichtigungen (Windows & Linux)")}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void window.agentWorkspace?.notifyAgentComplete?.({
+                        title: 'FancyCode Desktop · Agent fertig',
+                        body: tr('System-Benachrichtigungen für Claude Code, Antigravity CLI & FancyCode sind aktiv.'),
+                      })
+                    }
+                    className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[10px] normal-case tracking-normal text-zinc-300 hover:bg-white/5"
+                  >
+                    {tr("Testen")}
+                  </button>
                 </div>
-                <input
-                  type="text"
-                  value={terminalTriggerWords}
-                  onChange={(event) => setTerminalTriggerWords(event.target.value)}
-                  className="input w-full mt-3"
-                  placeholder={tr("z. B. error, failed, warning (Kommagetrennt)")}
-                  autoComplete="off"
-                />
-                <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  {tr("Wenn eines dieser Wörter (kommagetrennt) im Terminal ausgegeben wird, wird eine Desktop-Benachrichtigung gesendet.")}
-                </p>
+                <div className="mt-3">
+                  <SettingToggle
+                    label={tr("Benachrichtigen wenn Agenten fertig sind")}
+                    description={tr("Sendet eine native Windows- oder Linux-Systembenachrichtigung (inkl. Taskleisten-Blinken), sobald Claude Code, Antigravity CLI (agy), FancyCode oder Codex ihre Aufgabe beendet haben oder eine Bestätigung brauchen.")}
+                    checked={agentNotificationsEnabled}
+                    onChange={setAgentNotificationsEnabled}
+                  />
+                </div>
+                <div className="mt-3">
+                  <label className="text-[11px] text-zinc-400">{tr("Zusätzliche Terminal-Triggerwörter")}</label>
+                  <input
+                    type="text"
+                    value={terminalTriggerWords}
+                    onChange={(event) => setTerminalTriggerWords(event.target.value)}
+                    className="input w-full mt-1.5"
+                    placeholder={tr("z. B. error, failed, warning (Kommagetrennt)")}
+                    autoComplete="off"
+                  />
+                  <p className="text-[11px] leading-4 text-zinc-600 mt-1.5">
+                    {tr("Wenn eines dieser Wörter (kommagetrennt) im Terminal ausgegeben wird, wird ebenfalls eine System-Benachrichtigung gesendet.")}
+                  </p>
+                </div>
               </section>
               )}
 
@@ -1127,24 +1312,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       type="button"
                       onClick={() => setLibraryStyle((current) => ({ ...current, bannerMedia: '' }))}
                       className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-                        !libraryStyle.bannerMedia
+                        !libraryStyle.bannerMedia || libraryStyle.bannerMedia === 'anime'
                           ? 'border-amber-400/50 bg-amber-400/10 text-amber-300'
                           : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
                       }`}
                     >
                       {tr("Kein Banner (Clean)")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLibraryStyle((current) => ({ ...current, bannerMedia: 'anime' }))}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-                        libraryStyle.bannerMedia === 'anime'
-                          ? 'border-amber-400/50 bg-amber-400/10 text-amber-300'
-                          : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
-                      }`}
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      {tr("Anime-Banner")}
                     </button>
                     <button
                       type="button"
@@ -1198,14 +1371,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     />
                   )}
 
-                  {libraryStyle.bannerMedia && <ThemeCover media={libraryStyle.bannerMedia} />}
+                  {libraryStyle.bannerMedia && libraryStyle.bannerMedia !== 'anime' && <ThemeCover media={libraryStyle.bannerMedia} />}
                   <ThemeSlider
                     label={tr("Banner-Aufhellung")}
                     value={libraryStyle.bannerOverlay}
                     onChange={(value) => setLibraryStyle((current) => ({ ...current, bannerOverlay: value }))}
                     max={100}
                     unit="%"
-                    description={tr("Wie stark das Banner hinter dem Text aufgehellt wird. 0 = Bild/Video voll sichtbar.")}
+                    description={tr("Wie stark das Banner hinter dem Text abgedunkelt wird. 0 = Bild/Video voll sichtbar.")}
                   />
                   <input
                     value={libraryStyle.bannerTitle}
@@ -1222,22 +1395,22 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   <div className="grid grid-cols-2 gap-3">
                     <ThemeColor
                       label={tr("Seiten-Hintergrund")}
-                      value={libraryStyle.pageBackground || '#f7f8fb'}
+                      value={libraryStyle.pageBackground || '#111113'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, pageBackground: value }))}
                     />
                     <ThemeColor
                       label={tr("Karten & Banner")}
-                      value={libraryStyle.cardBackground || '#ffffff'}
+                      value={libraryStyle.cardBackground || '#18161a'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, cardBackground: value }))}
                     />
                     <ThemeColor
                       label={tr("Text")}
-                      value={libraryStyle.textColor || '#111827'}
+                      value={libraryStyle.textColor || '#f4f4f5'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, textColor: value }))}
                     />
                     <ThemeColor
                       label={tr("Akzent & Buttons")}
-                      value={libraryStyle.accentColor || '#111827'}
+                      value={libraryStyle.accentColor || '#f59e0b'}
                       onChange={(value) => setLibraryStyle((current) => ({ ...current, accentColor: value }))}
                     />
                   </div>
@@ -1269,11 +1442,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
 // Still cover for a theme: images as-is, videos show their first frame (never autoplay).
 function ThemeCover({ media }: { media: string }) {
-  const isAnime = media === 'anime';
-  const url = isAnime ? libraryBannerUrl : toFileUrl(media);
+  const url = toFileUrl(media);
   return (
     <div className="mb-3 aspect-video w-full overflow-hidden rounded-lg border border-white/10 bg-black/40">
-      {!isAnime && isVideoPath(media) ? (
+      {isVideoPath(media) ? (
         <video
           src={url}
           muted

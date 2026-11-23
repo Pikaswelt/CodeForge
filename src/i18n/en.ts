@@ -1543,6 +1543,49 @@ const EN: Record<string, string> = {
   'Commit-Nachricht...': 'Commit message...',
   'Commit-Nachricht aus geänderten Dateien vorschlagen': 'Suggest commit message from changed files',
   'Freier Agent-Slot': 'Available agent slot',
+  'Projekt-Shortcuts': 'Project shortcuts',
+  'Keine Scripts erkannt. Unten eigenen Befehl anlegen.': 'No scripts detected. Add a custom command below.',
+  'Im aktiven Terminal ausführen': 'Run in active terminal',
+  'In allen Terminals dieses Workspaces ausführen': 'Run in all terminals of this workspace',
+  'Name (z. B. Tests & Lint)...': 'Name (e.g. Tests & Lint)...',
+  'Befehl (z. B. npm test)...': 'Command (e.g. npm test)...',
+  'Zentrale CLI-History-Suche': 'Central CLI History Search',
+  'Vergangene Sessions aus Claude Code, Codex, Antigravity & FancyCode durchsuchen und fortsetzen': 'Search and resume past sessions across Claude Code, Codex, Antigravity & FancyCode',
+  'In allen CLI-Gesprächsverläufen suchen (Prompt, Datei, Projekt)...': 'Search across all CLI conversation histories (prompt, file, project)...',
+  'Lade CLI-Verläufe...': 'Loading CLI histories...',
+  'Keine passenden CLI-Sessions gefunden.': 'No matching CLI sessions found.',
+  'Im aktiven Tab': 'In active tab',
+  'Neues Tab': 'New tab',
+  'Verlauf': 'History',
+  'MCP-Marketplace (1-Klick-Installation)': 'MCP Marketplace (1-click install)',
+  'Trägt den Server in FancyCode, Claude Code & OpenCode ein': 'Registers the server in FancyCode, Claude Code & OpenCode',
+  'GUI-Agenten (FancyCode-Ansicht)': 'GUI Agents (FancyCode View)',
+  'aktiv': 'active',
+  'Wähle aus, welche Agenten in der grafischen FancyCode-Ansicht oben als Tab erscheinen (z. B. FancyCode, Claude Code, Antigravity CLI oder eigene CLI-Agenten).':
+    'Choose which agents appear as tabs in the graphical FancyCode view (e.g. FancyCode, Claude Code, Antigravity CLI, or custom CLI agents).',
+  'In GUI anzeigen': 'Show in GUI',
+  'Eingebauter FancyCode-Agent über dein FancyServers-Konto': 'Built-in FancyCode agent via your FancyServers account',
+  'Offizielle Claude Code CLI in der grafischen Ansicht': 'Official Claude Code CLI in the graphical view',
+  'Google Antigravity CLI (agy) direkt in der grafischen Ansicht': 'Google Antigravity CLI (agy) directly in the graphical view',
+  'Name (z. B. Codex CLI)': 'Name (e.g. Codex CLI)',
+  'CLI-Befehl (z. B. codex)': 'CLI command (e.g. codex)',
+  'Eigener Agent': 'Custom Agent',
+  '+ Eigenen GUI-Agent hinzufügen': '+ Add custom GUI agent',
+  'Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode, Claude oder Antigravity CLI arbeiten dann direkt darin.':
+    'Add a project or select one in the sidebar – FancyCode, Claude, or Antigravity CLI will work directly inside it.',
+  'Wie stark das Banner hinter dem Text abgedunkelt wird. 0 = Bild/Video voll sichtbar.':
+    'How strongly the banner is darkened behind the text. 0 = image/video fully visible.',
+  'Desktop-Benachrichtigungen (Windows & Linux)': 'Desktop Notifications (Windows & Linux)',
+  'System-Benachrichtigungen für Claude Code, Antigravity CLI & FancyCode sind aktiv.':
+    'System notifications for Claude Code, Antigravity CLI & FancyCode are active.',
+  'Benachrichtigen wenn Agenten fertig sind': 'Notify when agents finish',
+  'Sendet eine native Windows- oder Linux-Systembenachrichtigung (inkl. Taskleisten-Blinken), sobald Claude Code, Antigravity CLI (agy), FancyCode oder Codex ihre Aufgabe beendet haben oder eine Bestätigung brauchen.':
+    'Sends a native Windows or Linux system notification (including taskbar flash) as soon as Claude Code, Antigravity CLI (agy), FancyCode, or Codex finish their task or need confirmation.',
+  'Zusätzliche Terminal-Triggerwörter': 'Additional terminal trigger words',
+  'Wenn eines dieser Wörter (kommagetrennt) im Terminal ausgegeben wird, wird ebenfalls eine System-Benachrichtigung gesendet.':
+    'When one of these comma-separated words appears in the terminal, a system notification is also sent.',
+  'Der Agent hat seine Aufgabe im Terminal abgeschlossen.': 'The agent has completed its task in the terminal.',
+  'Der Agent wartet im Terminal auf deine Bestätigung.': 'The agent is waiting for your confirmation in the terminal.',
 };
 
 export default EN;

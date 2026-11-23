@@ -1,5 +1,5 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
-import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitDiffStatus, GitInfo, GitWorktreeInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
+import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliHistoryEntry, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitDiffStatus, GitInfo, GitWorktreeInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectShortcut, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
 
 export type FancyPlan = 'free' | 'mini' | 'pro' | 'max';
 
@@ -205,6 +205,15 @@ declare global {
         message: string;
         push?: boolean;
       }): Promise<{ ok: boolean; output: string; error: string }>;
+      searchCliHistory(projectPath?: string): Promise<CliHistoryEntry[]>;
+      getProjectShortcuts(projectPath: string): Promise<ProjectShortcut[]>;
+      installMcpPreset(input: {
+        id: string;
+        command: string;
+        args: string[];
+        env?: Record<string, string>;
+        targets?: ('fancycode' | 'claude' | 'opencode' | 'agy')[];
+      }): Promise<{ ok: boolean; output: string }>;
       installPlugin(projectPath: string, packageName: string): Promise<string>;
       removePlugin(projectPath: string, packageName: string): Promise<string>;
       listCodexPlugins(projectPath?: string): Promise<CodexPluginInfo[]>;

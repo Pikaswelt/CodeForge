@@ -31,14 +31,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import './fancycode.css';
 
 export interface FancyCodeBridge {
-  start(opts: { cwd: string; resume?: string; server?: unknown; engine?: Engine }): Promise<string>;
+  start(opts: { cwd: string; resume?: string; server?: unknown; engine?: Engine; command?: string; label?: string }): Promise<string>;
   send(id: string, msg: unknown): void;
   stop(id: string): void;
   onEvent(cb: (id: string, ev: FcEvent) => void): () => void;
   openExternal?(url: string): void;
 }
 
-export type Engine = 'fancycode' | 'claude';
+export type Engine = 'fancycode' | 'claude' | 'agy' | string;
+export type EngineDescriptor = { id: Engine; name: string; command?: string; icon?: string };
 /** Steuerung von außen (z. B. Live-Teilen): aktuelle Sitzung und Aufträge, die wie eigene Eingaben laufen. */
 export type PanelControl = { sessionId: string; engine: Engine; ready: boolean; folder: string; prompt: (text: string) => void };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -491,11 +492,13 @@ export function FancyCodePanel({
   onOpenUsage,
   askPermission,
   engines = ['fancycode'],
+  engineConfigs,
   controlRef,
   topActions,
   plan: hostPlan,
   paidEngines = [],
   onEngineLocked,
+  onNotify,
   appearance = 'solid',
 }: {
   bridge: FancyCodeBridge;
@@ -509,8 +512,9 @@ export function FancyCodePanel({
   // App-eigene Darstellung für Rückfragen (FancyCode Desktop zeigt sie als Popup unten rechts).
   // Fehlt der Aufruf, erscheint die Frage wie bisher als Karte im Verlauf.
   askPermission?: (req: { question: string; summary: string; preview: string; sessionId: string }) => Promise<'yes' | 'always' | 'no' | null>;
-  // Verfügbare Engines: „fancycode“ (FancyServers-Modelle) und „claude“ (installierte Claude-CLI des Nutzers).
+  // Verfügbare Engines: „fancycode“ (FancyServers-Modelle), „claude“, „agy“ (Antigravity CLI) oder eigene CLI-Engines.
   engines?: Engine[];
+  engineConfigs?: EngineDescriptor[];
   controlRef?: MutableRefObject<PanelControl | null>;
   // Zusätzliche Knöpfe in der Kopfzeile (z. B. „Live teilen“).
   topActions?: ReactNode;
@@ -522,6 +526,8 @@ export function FancyCodePanel({
   paidEngines?: Engine[];
   // Gesperrte Engine angeklickt: die App zeigt „Ab Spark verfügbar“.
   onEngineLocked?: (engine: Engine) => void;
+  // System-Benachrichtigung auf Windows/Linux/macOS, wenn der GUI-Agent fertig ist oder eine Rückfrage stellt.
+  onNotify?: (info: { title: string; body: string }) => void;
 }) {
   const queued = useRef<string[]>([]);
   const sendTextRef = useRef<(t: string) => void>(() => {});
@@ -538,11 +544,15 @@ export function FancyCodePanel({
     } catch {}
   };
   const isClaude = engine === 'claude';
-  // Plan gesunken oder gespeicherte Engine nicht mehr frei: zurück auf FancyCode.
+  const isFancyCode = engine === 'fancycode';
+  const activeEngineConfig = engineConfigs?.find((c) => c.id === engine);
+  // Plan gesunken oder gespeicherte Engine nicht mehr in Liste / frei: zurück auf erste verfügbare Engine.
   useEffect(() => {
-    if (engineLocked(engine)) setEngineState(engines.find((e) => !engineLocked(e)) || 'fancycode');
+    if (!engines.includes(engine) || engineLocked(engine)) {
+      setEngineState(engines.find((e) => !engineLocked(e)) || 'fancycode');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hostPlan, engine]);
+  }, [hostPlan, engine, engines.join(',')]);
   const [modes, setModes] = useState<Mode[]>(MODES);
   const [efforts, setEfforts] = useState<string[]>([]);
   const [effort, setEffort] = useState('');
@@ -599,7 +609,12 @@ export function FancyCodePanel({
     setLoginUrl('');
     setInstalling(null);
     bridge
-      .start({ cwd, ...(server ? { server } : {}), ...(engine !== 'fancycode' ? { engine } : {}) })
+      .start({
+        cwd,
+        ...(server ? { server } : {}),
+        ...(engine !== 'fancycode' ? { engine } : {}),
+        ...(activeEngineConfig?.command ? { command: activeEngineConfig.command, label: activeEngineConfig.name } : {}),
+      })
         .then((id) => {
         if (!alive) return bridge.stop(id);
         current = id;
@@ -671,6 +686,10 @@ export function FancyCodePanel({
             break;
           case 'permission_request':
             setThinking(false);
+            onNotify?.({
+              title: `${engineName} · Eingabe nötig`,
+              body: `${permissionTitle(ev.kind)} ${ev.summary || ''}`.trim(),
+            });
             if (askPermission) {
               const question = permissionTitle(ev.kind);
               push({ k: 'note', id: uid(), level: 'info', text: `${question} ${ev.summary}` });
@@ -683,6 +702,10 @@ export function FancyCodePanel({
             break;
           case 'question':
             setThinking(false);
+            onNotify?.({
+              title: `${engineName} · Rückfrage`,
+              body: ev.questions?.[0]?.question || 'Der Agent hat eine Frage an dich.',
+            });
             push({ k: 'question', id: ev.id, questions: ev.questions || [] });
             break;
           case 'permission_cancel':
@@ -712,6 +735,12 @@ export function FancyCodePanel({
           case 'done':
             setRunning(false);
             setThinking(false);
+            if (!ev.aborted) {
+              onNotify?.({
+                title: `${engineName} · Fertig`,
+                body: folderName ? `Aufgabe in ${folderName} abgeschlossen.` : 'Aufgabe abgeschlossen.',
+              });
+            }
             // Aufträge, die während der Antwort von außen kamen, der Reihe nach abarbeiten.
             if (queued.current.length) setTimeout(() => sendTextRef.current(queued.current.shift()!), 0);
             if (ev.aborted) push({ k: 'note', id: uid(), level: 'info', text: 'Abgebrochen.' });
@@ -998,7 +1027,7 @@ export function FancyCodePanel({
     ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
   }, [input]);
 
-  const engineName = isClaude ? 'Claude' : 'FancyCode';
+  const engineName = activeEngineConfig?.name || (isClaude ? 'Claude' : engine === 'agy' ? 'Antigravity CLI' : 'FancyCode');
   // Gespeicherte Modelle, die der Plan nicht (mehr) hat, laufen serverseitig über Auto – so auch anzeigen.
   const activeModel = models.some((m) => m.id === model) ? model : models[0]?.id || (isClaude ? 'default' : 'auto');
   const modelLabel = models.find((m) => m.id === activeModel)?.label || (isClaude ? 'Claude' : 'Auto');
@@ -1041,25 +1070,39 @@ export function FancyCodePanel({
       <div className="fc-top">
         {engines.length > 1 ? (
           <div className="fc-engines" role="tablist" aria-label="Agent">
-            {engines.map((e) => (
-              <button
-                key={e}
-                type="button"
-                role="tab"
-                aria-selected={engine === e}
-                className={engine === e ? 'active' : ''}
-                disabled={running}
-                title={engineLocked(e) ? 'Ab Spark verfügbar' : e === 'claude' ? 'Claude über dein eigenes Claude-Konto (Claude Code)' : 'FancyCode über dein FancyServers-Konto'}
-                onClick={() => engine !== e && setEngine(e)}
-              >
-                {e === 'claude' ? <Sparkles size={14} /> : <Zap size={14} />} {e === 'claude' ? 'Claude' : 'FancyCode'}
-                {engineLocked(e) ? <span className="fc-lock-tag">Spark</span> : null}
-              </button>
-            ))}
+            {engines.map((e) => {
+              const cfg = engineConfigs?.find((c) => c.id === e);
+              const label = cfg?.name || (e === 'claude' ? 'Claude' : e === 'agy' ? 'Antigravity CLI' : e === 'fancycode' ? 'FancyCode' : e);
+              return (
+                <button
+                  key={e}
+                  type="button"
+                  role="tab"
+                  aria-selected={engine === e}
+                  className={engine === e ? 'active' : ''}
+                  disabled={running}
+                  title={
+                    engineLocked(e)
+                      ? 'Ab Spark verfügbar'
+                      : e === 'claude'
+                        ? 'Claude über dein eigenes Claude-Konto (Claude Code)'
+                        : e === 'agy'
+                          ? 'Antigravity CLI (agy)'
+                          : e === 'fancycode'
+                            ? 'FancyCode über dein FancyServers-Konto'
+                            : `${label} (${cfg?.command || e})`
+                  }
+                  onClick={() => engine !== e && setEngine(e)}
+                >
+                  {e === 'claude' ? <Sparkles size={14} /> : e === 'fancycode' ? <Zap size={14} /> : <Terminal size={14} />} {label}
+                  {engineLocked(e) ? <span className="fc-lock-tag">Spark</span> : null}
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="fc-brand">
-            <Zap size={16} /> FancyCode
+            <Zap size={16} /> {engineName}
           </div>
         )}
         <button type="button" className="fc-chip" onClick={onPickFolder} title={cwd} disabled={!onPickFolder}>
@@ -1182,7 +1225,9 @@ export function FancyCodePanel({
               <p className="fc-muted">
                 {isClaude
                   ? `Claude arbeitet mit deinem Konto ${account.name}: liest Code, ändert Dateien, führt Befehle aus und nutzt deine Skills und MCP-Server.`
-                  : 'FancyCode liest deinen Code, ändert Dateien und führt Befehle aus – vor Änderungen fragt es nach.'}
+                  : isFancyCode
+                    ? 'FancyCode liest deinen Code, ändert Dateien und führt Befehle aus – vor Änderungen fragt es nach.'
+                    : `${engineName} läuft direkt in diesem Projektordner über die lokale CLI (${activeEngineConfig?.command || engine}).`}
               </p>
               <div className="fc-suggest">
                 {['Erkläre mir dieses Projekt', 'Finde und behebe Fehler im Build', 'Schreib Tests für die wichtigsten Funktionen', '/init'].map((s) => (
@@ -1212,8 +1257,8 @@ export function FancyCodePanel({
               );
             }
             if (item.k === 'tool') return <ToolCard key={item.id} item={item} />;
-            if (item.k === 'ask') return <AskCard key={item.id} item={item} onAnswer={(a) => answer(item.id, a)} />;
-            if (item.k === 'question') return <QuestionCard key={item.id} item={item} onAnswer={(a) => answerQuestion(item.id, a)} />;
+            if (item.k === 'ask') return item.answer ? <AskCard key={item.id} item={item} onAnswer={(a) => answer(item.id, a)} /> : null;
+            if (item.k === 'question') return item.answered ? <QuestionCard key={item.id} item={item} onAnswer={(a) => answerQuestion(item.id, a)} /> : null;
             if (item.k === 'card')
               return (
                 <div key={item.id} className="fc-card">
@@ -1236,7 +1281,26 @@ export function FancyCodePanel({
       </div>
 
       <div className="fc-bottom">
-        <Todos todos={todos} running={running} />
+        {(() => {
+          const pendingPrompts = items.filter(
+            (it): it is Extract<Item, { k: 'ask' | 'question' }> =>
+              (it.k === 'ask' && !it.answer) || (it.k === 'question' && !it.answered),
+          );
+          if (pendingPrompts.length > 0) {
+            return (
+              <div className="fc-bottom-prompts">
+                {pendingPrompts.map((it) =>
+                  it.k === 'ask' ? (
+                    <AskCard key={it.id} item={it} onAnswer={(a) => answer(it.id, a)} />
+                  ) : (
+                    <QuestionCard key={it.id} item={it} onAnswer={(a) => answerQuestion(it.id, a)} />
+                  ),
+                )}
+              </div>
+            );
+          }
+          return <Todos todos={todos} running={running} />;
+        })()}
         {suggestions.length > 0 && (!input.trim() || suggestions.includes(input)) && (
           <div className="fc-suggests">
             {suggestions.map((s) => (

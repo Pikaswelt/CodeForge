@@ -2247,22 +2247,55 @@ function withSystemPrompt(systemPrompt, prompt) {
 }
 
 function showTaskNotification(input = {}) {
-  if (!Notification.isSupported()) return false;
   const title = String(input.title || 'FancyCode Desktop').slice(0, 80);
   const body = String(input.body || mt('Aufgabe ist erledigt.')).slice(0, 240);
-  const notification = new Notification({
-    title,
-    body,
-    icon: getAssetPath('fancycode.png'),
-  });
-  notification.on('click', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  });
-  notification.show();
-  return true;
+  const iconPath = getAssetPath(process.platform === 'win32' ? 'fancycode.ico' : 'fancycode.png');
+
+  if (mainWindow && !mainWindow.isDestroyed() && (!mainWindow.isFocused() || mainWindow.isMinimized())) {
+    try {
+      mainWindow.flashFrame(true);
+      mainWindow.once('focus', () => {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.flashFrame(false);
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }
+
+  if (Notification.isSupported()) {
+    try {
+      const notification = new Notification({
+        title,
+        body,
+        icon: iconPath && fs.existsSync(iconPath) ? iconPath : getAssetPath('fancycode.png'),
+        silent: false,
+      });
+      notification.on('click', () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      });
+      notification.show();
+      return true;
+    } catch (_) {}
+  }
+
+  // Fallback for Linux desktops / Wayland setups where libnotify via Electron is unavailable
+  if (process.platform === 'linux') {
+    try {
+      const pngIcon = getAssetPath('fancycode.png');
+      const args = ['-a', 'FancyCode Desktop'];
+      if (pngIcon && fs.existsSync(pngIcon)) args.push('-i', pngIcon);
+      args.push(title, body);
+      const child = spawn('notify-send', args, { detached: true, stdio: 'ignore' });
+      child.on('error', () => {});
+      child.unref();
+      return true;
+    } catch (_) {}
+  }
+
+  return false;
 }
 
 function parseUsageInfo(providerId, commandText, output) {
@@ -4926,6 +4959,281 @@ ipcMain.handle('device:status', () => {
       return { ok: true, output: `${commitRes.output}\n${pushRes.output}`.trim(), error: '' };
     }
     return commitRes;
+  });
+
+  ipcMain.handle('history:search-cli', async () => {
+    const entries = [];
+    const home = app.getPath('home');
+
+    // 1. Antigravity CLI history
+    try {
+      const agyChats = readAntigravityImportedChats();
+      for (const chat of agyChats) {
+        const lastMsg = chat.messages[chat.messages.length - 1]?.text || '';
+        entries.push({
+          id: `agy-${chat.conversationId}`,
+          vendor: 'agy',
+          vendorLabel: 'Antigravity',
+          title: chat.title || 'Antigravity Session',
+          preview: lastMsg.slice(0, 180),
+          updatedAt: chat.updatedAt || Date.now(),
+          messageCount: chat.messages.length,
+          resumeCommand: 'agy --continue',
+        });
+      }
+    } catch (_) {}
+
+    // 2. Claude Code history (~/.claude/projects/<project>/*.jsonl)
+    try {
+      const claudeProjectsDir = path.join(home, '.claude', 'projects');
+      if (fs.existsSync(claudeProjectsDir)) {
+        const projDirs = fs.readdirSync(claudeProjectsDir, { withFileTypes: true });
+        for (const pDir of projDirs.slice(0, 40)) {
+          if (!pDir.isDirectory()) continue;
+          const fullProjDir = path.join(claudeProjectsDir, pDir.name);
+          const files = fs.readdirSync(fullProjDir, { withFileTypes: true });
+          for (const f of files.slice(0, 30)) {
+            if (!f.isFile() || !f.name.endsWith('.jsonl')) continue;
+            const filePath = path.join(fullProjDir, f.name);
+            const stat = fs.statSync(filePath);
+            if (stat.size > 4 * 1024 * 1024) continue;
+            const sessionId = f.name.replace(/\.jsonl$/, '');
+            const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/).filter(Boolean);
+            let title = '';
+            let preview = '';
+            let cwd = '';
+            let msgCount = 0;
+            for (const line of lines.slice(0, 80)) {
+              try {
+                const obj = JSON.parse(line);
+                if (!cwd && obj.cwd) cwd = String(obj.cwd);
+                if (obj.type === 'summary' && obj.summary) title = String(obj.summary);
+                const role = obj.message?.role || obj.type;
+                const content = obj.message?.content ?? obj.content;
+                let text = '';
+                if (typeof content === 'string') text = content;
+                else if (Array.isArray(content)) {
+                  text = content.map((c) => (typeof c?.text === 'string' ? c.text : '')).filter(Boolean).join(' ');
+                }
+                text = text.replace(/\s+/g, ' ').trim();
+                if (text && (role === 'user' || role === 'assistant')) {
+                  msgCount++;
+                  if (!title && role === 'user') title = text.slice(0, 64);
+                  preview = text.slice(0, 180);
+                }
+              } catch (_) {}
+            }
+            if (!title && !preview) continue;
+            entries.push({
+              id: `claude-${sessionId}`,
+              vendor: 'claude',
+              vendorLabel: 'Claude Code',
+              title: title || `Claude Session ${sessionId.slice(0, 8)}`,
+              preview: preview || title,
+              projectPath: cwd || pDir.name.replace(/^-/, '/').replace(/-/g, '/'),
+              updatedAt: stat.mtimeMs,
+              messageCount: Math.max(1, msgCount),
+              resumeCommand: `claude --resume ${sessionId}`,
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 3. Codex CLI history (~/.codex/sessions or ~/.codex/history.jsonl)
+    try {
+      const codexHistoryFile = path.join(home, '.codex', 'history.jsonl');
+      if (fs.existsSync(codexHistoryFile)) {
+        const stat = fs.statSync(codexHistoryFile);
+        const lines = fs.readFileSync(codexHistoryFile, 'utf8').split(/\r?\n/).filter(Boolean).slice(-40);
+        const bySession = new Map();
+        for (const line of lines) {
+          try {
+            const obj = JSON.parse(line);
+            const sid = String(obj.session_id || obj.id || 'default');
+            const text = String(obj.text || obj.prompt || obj.content || '').replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            const prev = bySession.get(sid) || { title: text.slice(0, 64), preview: text.slice(0, 180), count: 0, ts: (obj.ts ? obj.ts * 1000 : stat.mtimeMs) };
+            prev.preview = text.slice(0, 180);
+            prev.count += 1;
+            bySession.set(sid, prev);
+          } catch (_) {}
+        }
+        for (const [sid, info] of bySession.entries()) {
+          entries.push({
+            id: `codex-${sid}`,
+            vendor: 'codex',
+            vendorLabel: 'Codex CLI',
+            title: info.title,
+            preview: info.preview,
+            updatedAt: info.ts || stat.mtimeMs,
+            messageCount: info.count,
+            resumeCommand: sid !== 'default' ? `codex resume ${sid}` : 'codex',
+          });
+        }
+      }
+    } catch (_) {}
+
+    // 4. FancyCode CLI sessions (~/.config/fancycode/sessions or ~/.fancycode/sessions)
+    try {
+      const fcDirs = [
+        path.join(skills.fancycodeHome(home), 'sessions'),
+        path.join(home, '.fancycode', 'sessions'),
+      ];
+      for (const dir of fcDirs) {
+        if (!fs.existsSync(dir)) continue;
+        for (const f of fs.readdirSync(dir, { withFileTypes: true }).slice(0, 40)) {
+          if (!f.isFile() || !f.name.endsWith('.json')) continue;
+          const filePath = path.join(dir, f.name);
+          const stat = fs.statSync(filePath);
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          const sid = String(data.id || f.name.replace(/\.json$/, ''));
+          const msgs = Array.isArray(data.messages) ? data.messages : [];
+          const firstUser = msgs.find((m) => m.role === 'user');
+          const lastMsg = msgs[msgs.length - 1];
+          const textOf = (m) => (typeof m?.content === 'string' ? m.content : '').replace(/\s+/g, ' ').trim();
+          const title = String(data.title || textOf(firstUser) || `FancyCode ${sid.slice(0, 8)}`).slice(0, 64);
+          entries.push({
+            id: `fancycode-${sid}`,
+            vendor: 'fancycode',
+            vendorLabel: 'FancyCode',
+            title,
+            preview: textOf(lastMsg).slice(0, 180) || title,
+            projectPath: data.cwd || undefined,
+            updatedAt: data.updatedAt || stat.mtimeMs,
+            messageCount: msgs.length || 1,
+            resumeCommand: `fancycode --resume ${sid}`,
+          });
+        }
+      }
+    } catch (_) {}
+
+    return entries
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .slice(0, 120);
+  });
+
+  ipcMain.handle('project:scripts', async (_event, projectPath) => {
+    const shortcuts = [];
+    if (!projectPath || typeof projectPath !== 'string' || !fs.existsSync(projectPath)) return shortcuts;
+
+    const pkgPath = path.join(projectPath, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        const scripts = pkg.scripts && typeof pkg.scripts === 'object' ? Object.entries(pkg.scripts) : [];
+        for (const [name] of scripts.slice(0, 12)) {
+          shortcuts.push({
+            id: `npm-${name}`,
+            label: `npm run ${name}`,
+            command: `npm run ${name}`,
+            source: 'package.json',
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (fs.existsSync(path.join(projectPath, 'gradlew'))) {
+      shortcuts.push(
+        { id: 'gradle-build', label: './gradlew assemble', command: './gradlew assemble', source: 'detected' },
+        { id: 'gradle-test', label: './gradlew test', command: './gradlew test', source: 'detected' },
+      );
+    }
+    if (fs.existsSync(path.join(projectPath, 'Cargo.toml'))) {
+      shortcuts.push(
+        { id: 'cargo-check', label: 'cargo check', command: 'cargo check', source: 'detected' },
+        { id: 'cargo-test', label: 'cargo test', command: 'cargo test', source: 'detected' },
+      );
+    }
+    if (fs.existsSync(path.join(projectPath, 'pyproject.toml')) || fs.existsSync(path.join(projectPath, 'pytest.ini'))) {
+      shortcuts.push({ id: 'pytest', label: 'pytest', command: 'pytest', source: 'detected' });
+    }
+    shortcuts.push({ id: 'git-status', label: 'git status -sb', command: 'git status -sb', source: 'detected' });
+    return shortcuts;
+  });
+
+  ipcMain.handle('mcp:install-preset', async (_event, { id, command, args = [], env = {}, targets = ['fancycode', 'claude', 'opencode'] } = {}) => {
+    const safeId = String(id || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    const cmd = String(command || '').trim();
+    if (!safeId || !cmd) return { ok: false, output: 'Ungueltige MCP-Vorlage.' };
+    const cleanArgs = Array.isArray(args) ? args.map((a) => String(a)) : [];
+    const cleanEnv = {};
+    for (const [k, v] of Object.entries(env || {})) {
+      if (typeof v === 'string' && v.trim()) cleanEnv[k] = v.trim();
+    }
+
+    const home = app.getPath('home');
+    const logs = [];
+
+    // 1. FancyCode (~/.config/fancycode/mcp.json)
+    if (targets.includes('fancycode')) {
+      try {
+        const file = path.join(skills.fancycodeHome(home), 'mcp.json');
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) {}
+        cfg.mcpServers = {
+          ...(cfg.mcpServers || {}),
+          [safeId]: {
+            command: cmd,
+            args: cleanArgs,
+            ...(Object.keys(cleanEnv).length ? { env: cleanEnv } : {}),
+          },
+        };
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+        logs.push(`FancyCode (${file})`);
+      } catch (e) {
+        logs.push(`FancyCode Fehler: ${e.message}`);
+      }
+    }
+
+    // 2. Claude Code (~/.claude.json)
+    if (targets.includes('claude')) {
+      try {
+        const file = path.join(home, '.claude.json');
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) {}
+        cfg.mcpServers = {
+          ...(cfg.mcpServers || {}),
+          [safeId]: {
+            type: 'stdio',
+            command: cmd,
+            args: cleanArgs,
+            ...(Object.keys(cleanEnv).length ? { env: cleanEnv } : {}),
+          },
+        };
+        fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+        logs.push(`Claude Code (${file})`);
+      } catch (e) {
+        logs.push(`Claude Code Fehler: ${e.message}`);
+      }
+    }
+
+    // 3. OpenCode (~/.config/opencode/opencode.json)
+    if (targets.includes('opencode')) {
+      try {
+        const file = path.join(home, '.config', 'opencode', 'opencode.json');
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) {}
+        cfg.$schema = cfg.$schema || 'https://opencode.ai/config.json';
+        cfg.mcp = {
+          ...(cfg.mcp || {}),
+          [safeId]: {
+            type: 'local',
+            command: [cmd, ...cleanArgs],
+            ...(Object.keys(cleanEnv).length ? { environment: cleanEnv } : {}),
+            enabled: true,
+          },
+        };
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+        logs.push(`OpenCode (${file})`);
+      } catch (e) {
+        logs.push(`OpenCode Fehler: ${e.message}`);
+      }
+    }
+
+    return { ok: true, output: `Installiert in: ${logs.join(', ')}` };
   });
 
   // Project-level npm plugins (agents' packages), separate from the catalog plugins above.

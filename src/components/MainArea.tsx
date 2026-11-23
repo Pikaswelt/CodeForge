@@ -56,16 +56,18 @@ import { AddVServerDialog, NewTabMenu, VServerPanel, useVServers } from './VServ
 import { RunningSessionsPanel } from './RunningSessions';
 import { SftpBrowser } from './SftpBrowser';
 import {
+  ProjectShortcutsMenu,
   SwarmDiffDrawer,
+  SwarmHistoryModal,
   SwarmKanbanBoard,
   TerminalStatusBadge,
+  evaluateTurboPrompt,
   parseTerminalChunkForLiveState,
 } from './SwarmPanels';
-import { GitBranch, Kanban } from 'lucide-react';
+import { GitBranch, History, Kanban, Zap } from 'lucide-react';
 import { isVideoPath, toFileUrl } from '../media';
 import type { Chat, CliHarness, HomeAppTab, Message, ResponseDisplayMode, TerminalTab, VServerConnection } from '../types';
 import type { HomeApp } from '../types';
-import libraryBannerUrl from '../../assets/library-banner.png';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -153,8 +155,12 @@ export default function MainArea() {
 
 // FancyCode-Agent im ausgewählten Projekt (grafisch, wie Claude Code in Claude Desktop).
 function FancyCodeHost({ visible }: { visible: boolean }) {
-  const { selectedProject, addProject, openUsagePopup } = useAppContext();
+  const { selectedProject, addProject, openUsagePopup, guiEngines, agentNotificationsEnabled } = useAppContext();
   const bridge = useMemo(() => fancycodeBridge(), []);
+  const activeGuiEngines = useMemo(() => {
+    const enabled = guiEngines.filter((e) => e.enabled && e.command.trim());
+    return enabled.length ? enabled : [{ id: 'fancycode', name: 'FancyCode', command: 'fancycode', icon: 'Zap', enabled: true, builtin: true }];
+  }, [guiEngines]);
   if (!bridge) return null;
   return (
     <div className="flex-1 min-w-0 h-full flex-col relative overflow-hidden" style={{ display: visible ? 'flex' : 'none' }}>
@@ -163,20 +169,20 @@ function FancyCodeHost({ visible }: { visible: boolean }) {
         cwd={selectedProject?.path || ''}
         server={selectedProject?.vserver}
         onPickFolder={addProject}
-        emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode oder Claude arbeiten dann direkt darin.")}
+        emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode, Claude oder Antigravity CLI arbeiten dann direkt darin.")}
         onOpenUsage={openUsagePopup}
         // Durchsichtig wie die Terminals: Hintergrundbild und Theme scheinen durch.
         appearance="glass"
-        // Claude läuft nur lokal (installierte Claude-CLI); auf V-Servern bleibt es bei FancyCode.
-        engines={selectedProject?.vserver ? ['fancycode'] : ['fancycode', 'claude']}
+        // Lokale CLI-Engines laufen lokal; auf V-Servern bleibt es bei FancyCode.
+        engines={selectedProject?.vserver ? ['fancycode'] : activeGuiEngines.map((e) => e.id)}
+        engineConfigs={activeGuiEngines}
         // Claude direkt gibt es ab Spark (bezahlter FancyServers-Plan).
         plan={readPlan()}
         paidEngines={['claude']}
         onEngineLocked={() => showLocked({ app: 'fancycode', plan: readPlan, openExternal: (url) => void window.agentWorkspace?.openExternal?.(url) }, 'fancycode.claude')}
-        askPermission={async ({ question, summary, preview, sessionId }) => {
-          // Rückfragen des eingebauten Agenten erscheinen als Popup unten rechts (wie die MCP-Popups).
-          const value = await askPermissionPopup({ question: `${question} ${summary}`, preview, sessionId });
-          return typeof value === 'string' ? PERMISSION_ANSWERS[value] || null : null;
+        onNotify={(info) => {
+          if (!agentNotificationsEnabled) return;
+          void window.agentWorkspace?.notifyAgentComplete?.(info);
         }}
       />
     </div>
@@ -236,13 +242,9 @@ function LibraryView() {
     return haystack.includes(query.toLowerCase());
   });
   const mobileCount = libraryProjects.filter((folder) => isMobileProject(folder.path)).length;
-  const bannerMedia = libraryStyle.bannerMedia;
-  const bannerIsVideo = Boolean(bannerMedia) && bannerMedia !== 'anime' && isVideoPath(bannerMedia);
-  const bannerImageUrl = bannerMedia === 'anime'
-    ? libraryBannerUrl
-    : bannerMedia
-      ? (bannerIsVideo ? '' : toFileUrl(bannerMedia))
-      : '';
+  const bannerMedia = libraryStyle.bannerMedia && libraryStyle.bannerMedia !== 'anime' ? libraryStyle.bannerMedia : '';
+  const bannerIsVideo = Boolean(bannerMedia) && isVideoPath(bannerMedia);
+  const bannerImageUrl = bannerMedia && !bannerIsVideo ? toFileUrl(bannerMedia) : '';
   const hasBanner = Boolean(bannerImageUrl || bannerIsVideo);
   const libraryVars = {
     ...(libraryStyle.pageBackground ? { '--lib-bg': libraryStyle.pageBackground } : {}),
@@ -1170,6 +1172,11 @@ function TerminalInstance({
   const effectiveStartPath = tab?.worktreePath || tab?.cwd || startPath;
   const idleDoneTimerRef = useRef<number | null>(null);
   const lastLiveStatusRef = useRef<'idle' | 'working' | 'waiting' | 'done'>('idle');
+  const turboModeRef = useRef(Boolean(tab?.turboMode));
+  const lastTurboApproveAtRef = useRef(0);
+  useEffect(() => {
+    turboModeRef.current = Boolean(tab?.turboMode);
+  }, [tab?.turboMode]);
 
   const settingsRef = useRef({
     terminalPrefixSuffixEnabled,
@@ -1341,6 +1348,40 @@ function TerminalInstance({
         term.write(payload.text);
 
         if (payload.text) {
+          if (turboModeRef.current) {
+            const turboDecision = evaluateTurboPrompt(payload.text);
+            if (turboDecision) {
+              if (turboDecision.action === 'block') {
+                if (idleDoneTimerRef.current) {
+                  window.clearTimeout(idleDoneTimerRef.current);
+                  idleDoneTimerRef.current = null;
+                }
+                lastLiveStatusRef.current = 'waiting';
+                updateTerminalLiveState(tabId, {
+                  status: 'waiting',
+                  activity: `🛡️ Turbo blockiert: ${turboDecision.reason}`,
+                });
+                return;
+              }
+              const now = Date.now();
+              if (now - lastTurboApproveAtRef.current > 900) {
+                lastTurboApproveAtRef.current = now;
+                window.setTimeout(() => {
+                  window.agentWorkspace.writeToShellSession({
+                    chatId: tabId,
+                    text: turboDecision.reply,
+                  });
+                }, 280);
+                lastLiveStatusRef.current = 'working';
+                updateTerminalLiveState(tabId, {
+                  status: 'working',
+                  activity: '⚡ Turbo: Auto-Approved',
+                });
+                return;
+              }
+            }
+          }
+
           const parsed = parseTerminalChunkForLiveState(payload.text);
           if (parsed) {
             if (parsed.status === 'waiting') {
@@ -1383,10 +1424,13 @@ function TerminalInstance({
             let matched = false;
             for (const word of words) {
               if (payload.text.toLowerCase().includes(word.toLowerCase())) {
-                new Notification(tr('Terminal Trigger'), {
-                  body: tr('Trigger-Wort "{word}" im Terminal gefunden!', { word }),
-                  silent: false
-                });
+                const title = tr('Terminal Trigger');
+                const body = tr('Trigger-Wort "{word}" im Terminal gefunden!', { word });
+                if (window.agentWorkspace?.notifyAgentComplete) {
+                  void window.agentWorkspace.notifyAgentComplete({ title, body });
+                } else {
+                  new Notification(title, { body, silent: false });
+                }
                 matched = true;
                 break;
               }
@@ -1587,14 +1631,17 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const [editingTitle, setEditingTitle] = useState('');
   const [kanbanOpen, setKanbanOpen] = useState(false);
   const [diffDrawerOpen, setDiffDrawerOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const currentChat = chats.find((c) => c.id === chat.id) || chat;
   const tabs = currentChat.terminalTabs || [{ id: chat.id, title: tr("Terminal 1") }];
   const activeTabId = currentChat.activeTerminalTabId || chat.id;
+  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
   const terminalLayout = currentChat.terminalLayout || 'single';
   // Phones and tablets stack grid terminals in one scrollable column.
   const stacked = useCompactLayout() || mobileMode;
-  const gridSize = Math.max(1, Math.min(8, currentChat.terminalGridSize || Math.min(8, tabs.length) || 4));
+  const gridSize = Math.max(1, Math.min(12, currentChat.terminalGridSize || Math.min(12, tabs.length) || 4));
   const gridLayoutClass =
     gridSize <= 1
       ? 'grid-cols-1 grid-rows-1'
@@ -1604,7 +1651,11 @@ function TerminalChatView({ chat }: { chat: Chat }) {
           ? 'grid-cols-2 grid-rows-2'
           : gridSize <= 6
             ? 'grid-cols-3 grid-rows-2'
-            : 'grid-cols-4 grid-rows-2';
+            : gridSize <= 8
+              ? 'grid-cols-4 grid-rows-2'
+              : gridSize <= 9
+                ? 'grid-cols-3 grid-rows-3'
+                : 'grid-cols-4 grid-rows-3';
 
   // A remote project is always the start folder; a local start path would not exist on the server.
   const startPath = (selectedProject?.vserver ? selectedProject.path : terminalStartPath || selectedProject?.path) || undefined;
@@ -1701,7 +1752,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             ...c,
             terminalTabs: newTabs,
             activeTerminalTabId: newTabId,
-            terminalGridSize: c.terminalLayout === 'grid' ? Math.min(8, Math.max(newTabs.length, c.terminalGridSize || 0)) : c.terminalGridSize,
+            terminalGridSize: c.terminalLayout === 'grid' ? Math.min(12, Math.max(newTabs.length, c.terminalGridSize || 0)) : c.terminalGridSize,
           };
         }
         return c;
@@ -1919,6 +1970,48 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
   const activeTasksCount = swarmTasks.filter((t) => t.status !== 'done').length;
 
+  const toggleTabTurbo = (tabId: string) => {
+    setChats((current) =>
+      current.map((c) => {
+        if (c.id !== chat.id) return c;
+        const oldTabs = c.terminalTabs || [{ id: chat.id, title: tr('Terminal 1') }];
+        return {
+          ...c,
+          terminalTabs: oldTabs.map((t) =>
+            t.id === tabId ? { ...t, turboMode: !t.turboMode } : t,
+          ),
+        };
+      }),
+    );
+  };
+
+  const handleResumeHistoryInNewTab = (entry: import('../types').CliHistoryEntry) => {
+    const newTabId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const newTab: TerminalTab = {
+      id: newTabId,
+      title: `${entry.vendorLabel} · ${entry.title.slice(0, 18)}`,
+      shellType: 'cmd',
+      cwd: entry.projectPath || startPath,
+      command: entry.resumeCommand,
+    };
+    setChats((current) =>
+      current.map((c) => {
+        if (c.id !== chat.id) return c;
+        const oldTabs = c.terminalTabs || [{ id: chat.id, title: tr('Terminal 1') }];
+        const newTabs = [...oldTabs, newTab];
+        return {
+          ...c,
+          terminalTabs: newTabs,
+          activeTerminalTabId: newTabId,
+          terminalGridSize:
+            c.terminalLayout === 'grid'
+              ? Math.min(12, Math.max(newTabs.length, c.terminalGridSize || 0))
+              : c.terminalGridSize,
+        };
+      }),
+    );
+  };
+
   return (
     <main
       className={`min-w-0 flex flex-col backdrop-blur-[2px] transition-all duration-300 ${
@@ -2128,6 +2221,57 @@ function TerminalChatView({ chat }: { chat: Chat }) {
             </button>
           )}
 
+          <button
+            onClick={() => activeTab && toggleTabTurbo(activeTab.id)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-colors duration-150 ${
+              activeTab?.turboMode
+                ? 'bg-amber-500/15 border-amber-500/35 text-amber-300 font-medium'
+                : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
+            }`}
+            title={tr("Turbo-Mode für das aktive Terminal (Auto-Approve für sichere Rückfragen, blockiert gefährliche Befehle wie rm -rf / force push)")}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{tr("Turbo")}</span>
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShortcutsOpen((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-colors duration-150 ${
+                shortcutsOpen
+                  ? 'bg-white/10 border-white/20 text-white'
+                  : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
+              }`}
+              title={tr("1-Klick Projekt-Shortcuts (Build, Test, Dev & eigene Befehle)")}
+            >
+              <Play className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{tr("Shortcuts")}</span>
+            </button>
+            {shortcutsOpen && (
+              <ProjectShortcutsMenu
+                projectPath={startPath}
+                onRunInActive={(cmd) =>
+                  window.agentWorkspace.writeToShellSession({ chatId: activeTabId, text: cmd + '\r' })
+                }
+                onRunInAll={(cmd) => {
+                  for (const t of tabs) {
+                    window.agentWorkspace.writeToShellSession({ chatId: t.id, text: cmd + '\r' });
+                  }
+                }}
+                onClose={() => setShortcutsOpen(false)}
+              />
+            )}
+          </div>
+
+          <button
+            onClick={() => setHistoryModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/5 bg-zinc-900/50 text-zinc-400 hover:text-zinc-300 hover:bg-white/5 text-xs cursor-pointer select-none transition-colors duration-150"
+            title={tr("Zentrale CLI-History-Suche über Claude Code, Codex, Antigravity & FancyCode")}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{tr("Verlauf")}</span>
+          </button>
+
           {voice.showGridButton && <button
             onClick={() => setChats((current) =>
               current.map((c) => {
@@ -2136,7 +2280,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 return {
                   ...c,
                   terminalLayout: nextLayout,
-                  terminalGridSize: nextLayout === 'grid' ? Math.min(8, Math.max(tabs.length, c.terminalGridSize || 4)) : c.terminalGridSize,
+                  terminalGridSize: nextLayout === 'grid' ? Math.min(12, Math.max(tabs.length, c.terminalGridSize || 4)) : c.terminalGridSize,
                 };
               })
             )}
@@ -2145,11 +2289,31 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
                 : 'bg-zinc-800 border-white/10 text-zinc-300 hover:bg-zinc-700 hover:text-white'
             }`}
-            title={terminalLayout === 'grid' ? tr("Grid-Layout deaktivieren") : tr("Grid-Layout aktivieren (bis zu 8 Terminals)")}
+            title={terminalLayout === 'grid' ? tr("Grid-Layout deaktivieren") : tr("Grid-Layout aktivieren (bis zu 12 Terminals)")}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">{tr("Grid")}</span>
           </button>}
+
+          {terminalLayout === 'grid' && !stacked && (
+            <select
+              value={gridSize}
+              onChange={(e) => {
+                const nextSize = Number(e.target.value) || 4;
+                setChats((current) =>
+                  current.map((c) => (c.id === chat.id ? { ...c, terminalGridSize: nextSize } : c)),
+                );
+              }}
+              className="rounded border border-white/10 bg-zinc-900 px-1.5 py-1 font-mono text-[10px] text-zinc-300 outline-none"
+              title={tr("Anzahl der Grid-Slots (bis zu 12 Terminals im 4×3-Grid)")}
+            >
+              {[2, 4, 6, 8, 9, 12].map((n) => (
+                <option key={n} value={n}>
+                  {n}×
+                </option>
+              ))}
+            </select>
+          )}
 
           {voice.showFullscreenButton && <button
             onClick={() => setIsFullscreen(!isFullscreen)}
@@ -2201,6 +2365,18 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                     <TerminalStatusBadge state={terminalLiveStates[tab.id]} />
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => toggleTabTurbo(tab.id)}
+                      className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 font-mono text-[8px] border transition-colors ${
+                        tab.turboMode
+                          ? 'border-amber-500/35 bg-amber-500/15 text-amber-300'
+                          : 'border-white/5 bg-white/5 text-zinc-500 hover:bg-white/10 hover:text-zinc-300'
+                      }`}
+                      title={tr('Turbo-Mode mit Sicherheits-Guardrails für dieses Terminal umschalten')}
+                    >
+                      <Zap className="w-2.5 h-2.5" />
+                      <span>Turbo</span>
+                    </button>
                     {!(tab.location !== 'local' && (tab.vserver || chat.vserver)) && (
                       <button
                         onClick={() => {
@@ -2299,6 +2475,19 @@ function TerminalChatView({ chat }: { chat: Chat }) {
           onIsolateTabWorktree={handleIsolateTabWorktree}
           onRemoveTabWorktree={handleRemoveTabWorktree}
           onClose={() => setDiffDrawerOpen(false)}
+        />
+      )}
+      {historyModalOpen && (
+        <SwarmHistoryModal
+          projectPath={startPath}
+          onResumeInNewTab={handleResumeHistoryInNewTab}
+          onResumeInActiveTab={(entry) =>
+            window.agentWorkspace.writeToShellSession({
+              chatId: activeTabId,
+              text: entry.resumeCommand + '\r',
+            })
+          }
+          onClose={() => setHistoryModalOpen(false)}
         />
       )}
     </main>

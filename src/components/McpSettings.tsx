@@ -1,9 +1,85 @@
 import { tr } from '../i18n';
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Check, Copy, Loader2, Plug, RefreshCw, Server, Wrench } from 'lucide-react';
+import { Bot, Check, Copy, Download, Loader2, Plug, RefreshCw, Server, Sparkles, Wrench } from 'lucide-react';
 import { useAppContext } from '../AppContext';
 import { useVServers } from './VServers';
 import type { McpServerInfo, McpSessionInfo } from '../types';
+
+type McpMarketplaceItem = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  command: string;
+  args: string[];
+  envKey?: string;
+  envPlaceholder?: string;
+};
+
+const MCP_MARKETPLACE: McpMarketplaceItem[] = [
+  {
+    id: 'playwright',
+    name: 'Playwright Browser',
+    category: 'Browser & E2E',
+    description: 'Steuert Chromium/Headless-Browser, klickt Elemente, liest DOM-Snapshots und erstellt Screenshots.',
+    command: 'npx',
+    args: ['-y', '@playwright/mcp@latest'],
+  },
+  {
+    id: 'context7',
+    name: 'Context7 Live-Docs',
+    category: 'Dokumentation',
+    description: 'Holt aktuelle API-Dokumentation und Code-Beispiele direkt in den Kontext des Agenten.',
+    command: 'npx',
+    args: ['-y', '@upstash/context7-mcp@latest'],
+  },
+  {
+    id: 'github',
+    name: 'GitHub',
+    category: 'Git & PRs',
+    description: 'Pull Requests, Issues, Workflows, Code-Suche und Commits über die offizielle GitHub-MCP-Schnittstelle.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-github'],
+    envKey: 'GITHUB_PERSONAL_ACCESS_TOKEN',
+    envPlaceholder: 'ghp_... (optional)',
+  },
+  {
+    id: 'supabase',
+    name: 'Supabase',
+    category: 'Datenbank & Auth',
+    description: 'Verwaltet Supabase-Tabellen, Migrationen, SQL-Abfragen und Edge Functions.',
+    command: 'npx',
+    args: ['-y', '@supabase/mcp-server-supabase@latest'],
+    envKey: 'SUPABASE_ACCESS_TOKEN',
+    envPlaceholder: 'sbp_... (optional)',
+  },
+  {
+    id: 'postgres',
+    name: 'PostgreSQL',
+    category: 'Datenbank',
+    description: 'Inspiziert Datenbank-Schemata und führt schreibgeschützte SQL-Abfragen auf PostgreSQL aus.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-postgres'],
+    envKey: 'POSTGRES_URL',
+    envPlaceholder: 'postgresql://user:pass@localhost:5432/db',
+  },
+  {
+    id: 'filesystem',
+    name: 'Filesystem',
+    category: 'Dateisystem',
+    description: 'Kontrollierter Lese-/Schreibzugriff auf lokale Projektordner für isolierte Agenten.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
+  },
+  {
+    id: 'sequential-thinking',
+    name: 'Sequential Thinking',
+    category: 'Reasoning',
+    description: 'Strukturiertes, mehrstufiges Denken und Hypothesen-Prüfung für komplexe Refactorings.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-sequential-thinking'],
+  },
+];
 
 // The MCP tab: FancyCode Desktop's own MCP server, the servers Claude Code / Cursor / Codex spawn from their
 // config files, and a look at the tools each of them exposes. The own server starts with the app and is
@@ -132,6 +208,33 @@ export function McpSettings() {
   const savedServers = useVServers();
   const [remoteBusy, setRemoteBusy] = useState('');
   const [remoteResult, setRemoteResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [marketBusy, setMarketBusy] = useState('');
+  const [marketEnv, setMarketEnv] = useState<Record<string, string>>({});
+  const [marketResult, setMarketResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const installFromMarket = async (item: McpMarketplaceItem) => {
+    if (!api?.installMcpPreset) return;
+    setMarketBusy(item.id);
+    setMarketResult(null);
+    try {
+      const val = (marketEnv[item.id] || '').trim();
+      const env = item.envKey && val ? { [item.envKey]: val } : {};
+      const args = item.id === 'postgres' && val ? [...item.args, val] : item.args;
+      const res = await api.installMcpPreset({
+        id: item.id,
+        command: item.command,
+        args,
+        env,
+        targets: ['fancycode', 'claude', 'opencode'],
+      });
+      setMarketResult({ ok: res.ok, text: `${item.name}: ${res.output}` });
+      await refresh();
+    } catch (err) {
+      setMarketResult({ ok: false, text: err instanceof Error ? err.message : tr('Installation fehlgeschlagen.') });
+    } finally {
+      setMarketBusy('');
+    }
+  };
 
   const api = window.agentWorkspace;
   const canSeeState = Boolean(api?.getMcpSessions);
@@ -319,6 +422,86 @@ export function McpSettings() {
           )}
         </section>
       )}
+
+      <section>
+        <div className="flex items-center justify-between">
+          <div className="section-label flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            {tr('MCP-Marketplace (1-Klick-Installation)')}
+          </div>
+          <span className="text-[10px] text-zinc-500">
+            {tr('Trägt den Server in FancyCode, Claude Code & OpenCode ein')}
+          </span>
+        </div>
+        {marketResult && (
+          <div
+            className={`mt-2 rounded-lg border px-3 py-2 text-[11px] ${
+              marketResult.ok
+                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+                : 'border-red-500/20 bg-red-500/10 text-red-300'
+            }`}
+          >
+            {marketResult.text}
+          </div>
+        )}
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          {MCP_MARKETPLACE.map((item) => {
+            const installed = servers.some((s) => s.name.toLowerCase() === item.id);
+            return (
+              <div
+                key={item.id}
+                className="panel !p-3.5 border border-white/10 flex flex-col justify-between gap-2.5"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-zinc-100">{item.name}</span>
+                      <span className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.2 text-[10px] text-zinc-400">
+                        {item.category}
+                      </span>
+                    </div>
+                    {installed && (
+                      <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.2 text-[10px] text-emerald-300">
+                        {tr('Installiert')}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-zinc-400">{tr(item.description)}</p>
+                  <div className="mt-1.5 font-mono text-[10px] text-zinc-500 truncate">
+                    {item.command} {item.args.join(' ')}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 pt-1">
+                  {item.envKey && (
+                    <input
+                      type="password"
+                      value={marketEnv[item.id] || ''}
+                      onChange={(e) =>
+                        setMarketEnv((prev) => ({ ...prev, [item.id]: e.target.value }))
+                      }
+                      placeholder={item.envPlaceholder || item.envKey}
+                      className="input !py-1 !px-2.5 !text-[11px] flex-1 min-w-0 font-mono"
+                    />
+                  )}
+                  <button
+                    disabled={Boolean(marketBusy)}
+                    onClick={() => void installFromMarket(item)}
+                    className="secondary-button !py-1 !px-2.5 !text-[11px] ml-auto shrink-0"
+                  >
+                    {marketBusy === item.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5" />
+                    )}
+                    {installed ? tr('Aktualisieren') : tr('Installieren')}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       <section>
         <div className="flex items-center justify-between">

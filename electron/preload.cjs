@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   createGitWorktree: (input) => ipcRenderer.invoke('git:worktree-create', input),
   removeGitWorktree: (input) => ipcRenderer.invoke('git:worktree-remove', input),
   gitCommit: (input) => ipcRenderer.invoke('git:commit', input),
+  searchCliHistory: (projectPath) => ipcRenderer.invoke('history:search-cli', projectPath),
+  getProjectShortcuts: (projectPath) => ipcRenderer.invoke('project:scripts', projectPath),
+  installMcpPreset: (input) => ipcRenderer.invoke('mcp:install-preset', input),
   installPlugin: (projectPath, packageName) =>
     ipcRenderer.invoke('project-plugins:install', projectPath, packageName),
   removePlugin: (projectPath, packageName) =>
@@ -199,7 +202,13 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
 contextBridge.exposeInMainWorld('fancycode', {
   start: (opts) => opts?.server
     ? ipcRenderer.invoke('fancycode:remote-start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined, server: opts.server })
-    : ipcRenderer.invoke('fancycode:start', { cwd: String(opts?.cwd || ''), resume: opts?.resume ? String(opts.resume) : undefined, engine: opts?.engine === 'claude' ? 'claude' : undefined }),
+    : ipcRenderer.invoke('fancycode:start', {
+        cwd: String(opts?.cwd || ''),
+        resume: opts?.resume ? String(opts.resume) : undefined,
+        engine: opts?.engine ? String(opts.engine) : undefined,
+        command: opts?.command ? String(opts.command) : undefined,
+        label: opts?.label ? String(opts.label) : undefined,
+      }),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', String(url || '')),
   send: (id, msg) => ipcRenderer.send('fancycode:send', String(id), msg),
   stop: (id) => ipcRenderer.send('fancycode:stop', String(id)),

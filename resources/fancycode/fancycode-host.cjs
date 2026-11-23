@@ -180,6 +180,12 @@ function registerIpc({ ipcMain, bundle, runtime, apiBase, extraArgs = [], allow 
     const p = procs.get(id);
     if (!p) return;
     procs.delete(id);
+    if (typeof p.stop === 'function') {
+      try {
+        p.stop();
+      } catch {}
+      return;
+    }
     try {
       p.child.stdin.end();
     } catch {}
@@ -190,12 +196,295 @@ function registerIpc({ ipcMain, bundle, runtime, apiBase, extraArgs = [], allow 
     }, 3000).unref();
   };
 
+  const stripAnsi = (str) =>
+    String(str || '')
+      .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+      .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '');
+
+  const AGY_MODELS = [
+    { id: 'Gemini 3.5 Flash (Medium)', label: 'Gemini 3.5 Flash (Medium)', note: 'Google Antigravity' },
+    { id: 'Gemini 3.5 Flash (High)', label: 'Gemini 3.5 Flash (High)', note: 'Google Antigravity' },
+    { id: 'Gemini 3.1 Pro (High)', label: 'Gemini 3.1 Pro (High)', note: 'Google Antigravity' },
+    { id: 'Claude Sonnet 4.6 (Thinking)', label: 'Claude Sonnet 4.6 Thinking', note: 'Google Antigravity' },
+    { id: 'Claude Opus 4.6 (Thinking)', label: 'Claude Opus 4.6 Thinking', note: 'Google Antigravity' },
+    { id: 'GPT-OSS 120B (Medium)', label: 'GPT-OSS 120B', note: 'Google Antigravity' },
+  ];
+
+  // Startet Antigravity CLI (agy) oder eine eigene CLI-Engine im selben JSON-Protokoll für FancyCodePanel.
+  const startCustomCliSession = ({ id, cwd, engine, command, label, sender }) => {
+    const emit = (ev) => {
+      if (!sender.isDestroyed()) sender.send('fancycode:event', id, ev);
+    };
+    const isAgy = engine === 'agy' || /^agy(\s|$)/i.test(String(command || '').trim());
+    const cmdString = String(command || (isAgy ? 'agy' : engine)).trim() || 'agy';
+    const displayLabel = String(label || (isAgy ? 'Antigravity CLI' : engine)).trim();
+    const models = isAgy
+      ? AGY_MODELS
+      : [{ id: 'default', label: displayLabel, note: cmdString }];
+    const modes = [
+      { id: 'default', label: 'Nachfragen', hint: 'Standard-CLI-Ausführung' },
+      { id: 'bypass', label: 'Alles erlauben', hint: 'Keine Rückfragen (--dangerously-skip-permissions)' },
+    ];
+    const efforts = isAgy ? ['low', 'medium', 'high'] : [];
+    let currentModel = models[0].id;
+    let currentMode = 'bypass';
+    let currentEffort = isAgy ? 'medium' : '';
+    let messageCount = 0;
+    let activeChild = null;
+
+    const getAccount = () => ({ name: displayLabel, plan: 'CLI' });
+
+    const killActive = () => {
+      if (!activeChild) return false;
+      const c = activeChild;
+      activeChild = null;
+      try {
+        c.kill('SIGTERM');
+      } catch {}
+      return true;
+    };
+
+    const runPrompt = (promptText) => {
+      const text = String(promptText || '').trim();
+      if (!text) {
+        emit({ type: 'done' });
+        return;
+      }
+      killActive();
+      messageCount += 1;
+
+      const parts = cmdString.split(/\s+/).filter(Boolean);
+      const bin = parts[0];
+      const baseBin = path.basename(bin).toLowerCase().replace(/\.(exe|cmd|bat)$/i, '');
+      const extraParts = parts.slice(1);
+      let args = [...extraParts];
+      let stdinPayload = '';
+
+      if (isAgy || baseBin === 'agy' || baseBin === 'antigravity') {
+        args.push('-p', text);
+        if (currentModel && currentModel !== 'default') {
+          args.push('--model', currentModel);
+        }
+        if (currentMode === 'bypass') {
+          args.push('--dangerously-skip-permissions');
+        }
+      } else if (baseBin === 'codex') {
+        args.push('exec', '-', '--cd', cwd, '--color', 'never', '--skip-git-repo-check');
+        if (currentMode === 'bypass') {
+          args.push('--sandbox', 'danger-full-access', '--dangerously-bypass-approvals-and-sandbox');
+        }
+        stdinPayload = text;
+      } else if (baseBin === 'claude') {
+        args.push('-p', '--output-format', 'text');
+        if (currentMode === 'bypass') args.push('--dangerously-skip-permissions');
+        stdinPayload = text;
+      } else if (baseBin === 'hermes') {
+        args.push('chat', '--query-file', '-');
+        stdinPayload = text;
+      } else if (baseBin === 'opencode') {
+        args.push('run', '--dir', cwd, text);
+      } else if (baseBin === 'cursor-agent' || baseBin === 'agent') {
+        args.push('-p', text, '--output-format', 'text');
+      } else if (cmdString.includes('{prompt}')) {
+        args = extraParts.map((part) => part.replace(/\{prompt\}/g, text));
+      } else {
+        args.push(text);
+      }
+
+      emit({
+        type: 'tool_use',
+        id: `cli-${Date.now()}`,
+        name: baseBin || engine,
+        kind: 'bash',
+        summary: `${bin} ${args.map((a) => (a === text ? `"${text.slice(0, 48)}${text.length > 48 ? '…' : ''}"` : a)).join(' ')}`,
+        preview: cwd,
+      });
+
+      const env = { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' };
+      delete env.ELECTRON_RUN_AS_NODE;
+
+      let child;
+      try {
+        child = spawn(bin, args, {
+          cwd,
+          env,
+          shell: process.platform === 'win32',
+          windowsHide: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+      } catch (err) {
+        emit({ type: 'error', engine, message: `${displayLabel} konnte nicht gestartet werden: ${err.message}` });
+        emit({ type: 'done' });
+        return;
+      }
+
+      activeChild = child;
+      let emittedText = false;
+      let errBuf = '';
+
+      if (stdinPayload) {
+        try {
+          child.stdin.write(stdinPayload);
+        } catch {}
+      }
+      try {
+        child.stdin.end();
+      } catch {}
+
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk) => {
+        const clean = stripAnsi(chunk);
+        if (!clean) return;
+        emittedText = true;
+        emit({ type: 'text', text: clean });
+      });
+
+      child.stderr.setEncoding('utf8');
+      child.stderr.on('data', (chunk) => {
+        const clean = stripAnsi(chunk);
+        errBuf = (errBuf + clean).slice(-4000);
+      });
+
+      child.on('error', (err) => {
+        if (activeChild === child) activeChild = null;
+        emit({
+          type: 'error',
+          engine,
+          message: `${displayLabel} (${bin}) konnte nicht gestartet werden: ${err.message}`,
+        });
+        emit({ type: 'done' });
+      });
+
+      child.on('close', (code) => {
+        const wasActive = activeChild === child;
+        if (wasActive) activeChild = null;
+        if (!wasActive) return;
+        if (code && !emittedText) {
+          emit({
+            type: 'error',
+            engine,
+            message: errBuf.trim() || `${displayLabel} wurde mit Code ${code} beendet.`,
+          });
+        } else if (errBuf.trim() && !emittedText) {
+          emit({ type: 'text', text: errBuf.trim() });
+        }
+        emit({ type: 'done' });
+      });
+    };
+
+    const onMessage = (msg) => {
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'abort') {
+        if (killActive()) emit({ type: 'done', aborted: true });
+        return;
+      }
+      if (msg.type === 'set') {
+        if (msg.model) currentModel = String(msg.model);
+        if (msg.mode) currentMode = String(msg.mode);
+        if (msg.effort) currentEffort = String(msg.effort);
+        emit({
+          type: 'state',
+          engine,
+          account: getAccount(),
+          model: currentModel,
+          mode: currentMode,
+          modes,
+          efforts,
+          effort: currentEffort,
+        });
+        return;
+      }
+      if (msg.type === 'command') {
+        switch (msg.name) {
+          case 'models':
+            emit({
+              type: 'models',
+              current: currentModel,
+              data: { default: models[0].id, models },
+            });
+            break;
+          case 'new':
+            killActive();
+            messageCount = 0;
+            emit({ type: 'session' });
+            break;
+          case 'sessions':
+            emit({ type: 'sessions', list: [] });
+            break;
+          case 'status':
+            emit({
+              type: 'status',
+              data: {
+                account: getAccount(),
+                model: currentModel,
+                effort: currentEffort,
+                mode: currentMode,
+                modes,
+                cwd,
+                session: id.slice(0, 8),
+                messages: messageCount,
+                usage: { input: 0, output: 0 },
+                mcp: [],
+                version: cmdString,
+                engine,
+              },
+            });
+            break;
+          case 'init':
+            runPrompt('Analysiere dieses Projekt und erstelle eine kompakte Projektübersicht.');
+            break;
+          default:
+            break;
+        }
+        return;
+      }
+      if (msg.type === 'prompt') {
+        runPrompt(msg.text);
+      }
+    };
+
+    setImmediate(() => {
+      emit({
+        type: 'ready',
+        engine,
+        account: getAccount(),
+        model: currentModel,
+        mode: currentMode,
+        modes,
+        efforts,
+        effort: currentEffort,
+      });
+    });
+
+    return {
+      sender,
+      send: onMessage,
+      stop: () => {
+        killActive();
+      },
+    };
+  };
+
   // allow(event): nur Aufrufe aus dem eigenen App-Fenster zulassen.
   ipcMain.handle('fancycode:start', (event, opts) => {
     if (!allow(event)) throw new Error('Nicht erlaubt');
     const cwd = String(opts?.cwd || '');
     if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) throw new Error(`Ordner nicht gefunden: ${cwd}`);
     const id = crypto.randomUUID();
+    const engine = opts?.engine ? String(opts.engine) : 'fancycode';
+    if (engine !== 'fancycode' && engine !== 'claude') {
+      const customSession = startCustomCliSession({
+        id,
+        cwd,
+        engine,
+        command: opts?.command ? String(opts.command) : engine,
+        label: opts?.label ? String(opts.label) : engine,
+        sender: event.sender,
+      });
+      procs.set(id, customSession);
+      event.sender.once('destroyed', () => stop(id));
+      return id;
+    }
     const env = { ...process.env, FANCYCODE_APP: '1', NO_COLOR: '1' };
     delete env.ELECTRON_RUN_AS_NODE;
     if (apiBase) env.FANCY_API_URL = apiBase();
@@ -250,6 +539,12 @@ function registerIpc({ ipcMain, bundle, runtime, apiBase, extraArgs = [], allow 
   ipcMain.on('fancycode:send', (event, id, msg) => {
     const p = procs.get(String(id));
     if (!p || p.sender !== event.sender || !msg || typeof msg !== 'object') return;
+    if (typeof p.send === 'function') {
+      try {
+        p.send(msg);
+      } catch {}
+      return;
+    }
     try {
       p.child.stdin.write(`${JSON.stringify(msg)}\n`);
     } catch {}

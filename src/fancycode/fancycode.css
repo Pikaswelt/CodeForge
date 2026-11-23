@@ -144,6 +144,8 @@
 .fc-login .fc-ask-btns { justify-content: center; }
 
 .fc-bottom { padding: 0 20px 16px; }
+.fc-bottom-prompts { max-width: 860px; margin: 0 auto 8px; display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow-y: auto; }
+.fc-glass .fc-bottom-prompts { max-width: 820px; }
 .fc-todos { max-width: 860px; margin: 0 auto 8px; border: 1px solid var(--fc-border); border-radius: 12px; background: var(--fc-panel); font-size: 13px; overflow: hidden; }
 .fc-todos-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 8px 12px 6px; color: var(--fc-text) !important; text-align: left; }
 .fc-todos-title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
