@@ -44,6 +44,10 @@ import type {
   ProviderUsageInfo,
   WallpaperMode,
   WorkDisplayMode,
+  SwarmTask,
+  SwarmTaskStatus,
+  TerminalLiveState,
+  TerminalLiveStatus,
 } from './types';
 import { uiClick, uiKey, uiSnapshot, uiType } from './uiControl';
 import { featureFree, planInfo, writePlan } from './plans';
@@ -437,6 +441,10 @@ interface AppContextType {
   navigateBack(): void;
   navigateForward(): void;
   clearChat(): void;
+  swarmTasks: SwarmTask[];
+  setSwarmTasks: React.Dispatch<React.SetStateAction<SwarmTask[]>>;
+  terminalLiveStates: Record<string, TerminalLiveState>;
+  updateTerminalLiveState(sessionId: string, patch: Partial<TerminalLiveState>): void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -748,6 +756,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [libraryProjects, setLibraryProjects] = useState<ProjectFolder[]>(() => readStorage('libraryProjects', []));
   const [chats, setChats] = useState<Chat[]>(() => readStorage('chats', []));
   const [savedTerminalWorkspaces, setSavedTerminalWorkspaces] = useState<Chat[]>(() => readStorage('terminalWorkspaces', []));
+  const [swarmTasks, setSwarmTasks] = useState<SwarmTask[]>(() => readStorage('swarmTasks', []));
+  const [terminalLiveStates, setTerminalLiveStates] = useState<Record<string, TerminalLiveState>>({});
+  const updateTerminalLiveState = useCallback((sessionId: string, patch: Partial<TerminalLiveState>) => {
+    if (!sessionId) return;
+    setTerminalLiveStates((current) => {
+      const prev = current[sessionId] || { status: 'idle' as TerminalLiveStatus, updatedAt: 0 };
+      const nextStatus = patch.status ?? prev.status;
+      const nextActivity = patch.activity !== undefined ? patch.activity : prev.activity;
+      if (prev.status === nextStatus && prev.activity === nextActivity) return current;
+      return {
+        ...current,
+        [sessionId]: {
+          status: nextStatus,
+          activity: nextActivity,
+          updatedAt: Date.now(),
+        },
+      };
+    });
+  }, []);
   const [apiProviders, setApiProviders] = useState<ApiProviderConfig[]>(() => {
     // Die eingebaute KI (über den FancyCode-Server, Login nötig) steht immer an erster Stelle.
     const builtin: ApiProviderConfig = { id: 'fancycode-ai', name: 'FancyCode AI (gratis)', provider: 'fancycode', baseUrl: '', apiKey: '', model: 'gpt-oss-120b' };
@@ -1017,6 +1044,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [chats]);
   useEffect(() => writeStorage('terminalWorkspaces', savedTerminalWorkspaces), [savedTerminalWorkspaces]);
+  useEffect(() => writeStorage('swarmTasks', swarmTasks), [swarmTasks]);
   useEffect(
     () => writeStorage('automations', automations),
     [automations],
@@ -3442,6 +3470,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       command: tab.command,
       agyAccountId: tab.agyAccountId,
       server: (tab.location === 'local' ? undefined : tab.vserver ?? chat.vserver)?.name,
+      worktreePath: tab.worktreePath,
+      worktreeBranch: tab.worktreeBranch,
+      liveStatus: terminalLiveStates[tab.id]?.status || 'idle',
+      liveActivity: terminalLiveStates[tab.id]?.activity || '',
     })),
   });
 
@@ -3456,6 +3488,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     accounts: agyAccounts,
     servers: readSavedServers(),
     harnesses: cliHarnesses.map((harness) => ({ name: harness.name, command: harness.command })),
+    tasks: swarmTasks,
+    terminalLiveStates,
   });
 
   const handleControlRequest = async ({ op, args }: { op: string; args: any }) => {
@@ -3619,6 +3653,109 @@ export function AppProvider({ children }: { children: ReactNode }) {
       case 'ui-key':
         await uiKey(String(args.key));
         return uiSnapshot();
+      case 'task-list': {
+        const statusFilter = args.status ? String(args.status) : '';
+        const list = statusFilter ? swarmTasks.filter((t) => t.status === statusFilter) : swarmTasks;
+        return { tasks: list };
+      }
+      case 'task-create': {
+        const items: { title: string; description?: string; assignee?: string; sessionId?: string; branch?: string }[] =
+          Array.isArray(args.tasks) && args.tasks.length
+            ? args.tasks
+            : [{ title: String(args.title || ''), description: args.description, assignee: args.assignee, sessionId: args.sessionId, branch: args.branch }];
+        const now = Date.now();
+        const created: SwarmTask[] = items
+          .map((item) => ({
+            id: `task-${Math.random().toString(36).slice(2, 8)}`,
+            title: String(item.title || '').trim(),
+            description: item.description ? String(item.description).trim() : undefined,
+            status: (item.sessionId ? 'in_progress' : 'todo') as SwarmTaskStatus,
+            workspaceId: selectedChatId || undefined,
+            projectId: selectedFolderId || undefined,
+            sessionId: item.sessionId ? String(item.sessionId) : undefined,
+            assignee: item.assignee ? String(item.assignee) : undefined,
+            branch: item.branch ? String(item.branch) : undefined,
+            createdAt: now,
+            updatedAt: now,
+          }))
+          .filter((item) => item.title.length > 0);
+        if (!created.length) throw new Error('Task-Titel fehlt.');
+        setSwarmTasks((current) => [...created, ...current]);
+        for (const task of created) {
+          if (task.sessionId) {
+            updateTerminalLiveState(task.sessionId, { status: 'working', activity: task.title });
+          }
+        }
+        return { tasks: created };
+      }
+      case 'task-claim': {
+        const taskId = String(args.taskId || '').trim();
+        const sessionId = String(args.sessionId || '').trim();
+        const assignee = args.assignee ? String(args.assignee).trim() : undefined;
+        let claimed: SwarmTask | null = null;
+        setSwarmTasks((current) =>
+          current.map((task) => {
+            if (task.id !== taskId) return task;
+            claimed = {
+              ...task,
+              status: 'in_progress',
+              sessionId: sessionId || task.sessionId,
+              assignee: assignee || task.assignee,
+              branch: args.branch ? String(args.branch) : task.branch,
+              updatedAt: Date.now(),
+            };
+            return claimed;
+          }),
+        );
+        if (sessionId && claimed) {
+          updateTerminalLiveState(sessionId, { status: 'working', activity: (claimed as SwarmTask).title });
+        }
+        return { task: claimed };
+      }
+      case 'task-update': {
+        const taskId = String(args.taskId || '').trim();
+        let updatedTask: SwarmTask | null = null;
+        setSwarmTasks((current) =>
+          current.map((task) => {
+            if (task.id !== taskId) return task;
+            const nextStatus: SwarmTaskStatus =
+              args.status === 'todo' || args.status === 'in_progress' || args.status === 'done'
+                ? args.status
+                : task.status;
+            updatedTask = {
+              ...task,
+              title: args.title ? String(args.title).trim() : task.title,
+              description: args.description !== undefined ? String(args.description).trim() : task.description,
+              status: nextStatus,
+              result: args.result !== undefined ? String(args.result).trim() : task.result,
+              sessionId: args.sessionId ? String(args.sessionId) : task.sessionId,
+              assignee: args.assignee ? String(args.assignee) : task.assignee,
+              branch: args.branch ? String(args.branch) : task.branch,
+              updatedAt: Date.now(),
+            };
+            return updatedTask;
+          }),
+        );
+        const sid = String(args.sessionId || (updatedTask as SwarmTask | null)?.sessionId || '');
+        if (sid && updatedTask) {
+          const ut = updatedTask as SwarmTask;
+          if (ut.status === 'done') {
+            updateTerminalLiveState(sid, { status: 'done', activity: `✓ ${ut.title}` });
+          } else if (ut.status === 'in_progress') {
+            updateTerminalLiveState(sid, { status: 'working', activity: ut.title });
+          }
+        }
+        return { task: updatedTask };
+      }
+      case 'terminal-status': {
+        const sessionId = String(args.sessionId || '').trim();
+        if (!sessionId) throw new Error('sessionId fehlt.');
+        const validStatuses: TerminalLiveStatus[] = ['idle', 'working', 'waiting', 'done'];
+        const status = validStatuses.includes(args.status) ? (args.status as TerminalLiveStatus) : 'working';
+        const activity = args.activity !== undefined ? String(args.activity).slice(0, 120) : undefined;
+        updateTerminalLiveState(sessionId, { status, activity });
+        return { ok: true };
+      }
       default:
         throw new Error(`Unbekannte Aktion: ${op}`);
     }
@@ -3676,7 +3813,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void window.agentWorkspace?.publishControlState?.(controlState());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedTerminalWorkspaces, agyAccounts, cliHarnesses, chats.length, selectedChatId]);
+  }, [savedTerminalWorkspaces, agyAccounts, cliHarnesses, chats.length, selectedChatId, swarmTasks, terminalLiveStates]);
 
   const endTerminalWorkspace = (chatId: string) => {
     const chat = chats.find((item) => item.id === chatId) || savedTerminalWorkspaces.find((item) => item.id === chatId);
@@ -3903,6 +4040,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       navigateBack,
       navigateForward,
       clearChat,
+      swarmTasks,
+      setSwarmTasks,
+      terminalLiveStates,
+      updateTerminalLiveState,
     }),
     [
       folders,
@@ -4003,6 +4144,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       apiProviders,
       apiChatConfig,
       apiPending,
+      swarmTasks,
+      terminalLiveStates,
+      updateTerminalLiveState,
     ],
   );
 

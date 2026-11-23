@@ -45,6 +45,11 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   getGitInfo: (projectPath) => ipcRenderer.invoke('git:info', projectPath),
   getBranches: (projectPath) => ipcRenderer.invoke('git:branches', projectPath),
   switchBranch: (projectPath, branch) => ipcRenderer.invoke('git:switch', projectPath, branch),
+  getGitDiffStatus: (projectPath) => ipcRenderer.invoke('git:diff-status', projectPath),
+  listGitWorktrees: (projectPath) => ipcRenderer.invoke('git:worktree-list', projectPath),
+  createGitWorktree: (input) => ipcRenderer.invoke('git:worktree-create', input),
+  removeGitWorktree: (input) => ipcRenderer.invoke('git:worktree-remove', input),
+  gitCommit: (input) => ipcRenderer.invoke('git:commit', input),
   installPlugin: (projectPath, packageName) =>
     ipcRenderer.invoke('project-plugins:install', projectPath, packageName),
   removePlugin: (projectPath, packageName) =>

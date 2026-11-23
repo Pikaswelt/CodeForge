@@ -55,6 +55,13 @@ import { useCompactLayout } from '../useCompactLayout';
 import { AddVServerDialog, NewTabMenu, VServerPanel, useVServers } from './VServers';
 import { RunningSessionsPanel } from './RunningSessions';
 import { SftpBrowser } from './SftpBrowser';
+import {
+  SwarmDiffDrawer,
+  SwarmKanbanBoard,
+  TerminalStatusBadge,
+  parseTerminalChunkForLiveState,
+} from './SwarmPanels';
+import { GitBranch, Kanban } from 'lucide-react';
 import { isVideoPath, toFileUrl } from '../media';
 import type { Chat, CliHarness, HomeAppTab, Message, ResponseDisplayMode, TerminalTab, VServerConnection } from '../types';
 import type { HomeApp } from '../types';
@@ -1156,8 +1163,13 @@ function TerminalInstance({
     customThemes,
     externalServer,
     platformStartCommands,
-    platformWaitTimes
+    platformWaitTimes,
+    updateTerminalLiveState,
   } = useAppContext();
+
+  const effectiveStartPath = tab?.worktreePath || tab?.cwd || startPath;
+  const idleDoneTimerRef = useRef<number | null>(null);
+  const lastLiveStatusRef = useRef<'idle' | 'working' | 'waiting' | 'done'>('idle');
 
   const settingsRef = useRef({
     terminalPrefixSuffixEnabled,
@@ -1240,7 +1252,7 @@ function TerminalInstance({
     // Start PTY session in backend, already at the terminal's size.
     const shellCreated = window.agentWorkspace.createShellSession({
       chatId: tabId,
-      cwd: startPath,
+      cwd: effectiveStartPath,
       shellType,
       externalServer: !chat.vserver && !sshServer && !tab?.agyAccountId && externalServer.enabled ? externalServer : undefined,
       vserver: sshServer,
@@ -1316,10 +1328,51 @@ function TerminalInstance({
       })
       .catch(() => runStartCommands());
 
+    const titleDisposable = term.onTitleChange((newTitle) => {
+      const cleaned = (newTitle || '').trim();
+      if (cleaned && !/^(bash|zsh|fish|sh|cmd|powershell|terminal)$/i.test(cleaned)) {
+        updateTerminalLiveState(tabId, { activity: cleaned.slice(0, 72) });
+      }
+    });
+
     // Handle incoming output from backend PTY
     const unsubscribe = window.agentWorkspace.onShellOutput(tabId, (payload: any) => {
       if (payload.type === 'stdout' || payload.type === 'stderr') {
         term.write(payload.text);
+
+        if (payload.text) {
+          const parsed = parseTerminalChunkForLiveState(payload.text);
+          if (parsed) {
+            if (parsed.status === 'waiting') {
+              if (idleDoneTimerRef.current) {
+                window.clearTimeout(idleDoneTimerRef.current);
+                idleDoneTimerRef.current = null;
+              }
+              lastLiveStatusRef.current = 'waiting';
+              updateTerminalLiveState(tabId, {
+                status: 'waiting',
+                ...(parsed.activity ? { activity: parsed.activity } : {}),
+              });
+            } else if (parsed.status === 'working') {
+              // Do not overwrite an explicit waiting prompt unless a new tool/action line started
+              if (lastLiveStatusRef.current === 'waiting' && !parsed.activity) {
+                return;
+              }
+              lastLiveStatusRef.current = 'working';
+              updateTerminalLiveState(tabId, {
+                status: 'working',
+                ...(parsed.activity ? { activity: parsed.activity } : {}),
+              });
+              if (idleDoneTimerRef.current) window.clearTimeout(idleDoneTimerRef.current);
+              idleDoneTimerRef.current = window.setTimeout(() => {
+                if (lastLiveStatusRef.current === 'working') {
+                  lastLiveStatusRef.current = 'done';
+                  updateTerminalLiveState(tabId, { status: 'done' });
+                }
+              }, 4500);
+            }
+          }
+        }
 
         // Scan output for trigger words
         const currentTriggerWords = settingsRef.current.terminalTriggerWords;
@@ -1350,6 +1403,10 @@ function TerminalInstance({
     let inputBuffer = '';
     let lastWasCR = false;
     const onDataDisposable = term.onData((data) => {
+      if (lastLiveStatusRef.current === 'waiting' && (data.includes('\r') || data.includes('\n') || data === 'y' || data === 'n')) {
+        lastLiveStatusRef.current = 'working';
+        updateTerminalLiveState(tabId, { status: 'working' });
+      }
       const { terminalPrefixSuffixEnabled: pfxEnabled, terminalPrefix: pfx, terminalSuffix: sfx } = settingsRef.current;
       if (pfxEnabled) {
         if (data.startsWith('\x1b')) {
@@ -1444,18 +1501,20 @@ function TerminalInstance({
 
     const timer = setTimeout(syncSize, 100);
 
-    return () => {
-      clearTimeout(timer);
-      window.clearTimeout(resizeTimer);
-      observer.disconnect();
-      onDataDisposable.dispose();
-      unsubscribe();
-      term.dispose();
-      touchTarget?.removeEventListener('touchstart', onTouchStart);
-      touchTarget?.removeEventListener('touchmove', onTouchMove);
-      touchTarget?.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [tabId, startPath]);
+      return () => {
+        clearTimeout(timer);
+        if (idleDoneTimerRef.current) window.clearTimeout(idleDoneTimerRef.current);
+        window.clearTimeout(resizeTimer);
+        observer.disconnect();
+        titleDisposable.dispose();
+        onDataDisposable.dispose();
+        unsubscribe();
+        term.dispose();
+        touchTarget?.removeEventListener('touchstart', onTouchStart);
+        touchTarget?.removeEventListener('touchmove', onTouchMove);
+        touchTarget?.removeEventListener('touchend', onTouchEnd);
+      };
+    }, [tabId, effectiveStartPath]);
 
   // Keep terminal focused and resize when this tab becomes active
   useEffect(() => {
@@ -1518,10 +1577,16 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     openBrowserTab,
     cliHarnesses,
     mobileMode,
+    swarmTasks,
+    setSwarmTasks,
+    terminalLiveStates,
+    updateTerminalLiveState,
   } = useAppContext();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const [kanbanOpen, setKanbanOpen] = useState(false);
+  const [diffDrawerOpen, setDiffDrawerOpen] = useState(false);
 
   const currentChat = chats.find((c) => c.id === chat.id) || chat;
   const tabs = currentChat.terminalTabs || [{ id: chat.id, title: tr("Terminal 1") }];
@@ -1767,6 +1832,93 @@ function TerminalChatView({ chat }: { chat: Chat }) {
     );
   };
 
+  const handleDispatchTaskToTab = (task: import('../types').SwarmTask, tab: TerminalTab) => {
+    const promptText = `${task.title}${task.description ? ` — ${task.description}` : ''}`;
+    window.agentWorkspace.writeToShellSession({ chatId: tab.id, text: promptText + '\r' });
+    updateTerminalLiveState(tab.id, { status: 'working', activity: task.title });
+    setSwarmTasks((prev) =>
+      prev.map((item) =>
+        item.id === task.id
+          ? {
+              ...item,
+              status: 'in_progress',
+              sessionId: tab.id,
+              assignee: tab.title,
+              branch: tab.worktreeBranch || item.branch,
+              updatedAt: Date.now(),
+            }
+          : item,
+      ),
+    );
+  };
+
+  const handleIsolateTabWorktree = async (tab: TerminalTab) => {
+    if (!startPath || !window.agentWorkspace?.createGitWorktree) {
+      throw new Error(tr('Kein lokaler Projektordner ausgewählt.'));
+    }
+    const res = await window.agentWorkspace.createGitWorktree({
+      projectPath: startPath,
+      name: `${tab.title}-${tab.id.slice(-4)}`,
+    });
+    if (!res.ok || !res.worktreePath) {
+      throw new Error(res.error || tr('Worktree konnte nicht erstellt werden.'));
+    }
+    setChats((current) =>
+      current.map((c) => {
+        if (c.id !== chat.id) return c;
+        const oldTabs = c.terminalTabs || [{ id: chat.id, title: tr('Terminal 1') }];
+        return {
+          ...c,
+          terminalTabs: oldTabs.map((t) =>
+            t.id === tab.id
+              ? { ...t, worktreePath: res.worktreePath, worktreeBranch: res.branch, cwd: res.worktreePath }
+              : t,
+          ),
+        };
+      }),
+    );
+    window.agentWorkspace.writeToShellSession({
+      chatId: tab.id,
+      text: `cd "${res.worktreePath}"\r`,
+    });
+    updateTerminalLiveState(tab.id, {
+      activity: `🌿 ${res.branch}`,
+    });
+  };
+
+  const handleRemoveTabWorktree = async (tab: TerminalTab, mergeIntoMain: boolean) => {
+    if (!startPath || !tab.worktreePath || !window.agentWorkspace?.removeGitWorktree) return;
+    const res = await window.agentWorkspace.removeGitWorktree({
+      projectPath: startPath,
+      worktreePath: tab.worktreePath,
+      branch: tab.worktreeBranch,
+      mergeIntoMain,
+    });
+    if (!res.ok) {
+      throw new Error(res.error || tr('Worktree konnte nicht entfernt werden.'));
+    }
+    setChats((current) =>
+      current.map((c) => {
+        if (c.id !== chat.id) return c;
+        const oldTabs = c.terminalTabs || [{ id: chat.id, title: tr('Terminal 1') }];
+        return {
+          ...c,
+          terminalTabs: oldTabs.map((t) =>
+            t.id === tab.id
+              ? { ...t, worktreePath: undefined, worktreeBranch: undefined, cwd: startPath }
+              : t,
+          ),
+        };
+      }),
+    );
+    window.agentWorkspace.writeToShellSession({
+      chatId: tab.id,
+      text: `cd "${startPath}"\r`,
+    });
+  };
+
+  const activeTasksCount = swarmTasks.filter((t) => t.status !== 'done').length;
+
   return (
     <main
       className={`min-w-0 flex flex-col backdrop-blur-[2px] transition-all duration-300 ${
@@ -1815,12 +1967,18 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                     />
                   ) : (
                     <span
-                      className="flex items-center gap-1.5 truncate max-w-[120px]"
+                      className="flex items-center gap-1.5 truncate max-w-[200px]"
                       onDoubleClick={() => startEditing(tab.id, tab.title)}
                       title={tr("Doppelklick zum Umbenennen")}
                     >
                       {tab.location !== 'local' && (tab.vserver || chat.vserver) && <Server className="w-3 h-3 shrink-0 text-sky-400" />}
                       <span className="truncate">{tab.title}</span>
+                      {tab.worktreeBranch && (
+                        <span className="rounded bg-emerald-500/15 px-1 py-0.2 font-mono text-[9px] text-emerald-300 shrink-0" title={tab.worktreePath}>
+                          🌿
+                        </span>
+                      )}
+                      <TerminalStatusBadge state={terminalLiveStates[tab.id]} compact />
                     </span>
                   )}
                   {tabs.length > 1 && (
@@ -1941,6 +2099,35 @@ function TerminalChatView({ chat }: { chat: Chat }) {
 
           <div className="h-4 w-px bg-white/10" />
 
+          <button
+            onClick={() => setKanbanOpen((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer select-none transition-colors duration-150 ${
+              kanbanOpen
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 font-medium'
+                : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-zinc-300 hover:bg-white/5'
+            }`}
+            title={tr("Swarm Kanban-Board öffnen (Aufgaben über alle Terminals koordinieren)")}
+          >
+            <Kanban className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{tr("Aufgaben")}</span>
+            {activeTasksCount > 0 && (
+              <span className="rounded-md bg-white/10 px-1.5 py-0.2 text-[10px] font-mono text-zinc-200">
+                {activeTasksCount}
+              </span>
+            )}
+          </button>
+
+          {!activeServer && (
+            <button
+              onClick={() => setDiffDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/5 bg-zinc-900/50 text-zinc-400 hover:text-zinc-300 hover:bg-white/5 text-xs cursor-pointer select-none transition-colors duration-150"
+              title={tr("Git-Worktree-Isolation & Live-Diff-Ansicht für die Terminals öffnen")}
+            >
+              <GitBranch className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{tr("Git & Diff")}</span>
+            </button>
+          )}
+
           {voice.showGridButton && <button
             onClick={() => setChats((current) =>
               current.map((c) => {
@@ -1982,19 +2169,59 @@ function TerminalChatView({ chat }: { chat: Chat }) {
         </div>
       </div>
 
+      {kanbanOpen && (
+        <SwarmKanbanBoard
+          tasks={swarmTasks}
+          setTasks={setSwarmTasks}
+          tabs={tabs}
+          workspaceId={chat.id}
+          projectId={selectedProject?.id}
+          onDispatchToTab={handleDispatchTaskToTab}
+          onClose={() => setKanbanOpen(false)}
+        />
+      )}
+
       <div className="flex-1 min-h-0 w-full relative">
         {terminalLayout === 'grid' ? (
           <div className={stacked ? 'flex h-full w-full flex-col gap-3 overflow-y-auto' : `grid gap-3 h-full w-full ${gridLayoutClass}`}>
             {tabs.slice(0, gridSize).map((tab) => (
               <div key={tab.id} className={`border border-white/10 rounded-lg p-3 bg-black/45 relative flex flex-col min-h-0 ${stacked ? 'h-[60vh] min-h-[280px] shrink-0' : 'h-full'}`}>
-                <div className="flex items-center justify-between text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
-                  <div className="flex items-center gap-1.5 truncate">
+                <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-400 pb-1.5 border-b border-white/5 mb-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     {tab.location !== 'local' && (tab.vserver || chat.vserver) && (
                       <Server className="w-3 h-3 text-sky-400 shrink-0" />
                     )}
-                    <span className="font-semibold text-zinc-300 truncate">{tab.title}</span>
+                    <span
+                      className="font-semibold text-zinc-200 truncate cursor-pointer"
+                      onDoubleClick={() => startEditing(tab.id, tab.title)}
+                      title={tr("Doppelklick zum Umbenennen")}
+                    >
+                      {tab.title}
+                    </span>
+                    <TerminalStatusBadge state={terminalLiveStates[tab.id]} />
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    {!(tab.location !== 'local' && (tab.vserver || chat.vserver)) && (
+                      <button
+                        onClick={() => {
+                          handleSelectTab(tab.id);
+                          setDiffDrawerOpen(true);
+                        }}
+                        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[8px] border transition-colors ${
+                          tab.worktreeBranch
+                            ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                            : 'border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200'
+                        }`}
+                        title={
+                          tab.worktreeBranch
+                            ? `${tr('Isolierter Worktree:')} ${tab.worktreeBranch} (${tr('Klicken für Live-Diff & Commit')})`
+                            : tr('Git-Worktree isolieren oder Live-Diff öffnen')
+                        }
+                      >
+                        <GitBranch className="w-2.5 h-2.5" />
+                        <span>{tab.worktreeBranch ? tab.worktreeBranch.replace(/^swarm\//, '') : 'git'}</span>
+                      </button>
+                    )}
                     {tab.command && (
                       <span className="text-[8px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.2 rounded truncate max-w-[90px]">
                         {tab.command}
@@ -2016,14 +2243,25 @@ function TerminalChatView({ chat }: { chat: Chat }) {
               </div>
             ))}
             {!stacked && tabs.length < gridSize && Array.from({ length: gridSize - tabs.length }).map((_, i) => (
-              <div key={`empty-${i}`} className="border border-dashed border-white/5 rounded-lg flex flex-col items-center justify-center bg-black/10">
-                <span className="text-[10px] text-zinc-600 uppercase font-mono">{tr("Kein Tab")}</span>
-                <button
-                  onClick={() => handleAddTab('cmd')}
-                  className="mt-2 text-[10px] text-amber-500/80 hover:text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" /> {tr("Hinzufügen")}
-                </button>
+              <div key={`empty-${i}`} className="border border-dashed border-white/10 rounded-lg flex flex-col items-center justify-center gap-2 p-3 bg-black/20">
+                <span className="text-[10px] text-zinc-500 uppercase font-mono">{tr("Freier Agent-Slot")}</span>
+                <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[240px]">
+                  {cliHarnesses.slice(0, 4).map((h) => (
+                    <button
+                      key={h.id}
+                      onClick={() => handleAddTab('cmd', h)}
+                      className="rounded-md border border-white/10 bg-zinc-900/80 px-2 py-1 text-[10px] font-medium text-zinc-200 hover:border-amber-500/40 hover:bg-amber-500/15 hover:text-amber-200 transition-colors"
+                    >
+                      + {h.name}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => handleAddTab('cmd', 'blank')}
+                    className="rounded-md border border-white/5 bg-white/5 px-2 py-1 text-[10px] text-zinc-400 hover:bg-white/10 hover:text-white transition-colors"
+                  >
+                    + {tr("Shell")}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -2052,6 +2290,17 @@ function TerminalChatView({ chat }: { chat: Chat }) {
         />
       )}
       {sftpServer && <SftpBrowser server={sftpServer} onClose={() => setSftpServer(null)} />}
+      {diffDrawerOpen && (
+        <SwarmDiffDrawer
+          tabs={tabs}
+          activeTabId={activeTabId}
+          baseProjectPath={startPath}
+          onSelectTab={handleSelectTab}
+          onIsolateTabWorktree={handleIsolateTabWorktree}
+          onRemoveTabWorktree={handleRemoveTabWorktree}
+          onClose={() => setDiffDrawerOpen(false)}
+        />
+      )}
     </main>
   );
 }

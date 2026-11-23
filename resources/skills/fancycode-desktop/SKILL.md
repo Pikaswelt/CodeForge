@@ -30,10 +30,17 @@ im Hintergrund ist). Unter jedem Popup ist ein Button, der den Nutzer direkt zu 
 - Nie Passwörter, Tokens oder Schlüssel per Formular abfragen.
 
 ## Andere Terminals steuern
-1. `fancycode_overview`: Workspaces, Terminals (`session_id`), Accounts und V-Server ansehen.
+1. `fancycode_overview`: Workspaces, Terminals (`session_id`), Accounts, V-Server und Swarm-Board-Zusammenfassung ansehen.
 2. `fancycode_read`: Bildschirm eines Terminals lesen. Vor dem Senden prüfen, ob der Agent dort gerade arbeitet.
 3. `fancycode_send`: Aufgabe schicken, dann `fancycode_wait` bis er fertig ist, dann `fancycode_read`.
 4. Rückfragen im fremden Terminal mit `fancycode_keys` beantworten (`["down","enter"]`, `["y"]`).
 5. Neue Terminals: `fancycode_start_terminal` / `fancycode_add_terminal`; aufräumen mit `fancycode_stop`.
 
 Fremde Terminals nie mit `ctrl+c` abbrechen oder beenden, wenn der Nutzer es nicht gesagt hat.
+
+## Swarm-Kanban-Board & Live-Terminal-Status
+- `fancycode_status`: Zeigt im Grid- und Tab-Header von FancyCode Desktop live an, woran du gerade arbeitest (`status: "working" | "waiting" | "done"`, `activity: "Refactoring Auth"`).
+- `fancycode_tasks_list`: Listet offene, laufende und erledigte Aufgaben vom gemeinsamen Swarm-Kanban-Board.
+- `fancycode_task_create`: Legt neue Aufgaben oder Teilaufgaben für den Agent-Schwarm auf dem Board an.
+- `fancycode_task_claim`: Übernimmt eine Aufgabe (`task_id`) vom Board, setzt sie auf `in_progress` und aktualisiert deinen Live-Terminal-Titel.
+- `fancycode_task_update`: Markiert eine Aufgabe als `done` (inklusive `result`-Zusammenfassung) oder aktualisiert ihren Status.

@@ -4695,6 +4695,239 @@ ipcMain.handle('device:status', () => {
     return runGit(projectPath, ['switch', branch]);
   });
 
+  ipcMain.handle('git:diff-status', async (_event, projectPath) => {
+    if (!projectPath || typeof projectPath !== 'string' || !fs.existsSync(projectPath)) {
+      return { isRepository: false, branch: '', root: '', isWorktree: false, files: [], diff: '', ahead: 0, behind: 0 };
+    }
+    const rootRes = await runGit(projectPath, ['rev-parse', '--show-toplevel']);
+    if (!rootRes.ok || !rootRes.output) {
+      return { isRepository: false, branch: '', root: '', isWorktree: false, files: [], diff: '', ahead: 0, behind: 0 };
+    }
+    const root = rootRes.output.trim();
+    const [branchRes, gitDirRes, commonDirRes, statusRes, numstatRes, diffRes, upstreamRes] = await Promise.all([
+      runGit(projectPath, ['branch', '--show-current']),
+      runGit(projectPath, ['rev-parse', '--git-dir']),
+      runGit(projectPath, ['rev-parse', '--git-common-dir']),
+      runGit(projectPath, ['status', '--porcelain=v1', '-uall']),
+      runGit(projectPath, ['diff', 'HEAD', '--numstat']),
+      runGit(projectPath, ['diff', 'HEAD']),
+      runGit(projectPath, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']),
+    ]);
+    const gitDir = path.resolve(projectPath, (gitDirRes.output || '.git').trim());
+    const commonDir = path.resolve(projectPath, (commonDirRes.output || '.git').trim());
+    const isWorktree = gitDir !== commonDir;
+
+    const statsByPath = new Map();
+    if (numstatRes.ok && numstatRes.output) {
+      for (const line of numstatRes.output.split(/\r?\n/)) {
+        const parts = line.split('\t');
+        if (parts.length >= 3) {
+          const add = parseInt(parts[0], 10);
+          const del = parseInt(parts[1], 10);
+          const filePath = parts.slice(2).join('\t').trim();
+          statsByPath.set(filePath, {
+            additions: Number.isFinite(add) ? add : 0,
+            deletions: Number.isFinite(del) ? del : 0,
+          });
+        }
+      }
+    }
+
+    const files = [];
+    const untrackedPaths = [];
+    if (statusRes.ok && statusRes.output) {
+      for (const rawLine of statusRes.output.split(/\r?\n/)) {
+        if (!rawLine || rawLine.length < 3) continue;
+        const xy = rawLine.slice(0, 2);
+        let filePath = rawLine.slice(3).trim();
+        const arrowIdx = filePath.indexOf(' -> ');
+        if (arrowIdx >= 0) filePath = filePath.slice(arrowIdx + 4).trim();
+        if (filePath.startsWith('"') && filePath.endsWith('"')) filePath = filePath.slice(1, -1);
+        let status = 'M';
+        if (xy === '??') {
+          status = '?';
+          untrackedPaths.push(filePath);
+        } else if (xy.includes('A')) status = 'A';
+        else if (xy.includes('D')) status = 'D';
+        else if (xy.includes('R')) status = 'R';
+        else if (xy.includes('U')) status = 'U';
+        const stat = statsByPath.get(filePath) || { additions: 0, deletions: 0 };
+        files.push({
+          path: filePath,
+          status,
+          additions: stat.additions,
+          deletions: stat.deletions,
+        });
+      }
+    }
+
+    let diffText = diffRes.ok ? diffRes.output : '';
+    // Include compact preview for untracked files
+    for (const relPath of untrackedPaths.slice(0, 12)) {
+      try {
+        const abs = path.join(root, relPath);
+        const stat = fs.statSync(abs);
+        if (stat.isFile() && stat.size <= 64 * 1024) {
+          const content = fs.readFileSync(abs, 'utf8');
+          if (!content.includes('\u0000')) {
+            const lines = content.split(/\r?\n/);
+            const entry = files.find((f) => f.path === relPath);
+            if (entry) entry.additions = lines.length;
+            const addedLines = lines.slice(0, 120).map((l) => `+${l}`).join('\n');
+            diffText += `\ndiff --git a/${relPath} b/${relPath}\nnew file mode 100644\n--- /dev/null\n+++ b/${relPath}\n@@ -0,0 +1,${Math.min(lines.length, 120)} @@\n${addedLines}\n`;
+          }
+        }
+      } catch (_) {}
+    }
+    if (diffText.length > 220000) {
+      diffText = diffText.slice(0, 220000) + '\n... (Diff gekuerzt)';
+    }
+
+    let ahead = 0;
+    let behind = 0;
+    if (upstreamRes.ok && upstreamRes.output) {
+      const counts = upstreamRes.output.trim().split(/\s+/);
+      if (counts.length >= 2) {
+        ahead = parseInt(counts[0], 10) || 0;
+        behind = parseInt(counts[1], 10) || 0;
+      }
+    }
+
+    return {
+      isRepository: true,
+      branch: (branchRes.output || 'HEAD').trim(),
+      root,
+      isWorktree,
+      files,
+      diff: diffText.trim(),
+      ahead,
+      behind,
+    };
+  });
+
+  ipcMain.handle('git:worktree-list', async (_event, projectPath) => {
+    if (!projectPath || typeof projectPath !== 'string' || !fs.existsSync(projectPath)) return [];
+    const res = await runGit(projectPath, ['worktree', 'list', '--porcelain']);
+    if (!res.ok || !res.output) return [];
+    const list = [];
+    let current = null;
+    for (const line of res.output.split(/\r?\n/)) {
+      if (line.startsWith('worktree ')) {
+        if (current) list.push(current);
+        current = { path: line.slice(9).trim(), head: '', branch: 'detached', isMain: list.length === 0 };
+      } else if (current && line.startsWith('HEAD ')) {
+        current.head = line.slice(5).trim().slice(0, 8);
+      } else if (current && line.startsWith('branch ')) {
+        current.branch = line.slice(7).trim().replace(/^refs\/heads\//, '');
+      }
+    }
+    if (current) list.push(current);
+    return list;
+  });
+
+  ipcMain.handle('git:worktree-create', async (_event, { projectPath, name } = {}) => {
+    if (!projectPath || typeof projectPath !== 'string' || !fs.existsSync(projectPath)) {
+      return { ok: false, worktreePath: '', branch: '', error: mt('Projektordner wurde nicht gefunden.') };
+    }
+    const commonRes = await runGit(projectPath, ['rev-parse', '--git-common-dir']);
+    const topRes = await runGit(projectPath, ['rev-parse', '--show-toplevel']);
+    if (!topRes.ok || !topRes.output) {
+      return { ok: false, worktreePath: '', branch: '', error: mt('Kein Git-Repository im Projektordner.') };
+    }
+    const commonDir = commonRes.ok && commonRes.output
+      ? path.resolve(projectPath, commonRes.output.trim())
+      : path.join(topRes.output.trim(), '.git');
+    const mainRepoRoot = path.basename(commonDir) === '.git' ? path.dirname(commonDir) : topRes.output.trim();
+    const slug = String(name || 'agent')
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 36) || `agent-${Date.now().toString(36)}`;
+    const worktreesBase = path.join(mainRepoRoot, '.fancycode-worktrees');
+    const worktreePath = path.join(worktreesBase, slug);
+    const branch = `swarm/${slug}`;
+
+    try {
+      fs.mkdirSync(worktreesBase, { recursive: true });
+      const excludeFile = path.join(commonDir, 'info', 'exclude');
+      if (fs.existsSync(path.dirname(excludeFile))) {
+        const existing = fs.existsSync(excludeFile) ? fs.readFileSync(excludeFile, 'utf8') : '';
+        if (!existing.includes('.fancycode-worktrees')) {
+          fs.appendFileSync(excludeFile, `\n.fancycode-worktrees/\n`);
+        }
+      }
+    } catch (_) {}
+
+    if (fs.existsSync(worktreePath) && fs.existsSync(path.join(worktreePath, '.git'))) {
+      return { ok: true, worktreePath, branch };
+    }
+
+    let addRes = await runGit(mainRepoRoot, ['worktree', 'add', '-b', branch, worktreePath]);
+    if (!addRes.ok) {
+      addRes = await runGit(mainRepoRoot, ['worktree', 'add', worktreePath, branch]);
+    }
+    if (!addRes.ok) {
+      return { ok: false, worktreePath: '', branch: '', error: addRes.error || addRes.output || mt('Worktree konnte nicht angelegt werden.') };
+    }
+    return { ok: true, worktreePath, branch };
+  });
+
+  ipcMain.handle('git:worktree-remove', async (_event, { projectPath, worktreePath, branch, mergeIntoMain } = {}) => {
+    if (!projectPath || !worktreePath) return { ok: false, error: 'Pfad fehlt.' };
+    const commonRes = await runGit(projectPath, ['rev-parse', '--git-common-dir']);
+    const topRes = await runGit(projectPath, ['rev-parse', '--show-toplevel']);
+    const commonDir = commonRes.ok && commonRes.output
+      ? path.resolve(projectPath, commonRes.output.trim())
+      : topRes.ok ? path.join(topRes.output.trim(), '.git') : '';
+    const mainRepoRoot = commonDir && path.basename(commonDir) === '.git' ? path.dirname(commonDir) : projectPath;
+
+    let mergeOutput = '';
+    if (mergeIntoMain && branch) {
+      const mergeRes = await runGit(mainRepoRoot, ['merge', '--no-edit', branch]);
+      if (!mergeRes.ok) {
+        return { ok: false, error: mergeRes.error || mergeRes.output || 'Merge fehlgeschlagen (Konflikte im Hauptbranch pruefen).' };
+      }
+      mergeOutput = mergeRes.output;
+    }
+
+    const rmRes = await runGit(mainRepoRoot, ['worktree', 'remove', '--force', worktreePath]);
+    if (!rmRes.ok) {
+      try {
+        fs.rmSync(worktreePath, { recursive: true, force: true });
+        await runGit(mainRepoRoot, ['worktree', 'prune']);
+      } catch (err) {
+        return { ok: false, error: rmRes.error || err.message };
+      }
+    }
+    return { ok: true, output: mergeOutput || rmRes.output };
+  });
+
+  ipcMain.handle('git:commit', async (_event, { cwd, message, push } = {}) => {
+    if (!cwd || typeof cwd !== 'string' || !fs.existsSync(cwd)) {
+      return { ok: false, output: '', error: mt('Arbeitsverzeichnis wurde nicht gefunden.') };
+    }
+    const cleanMsg = String(message || '').trim();
+    if (!cleanMsg) {
+      return { ok: false, output: '', error: mt('Commit-Nachricht darf nicht leer sein.') };
+    }
+    const addRes = await runGit(cwd, ['add', '-A']);
+    if (!addRes.ok) {
+      return { ok: false, output: addRes.output, error: addRes.error || 'git add fehlgeschlagen.' };
+    }
+    const commitRes = await runGit(cwd, ['commit', '-m', cleanMsg]);
+    if (!commitRes.ok) {
+      return { ok: false, output: commitRes.output, error: commitRes.error || 'git commit fehlgeschlagen.' };
+    }
+    if (push) {
+      const pushRes = await runGit(cwd, ['push']);
+      if (!pushRes.ok) {
+        return { ok: false, output: commitRes.output, error: `Commit erstellt, aber Push fehlgeschlagen: ${pushRes.error || pushRes.output}` };
+      }
+      return { ok: true, output: `${commitRes.output}\n${pushRes.output}`.trim(), error: '' };
+    }
+    return commitRes;
+  });
+
   // Project-level npm plugins (agents' packages), separate from the catalog plugins above.
   ipcMain.handle('project-plugins:install', (_event, projectPath, packageName) =>
     runNpm(projectPath, 'install', packageName),

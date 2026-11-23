@@ -420,6 +420,11 @@ async function overview() {
       const parts = [`  - session_id: ${tab.id}`, `"${tab.title}"`, server ? `auf ${server.name}` : 'auf diesem PC'];
       if (tab.agyAccountId) parts.push(`Antigravity-Account: ${accountName(tab.agyAccountId) || tab.agyAccountId}`);
       if (tab.command) parts.push(`Befehl: ${tab.command}`);
+      if (tab.worktreeBranch) parts.push(`Worktree: ${tab.worktreeBranch}`);
+      const live = state.terminalLiveStates && state.terminalLiveStates[tab.id];
+      if (live && live.status && live.status !== 'idle') {
+        parts.push(`Agent-Status: ${live.status}${live.activity ? ` (${live.activity})` : ''}`);
+      }
       parts.push(`Status: ${status}`);
       lines.push(parts.join(' | '));
     }
@@ -440,6 +445,13 @@ async function overview() {
   lines.push('');
   lines.push(`Antigravity-Accounts: ${(state.accounts || []).map((item) => item.name).join(', ') || 'keine'}`);
   lines.push(`V-Server: ${(state.servers || []).map((item) => `${item.name} (${item.host})`).join(', ') || 'keine'}`);
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  if (tasks.length) {
+    const todo = tasks.filter((t) => t.status === 'todo').length;
+    const doing = tasks.filter((t) => t.status === 'in_progress').length;
+    const done = tasks.filter((t) => t.status === 'done').length;
+    lines.push(`Swarm-Kanban-Board: ${todo} offen, ${doing} in Arbeit, ${done} erledigt (mit fancycode_tasks_list abrufen).`);
+  }
   return lines.join('\n');
 }
 
@@ -667,6 +679,73 @@ const TOOLS = [
     description: 'Beendet einen ganzen Workspace (workspace_id) oder ein einzelnes Terminal (session_id), inklusive der tmux-Session auf dem V-Server.',
     inputSchema: { type: 'object', properties: { workspace_id: { type: 'string' }, session_id: { type: 'string' } } },
   },
+  {
+    name: 'fancycode_tasks_list',
+    description: 'Listet die Aufgaben vom gemeinsamen Swarm-Kanban-Board in FancyCode Desktop (optional gefiltert nach status: todo, in_progress, done).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['todo', 'in_progress', 'done'], description: 'Optionaler Filter.' },
+      },
+    },
+  },
+  {
+    name: 'fancycode_task_create',
+    description: 'Erstellt eine neue Aufgabe (oder mehrere Unteraufgaben) auf dem gemeinsamen Swarm-Kanban-Board in FancyCode Desktop.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Kurzer Titel der Aufgabe.' },
+        description: { type: 'string', description: 'Details oder Akzeptanzkriterien.' },
+        assignee: { type: 'string', description: 'Optionaler Agent-Name (z. B. Claude Code, Codex).' },
+        session_id: { type: 'string', description: 'Optionales Terminal, das sofort daran arbeitet.' },
+        branch: { type: 'string', description: 'Optionaler Git-Branch oder Worktree.' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'fancycode_task_claim',
+    description: 'Uebernimmt eine offene Aufgabe vom Swarm-Kanban-Board, setzt ihren Status auf in_progress und zeigt sie als aktuelle Aktivitaet im Terminal-Header an.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string', description: 'ID der Aufgabe aus fancycode_tasks_list.' },
+        assignee: { type: 'string', description: 'Name dieses Agenten.' },
+        session_id: { type: 'string', description: 'Terminal-ID (Standard: das eigene Terminal).' },
+        branch: { type: 'string', description: 'Optionaler Git-Branch / Worktree.' },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'fancycode_task_update',
+    description: 'Aktualisiert Status (todo, in_progress, done) oder Ergebnis-Notiz einer Aufgabe auf dem Swarm-Kanban-Board.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string' },
+        status: { type: 'string', enum: ['todo', 'in_progress', 'done'] },
+        result: { type: 'string', description: 'Kurze Zusammenfassung, was erledigt oder geaendert wurde.' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'fancycode_status',
+    description: 'Aktualisiert den dynamischen Live-Titel und Status (working, waiting, done, idle) dieses Terminals in der Grid- und Tab-Ansicht von FancyCode Desktop.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['working', 'waiting', 'done', 'idle'], description: 'Aktueller Zustand des Agenten.' },
+        activity: { type: 'string', description: 'Kurzer Live-Titel, woran gerade gearbeitet wird (z. B. "Refactoring Auth", "Tests laufen").' },
+        session_id: { type: 'string', description: 'Standard: eigenes Terminal.' },
+      },
+      required: ['status'],
+    },
+  },
 ];
 
 const INSTRUCTIONS = [
@@ -818,6 +897,63 @@ async function callTool(name, args = {}) {
         return text('Terminal beendet.');
       }
       throw new Error('workspace_id oder session_id angeben.');
+    }
+    case 'fancycode_tasks_list': {
+      const state = readState();
+      const all = Array.isArray(state.tasks) ? state.tasks : [];
+      const list = args.status ? all.filter((t) => t.status === args.status) : all;
+      if (!list.length) return text('Keine Aufgaben auf dem Swarm-Kanban-Board.');
+      return text(
+        list
+          .map(
+            (t) =>
+              `[${t.id}] (${t.status}) ${t.title}${t.assignee ? ` | Agent: ${t.assignee}` : ''}${t.sessionId ? ` | session_id: ${t.sessionId}` : ''}${t.branch ? ` | Branch: ${t.branch}` : ''}${t.description ? `\n  Beschreibung: ${t.description}` : ''}${t.result ? `\n  Ergebnis: ${t.result}` : ''}`,
+          )
+          .join('\n'),
+      );
+    }
+    case 'fancycode_task_create': {
+      const res = await askOpenWindow('task-create', {
+        title: args.title,
+        description: args.description,
+        assignee: args.assignee || clientLabel(),
+        sessionId: args.session_id,
+        branch: args.branch,
+      });
+      const created = res?.tasks?.[0];
+      return text(created ? `Aufgabe angelegt: [${created.id}] ${created.title}` : 'Aufgabe angelegt.');
+    }
+    case 'fancycode_task_claim': {
+      const res = await askOpenWindow('task-claim', {
+        taskId: args.task_id,
+        assignee: args.assignee || clientLabel(),
+        sessionId: args.session_id || ownSessionId,
+        branch: args.branch,
+      });
+      if (!res?.task) throw new Error(`Aufgabe ${args.task_id} nicht gefunden.`);
+      return text(`Aufgabe uebernommen: [${res.task.id}] ${res.task.title} (in_progress).`);
+    }
+    case 'fancycode_task_update': {
+      const res = await askOpenWindow('task-update', {
+        taskId: args.task_id,
+        status: args.status,
+        result: args.result,
+        title: args.title,
+        description: args.description,
+        sessionId: args.session_id || ownSessionId,
+      });
+      if (!res?.task) throw new Error(`Aufgabe ${args.task_id} nicht gefunden.`);
+      return text(`Aufgabe aktualisiert: [${res.task.id}] (${res.task.status}) ${res.task.title}`);
+    }
+    case 'fancycode_status': {
+      const sid = String(args.session_id || ownSessionId || '').trim();
+      if (!sid) throw new Error('Kein eigenes Terminal erkannt (session_id angeben).');
+      await askOpenWindow('terminal-status', {
+        sessionId: sid,
+        status: args.status,
+        activity: args.activity,
+      });
+      return text(`Terminal-Status gesetzt: ${args.status}${args.activity ? ` (${args.activity})` : ''}`);
     }
     default:
       throw new Error(`Unbekanntes Werkzeug: ${name}`);

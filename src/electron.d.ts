@@ -1,5 +1,5 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
-import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
+import type { VServer, VServerConnection, SftpEntry, AgentRequest, AgentResult, CliStatus, CodexPluginInfo, ExternalServerTestRequest, GitDiffStatus, GitInfo, GitWorktreeInfo, ImportedAntigravityChat, McpServerInfo, McpSessionInfo, McpStartResult, ProjectTestRequest, ProviderId, ProviderUsageInfo, ReleaseNotesAnswer, SpotifyTrack, SystemPromptRequest, UpdateSpotlight } from './types';
 
 export type FancyPlan = 'free' | 'mini' | 'pro' | 'max';
 
@@ -188,6 +188,23 @@ declare global {
         projectPath: string,
         branch: string,
       ): Promise<{ ok: boolean; output: string; error: string }>;
+      getGitDiffStatus(projectPath: string): Promise<GitDiffStatus>;
+      listGitWorktrees(projectPath: string): Promise<GitWorktreeInfo[]>;
+      createGitWorktree(input: {
+        projectPath: string;
+        name: string;
+      }): Promise<{ ok: boolean; worktreePath: string; branch: string; error?: string }>;
+      removeGitWorktree(input: {
+        projectPath: string;
+        worktreePath: string;
+        branch?: string;
+        mergeIntoMain?: boolean;
+      }): Promise<{ ok: boolean; output?: string; error?: string }>;
+      gitCommit(input: {
+        cwd: string;
+        message: string;
+        push?: boolean;
+      }): Promise<{ ok: boolean; output: string; error: string }>;
       installPlugin(projectPath: string, packageName: string): Promise<string>;
       removePlugin(projectPath: string, packageName: string): Promise<string>;
       listCodexPlugins(projectPath?: string): Promise<CodexPluginInfo[]>;

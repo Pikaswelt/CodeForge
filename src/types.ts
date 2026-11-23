@@ -123,6 +123,59 @@ export type TerminalTab = {
   vserver?: VServerConnection;
   // Runs this tab with the login of a saved Antigravity account (own profile folder).
   agyAccountId?: string;
+  // Isolated Git worktree path & branch for parallel multi-agent execution without file collisions.
+  worktreePath?: string;
+  worktreeBranch?: string;
+};
+
+export type TerminalLiveStatus = 'idle' | 'working' | 'waiting' | 'done';
+
+export type TerminalLiveState = {
+  status: TerminalLiveStatus;
+  activity?: string;
+  updatedAt: number;
+};
+
+export type SwarmTaskStatus = 'todo' | 'in_progress' | 'done';
+
+export type SwarmTask = {
+  id: string;
+  title: string;
+  description?: string;
+  status: SwarmTaskStatus;
+  workspaceId?: string;
+  projectId?: string;
+  sessionId?: string;
+  assignee?: string;
+  branch?: string;
+  result?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type GitDiffFile = {
+  path: string;
+  status: 'M' | 'A' | 'D' | 'R' | 'U' | '?';
+  additions: number;
+  deletions: number;
+};
+
+export type GitDiffStatus = {
+  isRepository: boolean;
+  branch: string;
+  root: string;
+  isWorktree: boolean;
+  files: GitDiffFile[];
+  diff: string;
+  ahead: number;
+  behind: number;
+};
+
+export type GitWorktreeInfo = {
+  path: string;
+  head: string;
+  branch: string;
+  isMain: boolean;
 };
 
 export type SftpEntry = {
