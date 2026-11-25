@@ -136,6 +136,7 @@ declare global {
       selectProjectFolder(): Promise<string | null>;
       createProjectFolder(name: string): Promise<string | null>;
       getScratchProjectFolder(): Promise<string>;
+      getHomeDirectory?(): Promise<string>;
       selectAttachments(): Promise<string[]>;
       selectThemeBackground(): Promise<string | null>;
       selectApplication(): Promise<string | null>;

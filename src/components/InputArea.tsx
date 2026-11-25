@@ -66,6 +66,7 @@ export default function InputArea() {
     addProject,
     createNewProject,
     selectedProject,
+    startAgentsInFolder,
     attachments,
     addAttachments,
     removeAttachment,
@@ -169,9 +170,11 @@ export default function InputArea() {
                 ? tr("Terminal-Eingabe: Passwort, Prompt oder y/n tippen...")
                 : originalPluginEnabled
                   ? tr("Nachricht sendet startet den Agent im Terminal-Modus...")
-                  : selectedProject
-                    ? tr("Beschreibe, was im Projekt erledigt werden soll...")
-                    : tr("Nachricht schreiben - startet ohne Projekt im FancyCode Desktop-Arbeitsordner...")
+                  : !startAgentsInFolder && !selectedProject?.vserver
+                    ? tr("Nachricht schreiben - Agent startet direkt auf diesem PC...")
+                    : selectedProject
+                      ? tr("Beschreibe, was im Projekt erledigt werden soll...")
+                      : tr("Nachricht schreiben - startet ohne Projekt im FancyCode Desktop-Arbeitsordner...")
             }
             rows={2}
           />

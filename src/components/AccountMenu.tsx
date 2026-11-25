@@ -19,9 +19,6 @@ export default function AccountMenu({
   onClose(): void;
 }) {
   const {
-    provider,
-    apiKeys,
-    setApiKey,
     mobileMode,
     discordRpcEnabled,
     setDiscordRpcEnabled,
@@ -32,7 +29,6 @@ export default function AccountMenu({
   const [openPlugin, setOpenPlugin] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showNews, setShowNews] = useState(false);
-  const providerInfo = PROVIDER_INFO[provider];
 
   useEffect(() => {
     const api = window.agentWorkspace?.fancyAccount;
@@ -50,7 +46,6 @@ export default function AccountMenu({
   }, []);
 
   const logout = () => {
-    setApiKey(provider, '');
     const api = window.agentWorkspace?.fancyAccount;
     if (api) {
       void api
@@ -78,7 +73,7 @@ export default function AccountMenu({
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate text-[13px] text-zinc-200">
-                  {account ? account.name : `${providerInfo.label} Konto`}
+                  {account ? account.name : 'FancyCode'}
                 </span>
                 {account?.plan && (
                   <span
@@ -103,9 +98,7 @@ export default function AccountMenu({
                     : account.provider === 'github'
                       ? tr("Mit GitHub angemeldet")
                       : tr("Angemeldet")
-                  : apiKeys[provider]
-                    ? tr("API-Key gesetzt")
-                    : tr("Lokale CLI / ChatGPT Login")}
+                  : tr("Nicht angemeldet")}
               </div>
               {account?.plan === 'max' && (
                 <div className="truncate text-[11px] text-violet-300/80">{tr("Beta-Zugang & Priority-Support")}</div>
@@ -234,33 +227,6 @@ export default function AccountMenu({
     document.getElementById('overlay-root') ?? document.body,
   );
 }
-
-const PROVIDER_INFO = {
-  antigravity: {
-    label: 'Antigravity',
-    helpUrl: 'https://antigravity.google/docs/cli-troubleshooting',
-  },
-  openai: {
-    label: 'Codex',
-    helpUrl: 'https://developers.openai.com/codex/cli',
-  },
-  anthropic: {
-    label: 'Claude',
-    helpUrl: 'https://code.claude.com/docs',
-  },
-  cursor: {
-    label: 'Cursor',
-    helpUrl: 'https://cursor.com/docs/cli/overview',
-  },
-  opencode: {
-    label: 'OpenCode',
-    helpUrl: 'https://opencode.ai/docs/',
-  },
-  freebuff: {
-    label: 'FreeBuff',
-    helpUrl: 'https://freebuff.com/',
-  },
-} as const;
 
 function AccountMenuButton({
   icon,

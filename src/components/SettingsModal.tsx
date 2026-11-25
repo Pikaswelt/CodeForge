@@ -19,14 +19,14 @@ import { animatedEffectsAllowed, featureFree, requirePlanFeature } from '../plan
 import { MultiLaunchPanel } from './MultiLaunchPanel';
 import type { CliHarness, GuiEngineConfig, ProviderId } from '../types';
 
-const providers = (): { id: ProviderId; label: string; command: string }[] => [
-  { id: 'antigravity', label: tr("Google Antigravity"), command: 'agy' },
-  { id: 'openai', label: tr("OpenAI Codex"), command: 'codex' },
-  { id: 'anthropic', label: 'Anthropic Claude', command: 'claude' },
-  { id: 'hermes', label: 'Hermes Agent', command: 'hermes' },
-  { id: 'cursor', label: 'Cursor Agent', command: 'agent / cursor-agent' },
-  { id: 'opencode', label: 'OpenCode', command: 'opencode' },
-  { id: 'freebuff', label: 'FreeBuff', command: 'freebuff' },
+const providers = (): { id: ProviderId; label: string; command: string; defaultStartCommand: string }[] => [
+  { id: 'antigravity', label: tr("Google Antigravity"), command: 'agy', defaultStartCommand: 'agy' },
+  { id: 'openai', label: tr("OpenAI Codex"), command: 'codex', defaultStartCommand: 'codex' },
+  { id: 'anthropic', label: 'Anthropic Claude', command: 'claude', defaultStartCommand: 'claude' },
+  { id: 'hermes', label: 'Hermes Agent', command: 'hermes', defaultStartCommand: 'hermes' },
+  { id: 'cursor', label: 'Cursor Agent', command: 'agent / cursor-agent', defaultStartCommand: 'cursor' },
+  { id: 'opencode', label: 'OpenCode', command: 'opencode', defaultStartCommand: 'opencode' },
+  { id: 'freebuff', label: 'FreeBuff', command: 'freebuff', defaultStartCommand: 'freebuff' },
 ];
 
 
@@ -38,11 +38,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     updateVoiceSettings({ language: next });
   };
   const {
-    provider,
-    setProvider,
     theme,
     setTheme,
-    themeByProvider,
     customThemes,
     themeBackgroundBehindComposer,
     libraryBannerBackgroundEnabled,
@@ -88,6 +85,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setHasSetupCompleted,
     terminalStartPath,
     setTerminalStartPath,
+    startAgentsInFolder,
+    setStartAgentsInFolder,
     cliHarnesses,
     setCliHarnesses,
     guiEngines,
@@ -104,6 +103,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setAgentNotificationsEnabled,
     multiLaunchConfig,
     agyAccounts,
+    platformStartCommands,
+    setPlatformStartCommands,
   } = useAppContext();
   const [showMultiLaunch, setShowMultiLaunch] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'account' | 'voice' | 'appearance' | 'mcp' | 'plugins'>('general');
@@ -377,13 +378,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     const status = cliStatus[item.id];
                     const providerUsage = usage.providerLimits?.[item.id];
                     return (
-                      <div key={item.id} className={`rounded-xl border ${
-                        provider === item.id ? 'border-white/20 bg-white/[0.06]' : 'border-white/5 bg-white/[0.02]'
-                      }`}>
-                        <button
-                          onClick={() => setProvider(item.id)}
-                          className="w-full flex items-center gap-3 p-3 text-left"
-                        >
+                      <div key={item.id} className="rounded-xl border border-white/5 bg-white/[0.02]">
+                        <div className="w-full flex items-center gap-3 p-3 text-left">
                           <Terminal className="w-4 h-4 text-zinc-500" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm text-zinc-200">{item.label}</div>
@@ -398,7 +394,41 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                             </div>
                             <div className="text-[9px] text-zinc-700 mt-0.5">{status.version}</div>
                           </div>
-                        </button>
+                        </div>
+                        <div className="border-t border-white/5 px-3 py-2 flex items-center gap-2">
+                          <label className="text-[10px] text-zinc-500 shrink-0" htmlFor={`start-cmd-${item.id}`}>
+                            Start-Command
+                          </label>
+                          <input
+                            id={`start-cmd-${item.id}`}
+                            type="text"
+                            value={platformStartCommands[item.id] ?? item.defaultStartCommand}
+                            onChange={(event) =>
+                              setPlatformStartCommands((current) => ({
+                                ...current,
+                                [item.id]: event.target.value,
+                              }))
+                            }
+                            placeholder={item.defaultStartCommand}
+                            autoComplete="off"
+                            className="flex-1 min-w-0 rounded-md bg-black/40 border border-white/10 px-2 py-1 text-[11px] font-mono text-zinc-200 placeholder-zinc-600 focus:border-amber-400/50 focus:outline-none"
+                          />
+                          {(platformStartCommands[item.id] ?? item.defaultStartCommand) !== item.defaultStartCommand && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPlatformStartCommands((current) => ({
+                                  ...current,
+                                  [item.id]: item.defaultStartCommand,
+                                }))
+                              }
+                              className="shrink-0 rounded-md border border-white/10 px-1.5 py-1 text-[10px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                              title={tr("Auf Standard zurücksetzen")}
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </div>
                         <div className="flex items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
                           <div className="min-w-0 text-[10px] text-zinc-600 truncate">
                             {providerUsage?.available
@@ -468,22 +498,44 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               </section>
 
               {!mobileMode && (
-              <section>
+              <section className="space-y-3">
                 <div className="section-label flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5" />
-                  {tr("Terminal-Startpfad")}
+                  {tr("Agent-Startort")}
                 </div>
-                <input
-                  type="text"
-                  value={terminalStartPath}
-                  onChange={(event) => setTerminalStartPath(event.target.value)}
-                  className="input w-full mt-3"
-                  placeholder={tr("z. B. C:\\Workspace (Leerlassen für Standard-Projektpfad)")}
-                  autoComplete="off"
-                />
-                <p className="text-[11px] leading-4 text-zinc-600 mt-2">
-                  {tr("Bestimmt den Standardordner beim Start einer neuen Terminal-Sitzung. Ohne Pfad wird das aktive Projekt oder der Benutzerordner verwendet.")}
-                </p>
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3.5 py-3 cursor-pointer hover:border-white/15 transition-colors">
+                  <div className="min-w-0">
+                    <div className="text-sm text-zinc-200 font-medium">{tr("Agenten im Ordner starten")}</div>
+                    <div className="text-[11px] leading-4 text-zinc-500 mt-0.5">
+                      {tr("Standardmäßig laufen Agenten direkt auf diesem PC (Benutzerordner). Aktiviere diese Option, wenn Agenten im ausgewählten Projekt- oder Startordner starten sollen.")}
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={startAgentsInFolder}
+                    onChange={(event) => setStartAgentsInFolder(event.target.checked)}
+                    className="h-4 w-4 shrink-0 accent-amber-400 cursor-pointer"
+                  />
+                </label>
+
+                {startAgentsInFolder && (
+                  <div className="pt-1">
+                    <div className="text-xs font-medium text-zinc-400">
+                      {tr("Terminal-Startpfad")}
+                    </div>
+                    <input
+                      type="text"
+                      value={terminalStartPath}
+                      onChange={(event) => setTerminalStartPath(event.target.value)}
+                      className="input w-full mt-2"
+                      placeholder={tr("z. B. C:\\Workspace (Leerlassen für aktives Projekt)")}
+                      autoComplete="off"
+                    />
+                    <p className="text-[11px] leading-4 text-zinc-600 mt-2">
+                      {tr("Bestimmt den Standardordner beim Start einer neuen Terminal-Sitzung. Ohne Pfad wird das aktive Projekt verwendet.")}
+                    </p>
+                  </div>
+                )}
               </section>
               )}
 
@@ -1048,10 +1100,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               <section>
                 <div className="section-label flex items-center gap-2">
                   <Palette className="w-3.5 h-3.5" />
-                  {tr("Theme Gallery fuer")} {providers().find((item) => item.id === provider)?.label}
+                  {tr("Theme Gallery")}
                 </div>
                 <div className="mt-2 text-[11px] text-zinc-600">
-                  {tr("Jeder Anbieter speichert sein eigenes Theme. Aktiv:")} {themeByProvider[provider] || theme}
+                  {tr("Aktiv:")} {customThemes.find((item) => item.id === theme)?.name || theme}
                 </div>
                 <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
                   <div>

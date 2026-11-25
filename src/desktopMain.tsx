@@ -114,6 +114,7 @@ if (typeof (window as any).agentWorkspace === 'undefined' && canUseSyncSocket) {
     selectProjectFolder: () => invoke('selectProjectFolder'),
     createProjectFolder: (name: string) => invoke('createProjectFolder', name),
     getScratchProjectFolder: () => invoke('getScratchProjectFolder'),
+    getHomeDirectory: () => invoke('getHomeDirectory'),
     selectAttachments: () => invoke('selectAttachments'),
     selectThemeBackground: () => invoke('selectThemeBackground'),
     selectApplication: () => invoke('selectApplication'),

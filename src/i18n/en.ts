@@ -1586,6 +1586,17 @@ const EN: Record<string, string> = {
     'When one of these comma-separated words appears in the terminal, a system notification is also sent.',
   'Der Agent hat seine Aufgabe im Terminal abgeschlossen.': 'The agent has completed its task in the terminal.',
   'Der Agent wartet im Terminal auf deine Bestätigung.': 'The agent is waiting for your confirmation in the terminal.',
+  'Agent-Startort': 'Agent start location',
+  'Agenten im Ordner starten': 'Start agents in folder',
+  'Standardmäßig laufen Agenten direkt auf diesem PC (Benutzerordner). Aktiviere diese Option, wenn Agenten im ausgewählten Projekt- oder Startordner starten sollen.':
+    'By default, agents run directly on this PC (user home directory). Enable this option if agents should start inside the selected project or start folder.',
+  'z. B. C:\\Workspace (Leerlassen für aktives Projekt)': 'e.g. C:\\Workspace (leave empty for active project)',
+  'Bestimmt den Standardordner beim Start einer neuen Terminal-Sitzung. Ohne Pfad wird das aktive Projekt verwendet.':
+    'Sets the default folder when starting a new terminal session. If empty, the active project is used.',
+  'Agenten starten direkt auf diesem PC (Ordner-Start in den Einstellungen aktivierbar).':
+    'Agents start directly on this PC (folder start can be enabled in Settings).',
+  'Terminals mit Agent direkt auf diesem PC': 'Terminals with agent directly on this PC',
+  'Nachricht schreiben - Agent startet direkt auf diesem PC...': 'Write a message - agent starts directly on this PC...',
 };
 
 export default EN;

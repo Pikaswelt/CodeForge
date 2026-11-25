@@ -155,18 +155,23 @@ export default function MainArea() {
 
 // FancyCode-Agent im ausgewählten Projekt (grafisch, wie Claude Code in Claude Desktop).
 function FancyCodeHost({ visible }: { visible: boolean }) {
-  const { selectedProject, addProject, openUsagePopup, guiEngines, agentNotificationsEnabled } = useAppContext();
+  const { selectedProject, addProject, openUsagePopup, guiEngines, agentNotificationsEnabled, startAgentsInFolder, terminalStartPath, homeDir } = useAppContext();
   const bridge = useMemo(() => fancycodeBridge(), []);
   const activeGuiEngines = useMemo(() => {
     const enabled = guiEngines.filter((e) => e.enabled && e.command.trim());
     return enabled.length ? enabled : [{ id: 'fancycode', name: 'FancyCode', command: 'fancycode', icon: 'Zap', enabled: true, builtin: true }];
   }, [guiEngines]);
   if (!bridge) return null;
+  const effectiveCwd = selectedProject?.vserver
+    ? selectedProject.path
+    : startAgentsInFolder
+      ? (terminalStartPath || selectedProject?.path || '')
+      : (homeDir || selectedProject?.path || '');
   return (
     <div className="flex-1 min-w-0 h-full flex-col relative overflow-hidden" style={{ display: visible ? 'flex' : 'none' }}>
       <FancyCodePanel
         bridge={bridge}
-        cwd={selectedProject?.path || ''}
+        cwd={effectiveCwd}
         server={selectedProject?.vserver}
         onPickFolder={addProject}
         emptyHint={tr("Füge ein Projekt hinzu oder wähle eins in der Seitenleiste – FancyCode, Claude oder Antigravity CLI arbeiten dann direkt darin.")}
@@ -1165,7 +1170,6 @@ function TerminalInstance({
     customThemes,
     externalServer,
     platformStartCommands,
-    platformWaitTimes,
     updateTerminalLiveState,
   } = useAppContext();
 
@@ -1288,7 +1292,7 @@ function TerminalInstance({
         // Plain SSH session: no local start command.
       } else if (chat.mode === 'standard') {
         const agentCmd = platformStartCommands[provider] || getAgentCommand(provider);
-        const waitTime = platformWaitTimes[provider] || 5000;
+        const waitTime = provider === 'antigravity' ? 3000 : 5000;
         if (!startedTerminalTabs.has(tabId)) {
           startedTerminalTabs.add(tabId);
           setTimeout(() => {
@@ -1337,7 +1341,10 @@ function TerminalInstance({
 
     const titleDisposable = term.onTitleChange((newTitle) => {
       const cleaned = (newTitle || '').trim();
-      if (cleaned && !/^(bash|zsh|fish|sh|cmd|powershell|terminal)$/i.test(cleaned)) {
+      if (
+        cleaned &&
+        !/^(bash|zsh|fish|sh|cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh(?:\.exe)?|terminal|agy|antigravity|claude|codex|hermes|cursor|opencode|freebuff|[a-z]:\\|\/|~)/i.test(cleaned)
+      ) {
         updateTerminalLiveState(tabId, { activity: cleaned.slice(0, 72) });
       }
     });
@@ -1612,6 +1619,7 @@ function TerminalChatView({ chat }: { chat: Chat }) {
   const {
     selectedProject,
     terminalStartPath,
+    startAgentsInFolder,
     chats,
     setChats,
     theme,
@@ -1658,7 +1666,12 @@ function TerminalChatView({ chat }: { chat: Chat }) {
                 : 'grid-cols-4 grid-rows-3';
 
   // A remote project is always the start folder; a local start path would not exist on the server.
-  const startPath = (selectedProject?.vserver ? selectedProject.path : terminalStartPath || selectedProject?.path) || undefined;
+  // Locally, agents start on the PC (home dir) by default unless "startAgentsInFolder" is enabled in Settings.
+  const startPath = (selectedProject?.vserver
+    ? selectedProject.path
+    : startAgentsInFolder
+      ? (terminalStartPath || selectedProject?.path)
+      : undefined) || undefined;
   const activeServer = tabs.find((tab) => tab.id === activeTabId)?.vserver ?? currentChat.vserver;
 
   // Dictation writes recognized text into the active terminal tab.
@@ -2500,6 +2513,7 @@ function HomeView() {
     startWorkspace,
     startHarnessChat,
     selectedProject,
+    startAgentsInFolder,
     agyAccounts,
     startAgyAccounts,
     multiLaunchConfig,
@@ -2601,7 +2615,13 @@ function HomeView() {
         </div>
         <h1 className="text-3xl text-white font-medium text-center tracking-tight">Home</h1>
         <p className="text-sm text-zinc-600 mt-3 text-center max-w-lg">
-          {selectedProject ? `Workspace startet in ${selectedProject.path}` : tr("Ohne Projekt nutzt FancyCode Desktop einen eigenen Arbeitsordner.")}
+          {selectedProject?.vserver
+            ? `Workspace startet in ${selectedProject.path}`
+            : !startAgentsInFolder
+              ? tr("Agenten starten direkt auf diesem PC (Ordner-Start in den Einstellungen aktivierbar).")
+              : selectedProject
+                ? `Workspace startet in ${selectedProject.path}`
+                : tr("Ohne Projekt nutzt FancyCode Desktop einen eigenen Arbeitsordner.")}
         </p>
 
         {!picking ? (
@@ -2615,7 +2635,9 @@ function HomeView() {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-zinc-100">{tr("Workspace starten")}</span>
-                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">{tr("Terminals mit Agent im Projektordner")}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+                  {startAgentsInFolder ? tr("Terminals mit Agent im Projektordner") : tr("Terminals mit Agent direkt auf diesem PC")}
+                </span>
               </span>
             </button>
             <button

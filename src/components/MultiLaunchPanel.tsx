@@ -35,8 +35,10 @@ export function MultiLaunchPanel({
   onCancel(): void;
   onStart?(): void;
 }) {
-  const { multiLaunchConfig, setMultiLaunchConfig, agyAccounts, startMultiLaunch } = useAppContext();
+  const { multiLaunchConfig, setMultiLaunchConfig, agyAccounts, startMultiLaunch, platformStartCommands } = useAppContext();
   const savedServers = useVServers();
+  const agyDefaultCmd = (platformStartCommands.antigravity || '').trim() || 'agy';
+  const claudeDefaultCmd = (platformStartCommands.anthropic || '').trim() || 'claude';
 
   // Local state for editing until saved
   const [config, setConfig] = useState<MultiLaunchConfig>(() => ({
@@ -86,12 +88,12 @@ export function MultiLaunchPanel({
   // Preset handlers
   const applyPreset5Agy1Claude = () => {
     const slots: MultiLaunchSlot[] = [
-      { id: newSlotId(), name: 'Antigravity 1', tool: 'agy', command: 'agy', targetType: 'local' },
-      { id: newSlotId(), name: 'Antigravity 2', tool: 'agy', command: 'agy', targetType: 'local' },
-      { id: newSlotId(), name: 'Antigravity 3', tool: 'agy', command: 'agy', targetType: 'local' },
-      { id: newSlotId(), name: 'Antigravity 4', tool: 'agy', command: 'agy', targetType: 'local' },
-      { id: newSlotId(), name: 'Antigravity 5', tool: 'agy', command: 'agy', targetType: 'local' },
-      { id: newSlotId(), name: 'Claude Code', tool: 'claude', command: 'claude', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity 1', tool: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity 2', tool: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity 3', tool: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity 4', tool: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity 5', tool: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Claude Code', tool: 'claude', targetType: 'local' },
     ];
     setConfig((prev) => ({
       ...prev,
@@ -104,13 +106,12 @@ export function MultiLaunchPanel({
   const applyPreset2PC2VServer = () => {
     const defaultServer = savedServers[0];
     const slots: MultiLaunchSlot[] = [
-      { id: newSlotId(), name: 'Antigravity PC 1', tool: 'agy', command: 'agy', targetType: 'local' },
-      { id: newSlotId(), name: 'Antigravity PC 2', tool: 'agy', command: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity PC 1', tool: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity PC 2', tool: 'agy', targetType: 'local' },
       {
         id: newSlotId(),
         name: defaultServer ? `Antigravity (${defaultServer.name}) 1` : tr("Antigravity V-Server 1"),
         tool: 'agy',
-        command: 'agy',
         targetType: defaultServer ? 'vserver' : 'local',
         vserverId: defaultServer?.id,
       },
@@ -118,7 +119,6 @@ export function MultiLaunchPanel({
         id: newSlotId(),
         name: defaultServer ? `Antigravity (${defaultServer.name}) 2` : tr("Antigravity V-Server 2"),
         tool: 'agy',
-        command: 'agy',
         targetType: defaultServer ? 'vserver' : 'local',
         vserverId: defaultServer?.id,
       },
@@ -134,13 +134,12 @@ export function MultiLaunchPanel({
   const applyPresetAgyPCClaudeServer = () => {
     const defaultServer = savedServers[0];
     const slots: MultiLaunchSlot[] = [
-      { id: newSlotId(), name: 'Antigravity 1', tool: 'agy', command: 'agy', targetType: 'local' },
-      { id: newSlotId(), name: 'Antigravity 2', tool: 'agy', command: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity 1', tool: 'agy', targetType: 'local' },
+      { id: newSlotId(), name: 'Antigravity 2', tool: 'agy', targetType: 'local' },
       {
         id: newSlotId(),
         name: defaultServer ? `Claude (${defaultServer.name})` : tr("Claude V-Server"),
         tool: 'claude',
-        command: 'claude',
         targetType: defaultServer ? 'vserver' : 'local',
         vserverId: defaultServer?.id,
       },
@@ -167,7 +166,6 @@ export function MultiLaunchPanel({
       id: newSlotId(),
       name: `Terminal ${num}`,
       tool: 'agy',
-      command: 'agy',
       targetType: 'local',
     };
     setConfig((prev) => ({
@@ -442,7 +440,7 @@ export function MultiLaunchPanel({
                       <div className="flex rounded-lg border border-white/10 bg-black/50 p-0.5">
                         <button
                           type="button"
-                          onClick={() => updateSlot(slot.id, { tool: 'agy', command: 'agy' })}
+                          onClick={() => updateSlot(slot.id, { tool: 'agy', command: undefined })}
                           className={`flex-1 py-1.5 rounded text-center transition-colors ${
                             slot.tool === 'agy'
                               ? 'bg-orange-500/20 text-orange-200 border border-orange-500/30 font-medium'
@@ -453,7 +451,7 @@ export function MultiLaunchPanel({
                         </button>
                         <button
                           type="button"
-                          onClick={() => updateSlot(slot.id, { tool: 'claude', command: 'claude' })}
+                          onClick={() => updateSlot(slot.id, { tool: 'claude', command: undefined })}
                           className={`flex-1 py-1.5 rounded text-center transition-colors ${
                             slot.tool === 'claude'
                               ? 'bg-orange-500/20 text-orange-200 border border-orange-500/30 font-medium'
@@ -475,16 +473,26 @@ export function MultiLaunchPanel({
                         </button>
                       </div>
 
-                      {/* Custom command field */}
-                      {slot.tool === 'custom' && (
-                        <input
-                          type="text"
-                          value={slot.command || ''}
-                          onChange={(e) => updateSlot(slot.id, { command: e.target.value })}
-                          placeholder={tr("Befehl, z. B. agy, claude, bash")}
-                          className="w-full mt-1.5 rounded-lg bg-black/60 border border-white/10 px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 font-mono focus:border-orange-500/60 focus:outline-none"
-                        />
-                      )}
+                      {/* Start command override / custom command */}
+                      <input
+                        type="text"
+                        value={
+                          slot.tool === 'agy' && slot.command === 'agy'
+                            ? ''
+                            : slot.tool === 'claude' && slot.command === 'claude'
+                              ? ''
+                              : slot.command || ''
+                        }
+                        onChange={(e) => updateSlot(slot.id, { command: e.target.value || undefined })}
+                        placeholder={
+                          slot.tool === 'agy'
+                            ? `Standard: ${agyDefaultCmd}`
+                            : slot.tool === 'claude'
+                              ? `Standard: ${claudeDefaultCmd}`
+                              : tr("Befehl, z. B. agy --dangerously-skip-permissions")
+                        }
+                        className="w-full mt-1.5 rounded-lg bg-black/60 border border-white/10 px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 font-mono focus:border-orange-500/60 focus:outline-none"
+                      />
 
                       {/* Agy Account picker (local) */}
                       {slot.tool === 'agy' && slot.targetType === 'local' && agyAccounts.length > 0 && (

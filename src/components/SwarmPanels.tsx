@@ -45,7 +45,17 @@ const WAITING_PROMPT_REGEX =
   /(?:\(y\/n\)|\[Y\/n\]|\[y\/N\]|Allow\s+(?:once|always|tool|bash|command|edit|write)|Do you want to\s+(?:proceed|continue|run|edit|create|delete)|Proceed\?|Press Enter to continue|Waiting for (?:input|approval|confirmation)|Genehmigen\?|Ausführen erlauben)/i;
 
 const ACTION_LINE_REGEX =
-  /^(?:[●✻✶✢⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏►▶•]\s*)?((?:Read|Reading|Edit|Editing|Write|Writing|Bash|Run|Running|Search|Searching|Grep|Glob|Thinking|Testing|Fixing|Building|Deploying|Analyzing|Update|Updating|Create|Creating)\b[^\r\n]{0,68})/i;
+  /^(?:[●✻✶✢✳✽⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏►▶•]\s*)?((?:Read|Reading|Edit|Editing|Write|Writing|Bash|Run|Running|Search|Searching|Grep|Glob|Thinking|Testing|Fixing|Building|Deploying|Analyzing|Update|Updating|Create|Creating)\b[^\r\n]{0,68})/i;
+
+const WORKING_SPINNER_REGEX =
+  /(?:[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏✻✶✢✳✽◐◓◑◒]\s+\S[^\r\n]{1,70}|\b(?:esc|ctrl\+c)\s+to\s+(?:interrupt|cancel)\b)/i;
+
+const OSC_WORKING_REGEX =
+  /(?:^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏✻✶✢✳✽◐◓◑◒⏳⚡]\s*|\b(?:working|running|thinking|building|testing|searching|editing)\b)/i;
+
+// Menu / model-picker / settings redraws must never flip the terminal into "working".
+const IGNORE_UI_LINE_REGEX =
+  /(?:select\s+(?:a\s+)?model|model\s+(?:switched|changed|updated|selected|set)|choose\s+(?:a\s+)?model|use\s+arrow|↑\/↓|press\s+enter\s+to\s+select|\/model\b|\/settings\b|\/theme\b|\/config\b)/i;
 
 // Dangerous commands that Turbo Mode must NEVER auto-approve
 const DANGEROUS_GUARDRAIL_REGEX =
@@ -105,6 +115,7 @@ export function parseTerminalChunkForLiveState(
 
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
+    if (IGNORE_UI_LINE_REGEX.test(line)) continue;
     const match = line.match(ACTION_LINE_REGEX);
     if (match && match[1]) {
       return {
@@ -112,19 +123,22 @@ export function parseTerminalChunkForLiveState(
         activity: match[1].trim().slice(0, 72),
       };
     }
+    if (WORKING_SPINNER_REGEX.test(line)) {
+      const cleaned = line.replace(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏✻✶✢✳✽◐◓◑◒\s]+/, '').trim();
+      return {
+        status: 'working',
+        ...(cleaned ? { activity: cleaned.slice(0, 72) } : {}),
+      };
+    }
   }
 
-  if (oscActivity) {
+  if (oscActivity && OSC_WORKING_REGEX.test(oscActivity)) {
     return {
       status: 'working',
-      activity: oscActivity,
+      activity: oscActivity.replace(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏✻✶✢✳✽◐◓◑◒⏳⚡\s]+/, '').trim() || oscActivity,
     };
   }
 
-  const visibleChars = plain.replace(/\s+/g, '');
-  if (visibleChars.length >= 4) {
-    return { status: 'working' };
-  }
   return null;
 }
 

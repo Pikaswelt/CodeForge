@@ -4430,6 +4430,7 @@ ipcMain.handle('device:status', () => {
   });
   ipcMain.handle('dialog:create-project', createProjectFolder);
   ipcMain.handle('dialog:scratch-project', () => scratchProjectFolder());
+  ipcMain.handle('dialog:home-dir', () => app.getPath('home'));
   // --- Direct API chat (Anthropic / OpenAI / OpenAI-compatible) ---
   const apiBaseUrl = (provider, baseUrl) => {
     const fallback = provider === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1';

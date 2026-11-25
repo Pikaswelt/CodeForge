@@ -254,7 +254,6 @@ interface AppContextType {
   externalServer: ExternalServerConfig;
   systemPrompt: string;
   theme: Theme;
-  themeByProvider: Record<ProviderId, Theme>;
   customThemes: CustomTheme[];
   themeBackgroundBehindComposer: boolean;
   sidebarTransparency: number;
@@ -277,6 +276,9 @@ interface AppContextType {
   discordIdleMessage: string;
   terminalStartPath: string;
   setTerminalStartPath: React.Dispatch<React.SetStateAction<string>>;
+  startAgentsInFolder: boolean;
+  setStartAgentsInFolder: React.Dispatch<React.SetStateAction<boolean>>;
+  homeDir: string;
   terminalStartCommandEnabled: boolean;
   setTerminalStartCommandEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   terminalStartCommand: string;
@@ -295,18 +297,8 @@ interface AppContextType {
   setTerminalTriggerWords: React.Dispatch<React.SetStateAction<string>>;
   agentNotificationsEnabled: boolean;
   setAgentNotificationsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  agyStartCommand: string;
-  setAgyStartCommand: React.Dispatch<React.SetStateAction<string>>;
-  agyWaitTimeMs: number;
-  setAgyWaitTimeMs: React.Dispatch<React.SetStateAction<number>>;
-  agyPrefix: string;
-  setAgyPrefix: React.Dispatch<React.SetStateAction<string>>;
-  agySuffix: string;
-  setAgySuffix: React.Dispatch<React.SetStateAction<string>>;
   platformStartCommands: Record<string, string>;
   setPlatformStartCommands: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  platformWaitTimes: Record<string, number>;
-  setPlatformWaitTimes: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   mainView: MainView;
   hasSetupCompleted: boolean;
   isSending: boolean;
@@ -587,11 +579,11 @@ function hasHomeAppRunFile(app: HomeApp) {
 export const MAX_AGY_ACCOUNTS = 8;
 
 // Claude Code without permission prompts; it reaches all terminals through the codeforge MCP server.
-const MANAGER_TAB = (id: string, inServerWorkspace: boolean): TerminalTab => ({
+const MANAGER_TAB = (id: string, inServerWorkspace: boolean, command = 'claude --dangerously-skip-permissions'): TerminalTab => ({
   id,
   title: tr("Manager (Claude Code)"),
   shellType: 'cmd',
-  command: 'claude --dangerously-skip-permissions',
+  command,
   // The MCP server runs on this PC, so the manager must too, even in a V-Server workspace.
   ...(inServerWorkspace ? { location: 'local' as const } : {}),
 });
@@ -926,17 +918,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() =>
     readStorage<Theme>('theme', 'modern-dark'),
   );
-  const [themeByProvider, setThemeByProvider] = useState<Record<ProviderId, Theme>>(() =>
-    readStorage<Record<ProviderId, Theme>>('themeByProvider', {
-      antigravity: readStorage<Theme>('theme', 'modern-dark'),
-      openai: 'modern-dark',
-      anthropic: 'modern-dark',
-      hermes: 'modern-dark',
-      cursor: 'modern-dark',
-      opencode: 'modern-dark',
-      freebuff: 'modern-dark',
-    }),
-  );
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>(() =>
     readStorage<CustomTheme[]>('customThemes', []),
   );
@@ -999,6 +980,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [terminalStartPath, setTerminalStartPath] = useState(() =>
     readStorage('terminalStartPath', ''),
   );
+  const [startAgentsInFolder, setStartAgentsInFolder] = useState(() =>
+    readStorage('startAgentsInFolder', false),
+  );
+  const [homeDir, setHomeDir] = useState('');
   const [terminalStartCommandEnabled, setTerminalStartCommandEnabled] = useState(() =>
     readStorage('terminalStartCommandEnabled', false),
   );
@@ -1042,18 +1027,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [terminalTriggerWords, setTerminalTriggerWords] = useState(() =>
     readStorage('terminalTriggerWords', ''),
   );
-  const [agyStartCommand, setAgyStartCommand] = useState(() =>
-    readStorage('agyStartCommand', 'agy'),
-  );
-  const [agyWaitTimeMs, setAgyWaitTimeMs] = useState(() =>
-    readStorage('agyWaitTimeMs', 3000),
-  );
-  const [agyPrefix, setAgyPrefix] = useState(() =>
-    readStorage('agyPrefix', ''),
-  );
-  const [agySuffix, setAgySuffix] = useState(() =>
-    readStorage('agySuffix', ''),
-  );
   const [platformStartCommands, setPlatformStartCommands] = useState<Record<string, string>>(() =>
     readStorage('platformStartCommands', {
       antigravity: 'agy',
@@ -1063,17 +1036,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cursor: 'cursor',
       opencode: 'opencode',
       freebuff: 'freebuff'
-    })
-  );
-  const [platformWaitTimes, setPlatformWaitTimes] = useState<Record<string, number>>(() =>
-    readStorage('platformWaitTimes', {
-      antigravity: 3000,
-      anthropic: 5000,
-      hermes: 5000,
-      openai: 5000,
-      cursor: 5000,
-      opencode: 5000,
-      freebuff: 5000
     })
   );
   const [mainView, setMainView] = useState<MainView>('chat');
@@ -1154,7 +1116,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('originalPluginEnabled', originalPluginEnabled), [originalPluginEnabled]);
   useEffect(() => writeStorage('usage', usage), [usage]);
   useEffect(() => writeStorage('externalServer', externalServer), [externalServer]);
-  useEffect(() => writeStorage('themeByProvider', themeByProvider), [themeByProvider]);
   useEffect(() => writeStorage('customThemes', customThemes), [customThemes]);
   useEffect(
     () => writeStorage('themeBackgroundBehindComposer', themeBackgroundBehindComposer),
@@ -1178,6 +1139,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('discordRpcEnabled', discordRpcEnabled), [discordRpcEnabled]);
   useEffect(() => writeStorage('discordIdleMessage', discordIdleMessage), [discordIdleMessage]);
   useEffect(() => writeStorage('terminalStartPath', terminalStartPath), [terminalStartPath]);
+  useEffect(() => writeStorage('startAgentsInFolder', startAgentsInFolder), [startAgentsInFolder]);
+  useEffect(() => {
+    void window.agentWorkspace?.getHomeDirectory?.().then((dir) => {
+      if (dir) setHomeDir(dir);
+    });
+  }, []);
   useEffect(() => writeStorage('terminalStartCommandEnabled', terminalStartCommandEnabled), [terminalStartCommandEnabled]);
   useEffect(() => writeStorage('terminalStartCommand', terminalStartCommand), [terminalStartCommand]);
   useEffect(() => writeStorage('cliHarnesses', cliHarnesses), [cliHarnesses]);
@@ -1207,12 +1174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => writeStorage('terminalPrefix', terminalPrefix), [terminalPrefix]);
   useEffect(() => writeStorage('terminalSuffix', terminalSuffix), [terminalSuffix]);
   useEffect(() => writeStorage('terminalTriggerWords', terminalTriggerWords), [terminalTriggerWords]);
-  useEffect(() => writeStorage('agyStartCommand', agyStartCommand), [agyStartCommand]);
-  useEffect(() => writeStorage('agyWaitTimeMs', agyWaitTimeMs), [agyWaitTimeMs]);
-  useEffect(() => writeStorage('agyPrefix', agyPrefix), [agyPrefix]);
-  useEffect(() => writeStorage('agySuffix', agySuffix), [agySuffix]);
   useEffect(() => writeStorage('platformStartCommands', platformStartCommands), [platformStartCommands]);
-  useEffect(() => writeStorage('platformWaitTimes', platformWaitTimes), [platformWaitTimes]);
   useEffect(
     () => writeStorage('selectedFolder', selectedFolderId),
     [selectedFolderId],
@@ -1269,12 +1231,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (state.responseDisplayMode !== undefined) { setResponseDisplayMode(state.responseDisplayMode); }
     if (state.customThemes !== undefined) { setCustomThemes(state.customThemes); }
     if (state.activeRuns !== undefined) { setActiveRuns(state.activeRuns); }
-    if (state.agyStartCommand !== undefined) { setAgyStartCommand(state.agyStartCommand); }
-    if (state.agyWaitTimeMs !== undefined) { setAgyWaitTimeMs(state.agyWaitTimeMs); }
-    if (state.agyPrefix !== undefined) { setAgyPrefix(state.agyPrefix); }
-    if (state.agySuffix !== undefined) { setAgySuffix(state.agySuffix); }
     if (state.platformStartCommands !== undefined) { setPlatformStartCommands(state.platformStartCommands); }
-    if (state.platformWaitTimes !== undefined) { setPlatformWaitTimes(state.platformWaitTimes); }
     
     setTimeout(() => {
       isSyncingRef.current = false;
@@ -1363,10 +1320,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       customThemes,
       activeRuns,
       hasSetupCompleted,
-      agyStartCommand,
-      agyWaitTimeMs,
-      agyPrefix,
-      agySuffix,
+      platformStartCommands,
     };
     
     wsRef.current?.send(JSON.stringify({
@@ -1396,12 +1350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     activeRuns,
     wsConnected,
     hasSetupCompleted,
-    agyStartCommand,
-    agyWaitTimeMs,
-    agyPrefix,
-    agySuffix,
     platformStartCommands,
-    platformWaitTimes
   ]);
 
   const startSyncServer = async () => {
@@ -1412,11 +1361,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSyncServerUrl(result.url);
     return result;
   };
-
-  useEffect(() => {
-    const providerTheme = themeByProvider[provider] || 'modern-dark';
-    if (theme !== providerTheme) setThemeState(providerTheme);
-  }, [provider, theme, themeByProvider]);
 
   const refreshCliStatus = useCallback(async () => {
     if (!window.agentWorkspace) return;
@@ -1695,7 +1639,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setProvider = (nextProvider: ProviderId) => {
     setProviderState(nextProvider);
     setAiModelState(DEFAULT_MODEL[nextProvider]);
-    setThemeState(themeByProvider[nextProvider] || 'modern-dark');
     writeStorage('provider', nextProvider);
     writeStorage('model', DEFAULT_MODEL[nextProvider]);
   };
@@ -1795,11 +1738,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setTheme = (nextTheme: Theme) => {
     setThemeState(nextTheme);
     writeStorage('theme', nextTheme);
-    setThemeByProvider((current) => {
-      const next = { ...current, [provider]: nextTheme };
-      writeStorage('themeByProvider', next);
-      return next;
-    });
   };
 
   const createCustomTheme = (input: Omit<CustomTheme, 'id'>) => {
@@ -1823,13 +1761,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const deleteCustomTheme = (id: string) => {
     setCustomThemes((current) => current.filter((item) => item.id !== id));
-    setThemeByProvider((current) => {
-      const next = Object.fromEntries(
-        Object.entries(current).map(([key, value]) => [key, value === id ? 'modern-dark' : value]),
-      ) as Record<ProviderId, Theme>;
-      writeStorage('themeByProvider', next);
-      return next;
-    });
     if (theme === id) setTheme('modern-dark');
   };
 
@@ -2633,6 +2564,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ? { id: server.id, name: server.name, host: server.host, port: server.port, user: server.user, keyPath: server.keyPath }
       : undefined;
     const title = accounts.length === 1 ? `Antigravity · ${accounts[0].name}` : 'Antigravity Accounts';
+    const agyBaseCmd = (platformStartCommands.antigravity || '').trim() || 'agy';
+    const agyCmd = options.resume
+      ? (agyBaseCmd.includes('--continue') ? agyBaseCmd : `${agyBaseCmd} --continue`)
+      : agyBaseCmd;
+    const customClaudeCmd = (platformStartCommands.anthropic || '').trim();
+    const managerCmd = customClaudeCmd && customClaudeCmd !== 'claude'
+      ? customClaudeCmd
+      : 'claude --dangerously-skip-permissions';
     const chat: Chat = {
       id: chatId,
       title: vserver ? `${title} · ${vserver.name}` : title,
@@ -2646,12 +2585,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           title: account.name,
           shellType: 'cmd' as const,
           // --continue picks up the account's last agy conversation.
-          command: options.resume ? 'agy --dangerously-skip-permissions --continue' : 'agy --dangerously-skip-permissions',
+          command: agyCmd,
           agyAccountId: account.id,
           ...(vserver ? { vserver } : {}),
         })),
         // Manager window: Claude Code on this PC, where the codeforge MCP server runs, to steer the agy accounts.
-        ...(accounts.length < MAX_AGY_ACCOUNTS ? [MANAGER_TAB(newId(), Boolean(vserver))] : []),
+        ...(accounts.length < MAX_AGY_ACCOUNTS ? [MANAGER_TAB(newId(), Boolean(vserver), managerCmd)] : []),
       ],
       activeTerminalTabId: chatId,
       terminalLayout: 'grid',
@@ -2691,10 +2630,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const isLocal = slot.targetType !== 'vserver';
       const server = !isLocal && slot.vserverId ? savedServers.find((s) => s.id === slot.vserverId) : undefined;
 
-      let cmd = slot.command?.trim();
-      if (!cmd) {
-        if (slot.tool === 'claude') cmd = 'claude';
-        else if (slot.tool === 'agy') cmd = 'agy';
+      const agyDefault = (platformStartCommands.antigravity || '').trim() || 'agy';
+      const claudeDefault = (platformStartCommands.anthropic || '').trim() || 'claude';
+      const rawCmd = slot.command?.trim();
+      let cmd = rawCmd;
+      if (slot.tool === 'agy') {
+        cmd = rawCmd && rawCmd !== 'agy' ? rawCmd : agyDefault;
+      } else if (slot.tool === 'claude') {
+        cmd = rawCmd && rawCmd !== 'claude' ? rawCmd : claudeDefault;
       }
 
       let agyAccountId: string | undefined = undefined;
@@ -3010,8 +2953,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           existingSession.lastPrompt = text;
           existingSession.promptWritten = true;
           
-          const finalPrompt = (agyPrefix || '') + text + (agySuffix || '') + '\r';
-          window.agentWorkspace.writeToShellSession({ chatId: targetId, text: finalPrompt });
+          window.agentWorkspace.writeToShellSession({ chatId: targetId, text: text + '\r' });
         } else {
           const unsubscribe = window.agentWorkspace.onShellOutput(targetId, (payload: any) => {
             const session = activeShellSessions.current[targetId];
@@ -3052,18 +2994,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
             promptWritten: false,
           };
           
-          window.agentWorkspace.createShellSession({ chatId: targetId, cwd: projectForRun.path, shellType: 'cmd' }).then(() => {
+          const agentStartCwd = projectForRun.vserver
+            ? projectForRun.path
+            : startAgentsInFolder
+              ? (terminalStartPath || projectForRun.path)
+              : undefined;
+          window.agentWorkspace.createShellSession({ chatId: targetId, cwd: agentStartCwd, shellType: 'cmd' }).then(() => {
             setTimeout(() => {
-              const startCmd = platformStartCommands[runProvider] || agyStartCommand;
+              const startCmd = platformStartCommands[runProvider] || 'agy';
               window.agentWorkspace.writeToShellSession({ chatId: targetId, text: startCmd + '\r' });
               setTimeout(() => {
                 const session = activeShellSessions.current[targetId];
                 if (session) {
                   session.promptWritten = true;
                 }
-                const finalPrompt = (agyPrefix || '') + text + (agySuffix || '') + '\r';
-                window.agentWorkspace.writeToShellSession({ chatId: targetId, text: finalPrompt });
-              }, platformWaitTimes[runProvider] || agyWaitTimeMs);
+                window.agentWorkspace.writeToShellSession({ chatId: targetId, text: text + '\r' });
+              }, runProvider === 'antigravity' ? 3000 : 5000);
             }, 1000);
           });
         }
@@ -3119,7 +3065,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             apiKeys,
             systemPrompt: shouldUseLyzDev ? `${systemPrompt}\n\n${LYZ_DEV_SYSTEM_PROMPT}` : systemPrompt,
             prompt,
-            projectPath: isMobile && mobileConnectionConfig?.type === 'vps' ? (mobileConnectionConfig.vpsProjectPath || projectForRun.path) : projectForRun.path,
+            projectPath: isMobile && mobileConnectionConfig?.type === 'vps'
+              ? (mobileConnectionConfig.vpsProjectPath || projectForRun.path)
+              : projectForRun.vserver
+                ? projectForRun.path
+                : startAgentsInFolder
+                  ? (terminalStartPath || projectForRun.path)
+                  : (homeDir || projectForRun.path),
             attachments,
             // A remote project always runs the agent on its V-Server, with the same SSH key as its terminals.
             externalServer: externalServer.enabled
@@ -3275,7 +3227,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         apiKeys,
         systemPrompt: '',
         prompt,
-        projectPath: projectForRun.path,
+        projectPath: projectForRun.vserver
+          ? projectForRun.path
+          : startAgentsInFolder
+            ? (terminalStartPath || projectForRun.path)
+            : (homeDir || projectForRun.path),
         attachments: [],
         externalServer: externalServer.enabled ? externalServer : undefined,
       });
@@ -3929,7 +3885,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       externalServer,
       systemPrompt,
       theme,
-      themeByProvider,
       customThemes,
       themeBackgroundBehindComposer,
       sidebarTransparency,
@@ -3948,6 +3903,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       discordIdleMessage,
       terminalStartPath,
       setTerminalStartPath,
+      startAgentsInFolder,
+      setStartAgentsInFolder,
+      homeDir,
       terminalStartCommandEnabled,
       setTerminalStartCommandEnabled,
       terminalStartCommand,
@@ -3964,18 +3922,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTerminalTriggerWords,
       agentNotificationsEnabled,
       setAgentNotificationsEnabled,
-      agyStartCommand,
-      setAgyStartCommand,
-      agyWaitTimeMs,
-      setAgyWaitTimeMs,
-      agyPrefix,
-      setAgyPrefix,
-      agySuffix,
-      setAgySuffix,
       platformStartCommands,
       setPlatformStartCommands,
-      platformWaitTimes,
-      setPlatformWaitTimes,
       mainView,
       hasSetupCompleted,
       isSending,
@@ -4154,7 +4102,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       externalServer,
       systemPrompt,
       theme,
-      themeByProvider,
       customThemes,
       themeBackgroundBehindComposer,
       sidebarTransparency,
@@ -4172,6 +4119,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       discordRpcEnabled,
       discordIdleMessage,
       terminalStartPath,
+      startAgentsInFolder,
+      homeDir,
       terminalStartCommandEnabled,
       terminalStartCommand,
       terminalPrefixSuffixEnabled,
@@ -4179,10 +4128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       terminalSuffix,
       terminalTriggerWords,
       agentNotificationsEnabled,
-      agyStartCommand,
-      agyWaitTimeMs,
-      agyPrefix,
-      agySuffix,
+      platformStartCommands,
       mainView,
       hasSetupCompleted,
       isSending,

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   selectProjectFolder: () => ipcRenderer.invoke('dialog:select-project'),
   createProjectFolder: (name) => ipcRenderer.invoke('dialog:create-project', name),
   getScratchProjectFolder: () => ipcRenderer.invoke('dialog:scratch-project'),
+  getHomeDirectory: () => ipcRenderer.invoke('dialog:home-dir'),
   selectAttachments: () => ipcRenderer.invoke('dialog:select-attachments'),
   selectThemeBackground: () => ipcRenderer.invoke('dialog:select-theme-background'),
   selectApplication: () => ipcRenderer.invoke('dialog:select-application'),
